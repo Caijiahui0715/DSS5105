@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated data and documents
+*.csv
+*.pdf
+*.xlsx
+
+# Local Python and API configuration
+.onemap_token.json
+.venv/
+.uv-cache/
+.env
+__pycache__/

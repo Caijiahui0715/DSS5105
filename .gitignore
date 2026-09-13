@@ -221,6 +221,7 @@ __marimo__/
 *.csv
 *.pdf
 *.xlsx
+docs/*.visual-check.*
 
 # Local Python and API configuration
 .onemap_token.json

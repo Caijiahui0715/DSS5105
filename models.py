@@ -7,6 +7,13 @@ Listing = dict[str, Any]
 RestrictionSummary = dict[str, str]
 RankingResult = dict[str, Any]
 RelaxationSuggestion = dict[str, Any]
+UserIntent = Literal[
+    "search",
+    "accept_relaxation",
+    "reject_relaxation",
+    "show_results",
+    "unknown",
+]
 
 
 class SearchPreferences(BaseModel):
@@ -37,4 +44,16 @@ class SearchPreferences(BaseModel):
     ranking_priority: Literal["balanced", "price", "mrt"] = Field(
         default="balanced",
         description="Explicit soft preference: balanced, lower price, or nearer MRT.",
+    )
+
+
+class ParsedTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    intent: UserIntent
+    preferences: SearchPreferences
+    relaxation_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="One-based pending relaxation number when accepting or previewing one.",
     )

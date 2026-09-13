@@ -1,4 +1,9 @@
-from models import RankingResult, RelaxationSuggestion, RestrictionSummary
+from models import (
+    RankingResult,
+    RelaxationSuggestion,
+    RestrictionSummary,
+    UserIntent,
+)
 
 
 _FACTOR_LABELS = {"price": "价格", "mrt": "MRT"}
@@ -73,6 +78,42 @@ def render_response(
     return "\n".join(lines)
 
 
+def render_intent_response(
+    intent: UserIntent,
+    ranked_listings: list[RankingResult] | None = None,
+    restrictions: dict[str, RestrictionSummary] | None = None,
+    relaxations: list[RelaxationSuggestion] | None = None,
+) -> str:
+    if intent == "show_results":
+        if ranked_listings:
+            return render_response(ranked_listings, restrictions)
+        if relaxations:
+            suggestion = relaxations[0]
+            return (
+                f"目前没有严格符合条件的房源。是否接受{_relaxation_change(suggestion)}？"
+                f"接受后预计可找到 {suggestion['match_count']} 套房源。"
+            )
+        return "目前没有可展示的房源，请先告诉我你的租房要求。"
+    if intent == "reject_relaxation":
+        return "好的，我会保留原来的搜索条件。你可以告诉我想调整哪项要求。"
+    if intent == "accept_relaxation":
+        return "目前没有可接受的让步建议，请告诉我想调整的搜索条件。"
+    return "我还不确定你想搜索、修改条件还是查看房源，请再说明一下。"
+
+
+def render_relaxation_preview(
+    suggestion: RelaxationSuggestion,
+    ranked_listings: list[RankingResult],
+    restrictions: dict[str, RestrictionSummary],
+) -> str:
+    if not ranked_listings:
+        return "该让步条件下暂时没有可展示的房源，请重新搜索。"
+    return (
+        f"按“{_relaxation_change(suggestion)}”预览，尚未修改你的原搜索条件：\n\n"
+        f"{render_response(ranked_listings, restrictions)}"
+    )
+
+
 def _mrt_text(listing: dict) -> str:
     minutes = listing.get("mrt_walk_minutes")
     if minutes is not None:
@@ -90,9 +131,12 @@ def _render_relaxations(relaxations: list[RelaxationSuggestion]) -> str:
 
     lines = ["没有找到完全符合条件的房源，可以考虑："]
     for suggestion in relaxations:
-        field = suggestion["field"]
         count = suggestion["match_count"]
-        formatter = _RELAXATION_TEXT.get(field)
-        change = formatter(suggestion) if formatter else f"调整 {field}"
-        lines.append(f"- {change}，预计可找到 {count} 套房源")
+        lines.append(f"- {_relaxation_change(suggestion)}，预计可找到 {count} 套房源")
     return "\n".join(lines)
+
+
+def _relaxation_change(suggestion: RelaxationSuggestion) -> str:
+    field = suggestion["field"]
+    formatter = _RELAXATION_TEXT.get(field)
+    return formatter(suggestion) if formatter else f"调整 {field}"

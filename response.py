@@ -37,14 +37,19 @@ def render_response(
     ranked_listings: list[RankingResult] | None = None,
     restrictions: dict[str, RestrictionSummary] | None = None,
     relaxations: list[RelaxationSuggestion] | None = None,
+    *,
+    heading: str | None = None,
+    limit: int = 3,
 ) -> str:
     ranked_listings = ranked_listings or []
     restrictions = restrictions or {}
     if not ranked_listings:
         return _render_relaxations(relaxations or [])
 
-    lines = [f"找到 {len(ranked_listings)} 套符合条件的房源，以下按匹配度排序："]
-    for index, item in enumerate(ranked_listings[:3], 1):
+    lines = [
+        heading or f"找到 {len(ranked_listings)} 套符合条件的房源，以下按匹配度排序："
+    ]
+    for index, item in enumerate(ranked_listings[:limit], 1):
         listing = item["listing"]
         listing_id = listing["listing_id"]
         price = listing.get("price_sgd")
@@ -64,6 +69,9 @@ def render_response(
         ]
         if weights:
             lines.append(f"   排名权重：{'，'.join(weights)}")
+
+        if listing.get("availability_text"):
+            lines.append(f"   入住时间：{listing['availability_text']}")
 
         rules = [
             text
@@ -96,6 +104,8 @@ def render_intent_response(
         return "目前没有可展示的房源，请先告诉我你的租房要求。"
     if intent == "reject_relaxation":
         return "好的，我会保留原来的搜索条件。你可以告诉我想调整哪项要求。"
+    if intent == "reject_results":
+        return "目前没有已展示的房源可以排除，请先搜索或查看房源。"
     if intent == "accept_relaxation":
         return "目前没有可接受的让步建议，请告诉我想调整的搜索条件。"
     return "我还不确定你想搜索、修改条件还是查看房源，请再说明一下。"

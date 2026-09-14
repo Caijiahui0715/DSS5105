@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from datetime import date, datetime
 
 from models import (
     Listing,
@@ -12,6 +13,7 @@ from onemap import OneMapNotFound, calculate_mrt_walk, load_token
 
 
 _PRIORITY_BOOST = 7 / 3
+_SOFT_MRT_REFERENCE_MINUTES = 10
 
 _RANKING_CRITERIA = {
     "price": (
@@ -26,7 +28,7 @@ _RANKING_CRITERIA = {
             listing.get("mrt_walk_minutes")
             if listing.get("mrt_walk_minutes") is not None
             else listing.get("mrt_minutes_reported"),
-            preferences.max_mrt_minutes,
+            _mrt_reference(preferences),
         ),
     ),
 }
@@ -60,9 +62,30 @@ def load_listings(connection: sqlite3.Connection) -> list[Listing]:
     return _query(connection, "SELECT * FROM listings")
 
 
+def get_listings_by_ids(
+    connection: sqlite3.Connection,
+    listing_ids: list[str],
+) -> list[Listing]:
+    """Load listings in the same order as the supplied IDs."""
+    listing_ids = list(dict.fromkeys(listing_ids))
+    if not listing_ids:
+        return []
+    placeholders = ", ".join("?" for _ in listing_ids)
+    by_id = {
+        listing["listing_id"]: listing
+        for listing in _query(
+            connection,
+            f"SELECT * FROM listings WHERE listing_id IN ({placeholders})",
+            listing_ids,
+        )
+    }
+    return [by_id[listing_id] for listing_id in listing_ids if listing_id in by_id]
+
+
 def search_listings(
     connection: sqlite3.Connection,
     preferences: SearchPreferences,
+    excluded_listing_ids: list[str] | None = None,
 ) -> list[Listing]:
     """Return active, valid listings satisfying every supplied constraint."""
     clauses = [
@@ -86,11 +109,30 @@ def search_listings(
             clauses.append(clause)
             params.append(value)
 
-    return _query(
+    excluded_listing_ids = list(dict.fromkeys(excluded_listing_ids or []))
+    if excluded_listing_ids:
+        placeholders = ", ".join("?" for _ in excluded_listing_ids)
+        clauses.append(f"listing_id NOT IN ({placeholders})")
+        params.extend(excluded_listing_ids)
+
+    listings = _query(
         connection,
         f"SELECT * FROM listings WHERE {' AND '.join(clauses)}",
         params,
     )
+    if preferences.move_in_date:
+        listings = [
+            listing
+            for listing in listings
+            if _available_by(listing, preferences.move_in_date)
+        ]
+    if preferences.cooking_required:
+        listings = [
+            listing
+            for listing in listings
+            if extract_restrictions(listing)["cooking"] in {"allowed", "limited"}
+        ]
+    return listings
 
 
 def refresh_mrt_walk_data(
@@ -147,6 +189,7 @@ def refresh_mrt_walk_data(
 def analyze_relaxations(
     connection: sqlite3.Connection,
     preferences: SearchPreferences,
+    excluded_listing_ids: list[str] | None = None,
 ) -> list[RelaxationSuggestion]:
     # ponytail: fixed steps suit the prototype; product policy can replace them later.
     candidates = (
@@ -170,7 +213,9 @@ def analyze_relaxations(
         if suggested is None:
             continue
         relaxed = preferences.model_copy(update={field: suggested})
-        match_count = len(search_listings(connection, relaxed))
+        match_count = len(
+            search_listings(connection, relaxed, excluded_listing_ids)
+        )
         if match_count:
             suggestions.append(
                 {
@@ -258,10 +303,40 @@ def _clean(value: str | None) -> str | None:
     return value.strip() if value and value.strip() else None
 
 
+def _available_by(listing: Listing, move_in_date: date) -> bool:
+    text = str(listing.get("availability_text") or "").strip()
+    collected_text = str(listing.get("collected_at") or "")
+    try:
+        collected = date.fromisoformat(collected_text[:10])
+    except ValueError:
+        collected = None
+
+    if text.casefold() == "available now":
+        return collected is None or collected <= move_in_date
+    prefix = "available from "
+    if not text.casefold().startswith(prefix) or collected is None:
+        return False
+    try:
+        available = datetime.strptime(
+            f"{text[len(prefix):]} {collected.year}", "%d %b %Y"
+        ).date()
+    except ValueError:
+        return False
+    return available <= move_in_date
+
+
 def _ratio(value: object, limit: int | None) -> float | None:
     if limit is None or not isinstance(value, (int, float)):
         return None
     return value / limit
+
+
+def _mrt_reference(preferences: SearchPreferences) -> int | None:
+    if preferences.max_mrt_minutes is not None:
+        return preferences.max_mrt_minutes
+    if preferences.ranking_priority == "mrt":
+        return _SOFT_MRT_REFERENCE_MINUTES
+    return None
 
 
 def _rank_key(result: RankingResult) -> tuple:

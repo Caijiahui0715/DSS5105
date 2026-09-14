@@ -13,7 +13,13 @@ from models import (
     UserIntent,
 )
 from parser import parse_turn
-from response import render_intent_response, render_relaxation_preview, render_response
+from response import (
+    render_comparison,
+    render_intent_response,
+    render_listing_details,
+    render_relaxation_preview,
+    render_response,
+)
 from tools import (
     analyze_relaxations,
     extract_restrictions,
@@ -31,6 +37,9 @@ class AgentState(TypedDict, total=False):
     rejected_listing_numbers: list[int]
     shortlist_listing_numbers: list[int]
     shortlist_listing_ids: list[str]
+    compare_listing_ids: list[str]
+    detail_listing_id: str | None
+    detail_listing_number: int | None
     shortlisted_listing_number: int | None
     preferences: SearchPreferences
     listings: list[Listing]
@@ -83,6 +92,35 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
     def interpret_node(state: AgentState):
         previous = state.get("preferences")
         relaxations = state.get("relaxations", [])
+        explicit_ids = _listing_ids_in(state["message"])
+        if explicit_ids and _asks_to_show_listing_details(state["message"]):
+            return {
+                "intent": "show_listing_details",
+                "detail_listing_id": explicit_ids[0],
+                "detail_listing_number": None,
+                "relaxation_number": None,
+                "reject_all_shown": False,
+                "rejected_listing_numbers": [],
+                "shortlist_listing_numbers": [],
+                "shortlist_listing_ids": [],
+                "compare_listing_ids": [],
+                "shortlisted_listing_number": None,
+                "last_excluded_listing_ids": [],
+            }
+        if _asks_to_compare_listings(state["message"]):
+            return {
+                "intent": "compare_shortlist",
+                "compare_listing_ids": _listing_ids_in(state["message"]),
+                "detail_listing_id": None,
+                "detail_listing_number": None,
+                "relaxation_number": None,
+                "reject_all_shown": False,
+                "rejected_listing_numbers": [],
+                "shortlist_listing_numbers": [],
+                "shortlist_listing_ids": [],
+                "shortlisted_listing_number": None,
+                "last_excluded_listing_ids": [],
+            }
         if _asks_to_show_shortlist(state["message"]):
             return {
                 "intent": "show_shortlist",
@@ -91,6 +129,9 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
                 "rejected_listing_numbers": [],
                 "shortlist_listing_numbers": [],
                 "shortlist_listing_ids": [],
+                "compare_listing_ids": [],
+                "detail_listing_id": None,
+                "detail_listing_number": None,
                 "shortlisted_listing_number": None,
                 "last_excluded_listing_ids": [],
             }
@@ -102,6 +143,9 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
                 "rejected_listing_numbers": [],
                 "shortlist_listing_numbers": [],
                 "shortlist_listing_ids": [],
+                "compare_listing_ids": [],
+                "detail_listing_id": None,
+                "detail_listing_number": None,
                 "shortlisted_listing_number": None,
                 "last_excluded_listing_ids": [],
             }
@@ -124,7 +168,20 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             "shortlist_listing_numbers": turn.shortlist_listing_numbers,
             "shortlist_listing_ids": (
                 _listing_ids_in(state["message"]) or turn.shortlist_listing_ids
+                if turn.intent == "shortlist_listing"
+                else []
             ),
+            "compare_listing_ids": (
+                _listing_ids_in(state["message"]) or turn.compare_listing_ids
+                if turn.intent == "compare_shortlist"
+                else []
+            ),
+            "detail_listing_id": (
+                explicit_ids[0]
+                if turn.intent == "show_listing_details" and explicit_ids
+                else None
+            ),
+            "detail_listing_number": turn.detail_listing_number,
             "shortlisted_listing_number": turn.shortlisted_listing_number,
             "last_excluded_listing_ids": [],
             "preferences": turn.preferences,
@@ -141,6 +198,10 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             return "remove_shortlist"
         if state["intent"] == "show_shortlist":
             return "show_shortlist"
+        if state["intent"] == "compare_shortlist":
+            return "compare_shortlist"
+        if state["intent"] == "show_listing_details":
+            return "show_listing_details"
         if state["intent"] == "search":
             return "search" if _has_search_criteria(state["preferences"]) else "clarify"
         if (
@@ -324,6 +385,70 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             ],
         }
 
+    def compare_shortlist_node(state: AgentState):
+        requested_ids = state.get("compare_listing_ids") or state.get(
+            "shortlisted_listing_ids", []
+        )
+        listings = get_listings_by_ids(connection, requested_ids)
+        if len(listings) < 2:
+            return {
+                "response_draft": (
+                    "至少需要两套可用房源才能进行比较，请先继续添加候选房源。"
+                )
+            }
+
+        restrictions = {
+            listing["listing_id"]: extract_restrictions(listing)
+            for listing in listings
+        }
+        ranked = rank_listings(
+            listings,
+            state.get("preferences", SearchPreferences()),
+        )
+        return {
+            "response_draft": render_comparison(ranked, restrictions),
+            "shown_listing_ids": [
+                item["listing"]["listing_id"] for item in ranked
+            ],
+        }
+
+    def show_listing_details_node(state: AgentState):
+        shown = state.get("shown_listing_ids", [])
+        listing_id = state.get("detail_listing_id")
+        number = state.get("detail_listing_number")
+        if listing_id is None and number is not None:
+            if not 1 <= number <= len(shown):
+                return {
+                    "response_draft": (
+                        f"请提供 1 到 {len(shown)} 之间的房源序号。"
+                        if shown
+                        else "目前没有已展示的房源，请直接提供房源编号。"
+                    )
+                }
+            listing_id = shown[number - 1]
+        if listing_id is None and len(shown) == 1:
+            listing_id = shown[0]
+        if listing_id is None:
+            return {
+                "response_draft": (
+                    f"目前展示了 {len(shown)} 套房源，请告诉我想查看第几套。"
+                    if shown
+                    else "目前没有已展示的房源，请直接提供房源编号，例如 S010。"
+                )
+            }
+
+        listings = get_listings_by_ids(connection, [listing_id])
+        if not listings:
+            return {"response_draft": f"没有找到房源 {listing_id}。"}
+        listing = listings[0]
+        return {
+            "response_draft": render_listing_details(
+                listing,
+                extract_restrictions(listing),
+            ),
+            "shown_listing_ids": [listing_id],
+        }
+
     def clarification_node(state: AgentState):
         missing = _open_preferences(state["preferences"])
         return {
@@ -473,6 +598,8 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
     graph.add_node("shortlist", shortlist_node)
     graph.add_node("remove_shortlist", remove_shortlist_node)
     graph.add_node("show_shortlist", show_shortlist_node)
+    graph.add_node("compare_shortlist", compare_shortlist_node)
+    graph.add_node("show_listing_details", show_listing_details_node)
     graph.add_node("clarification", clarification_node)
     graph.add_node("prepare_search", prepare_search_node)
     graph.add_node("preview_relaxation", preview_relaxation_node)
@@ -495,6 +622,8 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             "shortlist": "shortlist",
             "remove_shortlist": "remove_shortlist",
             "show_shortlist": "show_shortlist",
+            "compare_shortlist": "compare_shortlist",
+            "show_listing_details": "show_listing_details",
             "preview": "preview_relaxation",
             "conversation": "conversation",
         },
@@ -504,6 +633,8 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
     graph.add_edge("shortlist", "generate_response")
     graph.add_edge("remove_shortlist", "generate_response")
     graph.add_edge("show_shortlist", "generate_response")
+    graph.add_edge("compare_shortlist", "generate_response")
+    graph.add_edge("show_listing_details", "generate_response")
     graph.add_edge("prepare_search", "search")
     graph.add_conditional_edges(
         "search",
@@ -538,6 +669,23 @@ def _asks_to_show_shortlist(message: str) -> bool:
     mutation_terms = ("加入", "添加", "放入", "移除", "删除", "不想", "不考虑", "add", "remove")
     return any(term in text for term in shortlist_terms) and not any(
         term in text for term in mutation_terms
+    )
+
+
+def _asks_to_compare_listings(message: str) -> bool:
+    text = message.casefold()
+    compare_terms = ("比较", "对比", "哪个好", "哪套更好", "compare", "versus", " vs ")
+    shortlist_terms = ("候选", "收藏", "shortlist", "saved")
+    return any(term in text for term in compare_terms) and (
+        len(_listing_ids_in(message)) >= 2
+        or any(term in text for term in shortlist_terms)
+    )
+
+
+def _asks_to_show_listing_details(message: str) -> bool:
+    text = message.casefold()
+    return any(term in text for term in ("详情", "详细信息", "details")) or any(
+        term in text for term in ("查看", "看看", "看下", "view")
     )
 
 

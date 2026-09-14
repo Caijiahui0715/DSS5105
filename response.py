@@ -1,4 +1,5 @@
 from models import (
+    Listing,
     RankingResult,
     RelaxationSuggestion,
     RestrictionSummary,
@@ -111,6 +112,76 @@ def render_intent_response(
     return "我还不确定你想搜索、修改条件还是查看房源，请再说明一下。"
 
 
+def render_comparison(
+    ranked_listings: list[RankingResult],
+    restrictions: dict[str, RestrictionSummary],
+) -> str:
+    if len(ranked_listings) < 2:
+        return "至少需要两套可用房源才能进行比较。"
+
+    lines = [
+        render_response(
+            ranked_listings,
+            restrictions,
+            heading=f"正在比较 {len(ranked_listings)} 套房源：",
+            limit=len(ranked_listings),
+        ),
+        "",
+        "关键差异：",
+    ]
+    listings = [item["listing"] for item in ranked_listings]
+    priced = [
+        listing
+        for listing in listings
+        if isinstance(listing.get("price_sgd"), (int, float))
+    ]
+    if priced:
+        cheapest = min(priced, key=lambda listing: listing["price_sgd"])
+        lines.append(
+            f"- 最低月租：{cheapest['listing_id']}（S${cheapest['price_sgd']:,}）"
+        )
+
+    with_mrt = [
+        (listing, _mrt_minutes(listing))
+        for listing in listings
+        if _mrt_minutes(listing) is not None
+    ]
+    if with_mrt:
+        closest, minutes = min(with_mrt, key=lambda item: item[1])
+        lines.append(f"- MRT 最近：{closest['listing_id']}（约 {minutes} 分钟）")
+    else:
+        lines.append("- MRT：这些房源目前都没有可用的步行时间")
+    return "\n".join(lines)
+
+
+def render_listing_details(
+    listing: Listing,
+    restrictions: RestrictionSummary,
+) -> str:
+    price = listing.get("price_sgd")
+    verified = listing.get("platform_verified")
+    lines = [
+        f"房源详情：{listing.get('title') or '未命名房源'}（{listing['listing_id']}）",
+        f"- 月租：{f'S${price:,}' if isinstance(price, (int, float)) else '未知'}",
+        f"- 房型：{listing.get('room_type') or '未知'}",
+        f"- 地区：{listing.get('district_code') or '未知'}",
+        f"- 地址：{listing.get('address') or '未知'}",
+        f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing)}",
+        f"- 入住时间：{listing.get('availability_text') or '未知'}",
+        f"- 平台认证：{'是' if verified is True else '否' if verified is False else '未知'}",
+    ]
+    rules = [
+        text
+        for key, value in restrictions.items()
+        if (text := _RESTRICTION_TEXT.get((key, value)))
+    ]
+    if rules:
+        lines.append(f"- 居住条件：{'；'.join(rules)}")
+    if listing.get("review_flags"):
+        lines.append(f"- 数据提示：{', '.join(listing['review_flags'])}")
+    return "\n".join(lines)
+
+
 def render_relaxation_preview(
     suggestion: RelaxationSuggestion,
     ranked_listings: list[RankingResult],
@@ -125,14 +196,18 @@ def render_relaxation_preview(
 
 
 def _mrt_text(listing: dict) -> str:
-    minutes = listing.get("mrt_walk_minutes")
-    if minutes is not None:
+    minutes = _mrt_minutes(listing)
+    if listing.get("mrt_walk_minutes") is not None:
         distance = listing.get("mrt_walk_distance_m")
         suffix = f"（{distance:,} 米）" if isinstance(distance, (int, float)) else ""
         return f"OneMap 步行约 {minutes} 分钟{suffix}"
 
-    minutes = listing.get("mrt_minutes_reported")
     return f"房源描述约 {minutes} 分钟" if minutes is not None else "时间未知"
+
+
+def _mrt_minutes(listing: dict) -> int | float | None:
+    walked = listing.get("mrt_walk_minutes")
+    return walked if walked is not None else listing.get("mrt_minutes_reported")
 
 
 def _render_relaxations(relaxations: list[RelaxationSuggestion]) -> str:

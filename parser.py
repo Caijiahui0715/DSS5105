@@ -7,6 +7,12 @@ from models import ParsedTurn, RelaxationSuggestion, SearchPreferences
 
 _SYSTEM_PROMPT = """Classify the user's rental-search intent and return complete preferences.
 Use search for a new search or an explicit preference change.
+Use compare_shortlist when the user asks to compare shortlisted listings or two or more
+explicit listing IDs. Set compare_listing_ids when explicit IDs are provided; otherwise
+leave it empty to compare the whole shortlist.
+Use show_listing_details when the user asks for more information about one listing.
+Set detail_listing_number for a displayed position such as "the second listing". Leave it
+null for "this listing"; the graph resolves it only when exactly one listing was shown.
 Use accept_relaxation only when the user agrees to a pending relaxation.
 Use reject_relaxation when the user rejects a pending relaxation.
 Use reject_results when the user rejects shown listings without changing preferences.

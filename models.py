@@ -10,6 +10,8 @@ RankingResult = dict[str, Any]
 RelaxationSuggestion = dict[str, Any]
 UserIntent = Literal[
     "search",
+    "compare_shortlist",
+    "show_listing_details",
     "accept_relaxation",
     "reject_relaxation",
     "reject_results",
@@ -93,6 +95,15 @@ class ParsedTurn(BaseModel):
     shortlist_listing_ids: list[str] = Field(
         default_factory=list,
         description="Explicit listing IDs to add to the shortlist.",
+    )
+    compare_listing_ids: list[str] = Field(
+        default_factory=list,
+        description="Explicit listing IDs to compare; empty means compare the shortlist.",
+    )
+    detail_listing_number: int | None = Field(
+        default=None,
+        ge=1,
+        description="One-based displayed listing position whose details the user wants.",
     )
     shortlisted_listing_number: int | None = Field(
         default=None,

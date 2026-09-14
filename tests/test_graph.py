@@ -686,6 +686,106 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(result["shortlisted_listing_ids"], ["S004", "S002"])
         self.assertIn("S004、S002", result["response"])
 
+    def test_compares_all_shortlisted_listings(self):
+        preferences = SearchPreferences(max_price_sgd=5_000)
+        structured_model = Mock()
+        structured_model.invoke.side_effect = [
+            ParsedTurn(intent="search", preferences=preferences),
+            ParsedTurn(
+                intent="shortlist_listing",
+                preferences=preferences,
+                shortlist_listing_numbers=[1, 2],
+            ),
+        ]
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+
+        with closing(create_mock_database()) as connection:
+            graph = build_graph(connection, model, _memory())
+            config = {"configurable": {"thread_id": "compare-shortlist"}}
+            graph.invoke({"message": "预算5000"}, config=config)
+            graph.invoke({"message": "收藏前两套"}, config=config)
+            result = graph.invoke({"message": "比较我的候选房源"}, config=config)
+
+        self.assertEqual(structured_model.invoke.call_count, 2)
+        self.assertEqual(result["intent"], "compare_shortlist")
+        self.assertIn("最低月租：S004", result["response_draft"])
+        self.assertIn("MRT 最近：S002", result["response_draft"])
+        self.assertEqual(result["shown_listing_ids"], ["S004", "S002"])
+
+    def test_compares_explicit_ids_without_a_shortlist(self):
+        model = Mock()
+
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model).invoke(
+                {"message": "比较 S010 和 S001 哪个好"}
+            )
+
+        model.with_structured_output.assert_not_called()
+        self.assertEqual(result["compare_listing_ids"], ["S010", "S001"])
+        self.assertIn("S010", result["response_draft"])
+        self.assertIn("S001", result["response_draft"])
+        self.assertIn("最低月租：S001", result["response_draft"])
+        self.assertIn("MRT 最近：S010", result["response_draft"])
+
+    def test_shows_explicit_listing_details_without_searching_first(self):
+        model = Mock()
+
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model).invoke(
+                {"message": "查看 S010 的详情"}
+            )
+
+        model.with_structured_output.assert_not_called()
+        self.assertEqual(result["intent"], "show_listing_details")
+        self.assertEqual(result["shown_listing_ids"], ["S010"])
+        self.assertIn("Synthetic Second Room At Clementi Address", result["response_draft"])
+        self.assertIn("Synthetic Block 606 Clementi Avenue", result["response_draft"])
+        self.assertIn("不允许做饭", result["response_draft"])
+
+    def test_shows_details_for_a_displayed_position(self):
+        preferences = SearchPreferences(max_price_sgd=1_100)
+        structured_model = Mock()
+        structured_model.invoke.side_effect = [
+            ParsedTurn(intent="search", preferences=preferences),
+            ParsedTurn(
+                intent="show_listing_details",
+                preferences=preferences,
+                detail_listing_number=2,
+            ),
+        ]
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+
+        with closing(create_mock_database()) as connection:
+            graph = build_graph(connection, model, _memory())
+            config = {"configurable": {"thread_id": "details-number"}}
+            graph.invoke({"message": "预算1100"}, config=config)
+            result = graph.invoke({"message": "看看第二套的详情"}, config=config)
+
+        self.assertEqual(result["shown_listing_ids"], ["S002"])
+        self.assertIn("Synthetic Queenstown Budget Room", result["response_draft"])
+        self.assertIn("房东同住", result["response_draft"])
+
+    def test_resolves_this_listing_when_only_one_is_shown(self):
+        preferences = SearchPreferences(district_code="D22")
+        structured_model = Mock()
+        structured_model.invoke.side_effect = [
+            ParsedTurn(intent="search", preferences=preferences),
+            ParsedTurn(intent="show_listing_details", preferences=preferences),
+        ]
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+
+        with closing(create_mock_database()) as connection:
+            graph = build_graph(connection, model, _memory())
+            config = {"configurable": {"thread_id": "details-this"}}
+            graph.invoke({"message": "只看D22"}, config=config)
+            result = graph.invoke({"message": "看看这套的详细信息"}, config=config)
+
+        self.assertEqual(result["shown_listing_ids"], ["S007"])
+        self.assertIn("Synthetic Jurong East Master Room", result["response_draft"])
+
 
 if __name__ == "__main__":
     unittest.main()

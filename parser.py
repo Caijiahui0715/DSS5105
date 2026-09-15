@@ -37,6 +37,14 @@ When accepting or previewing a pending relaxation, identify its one-based relaxa
 Use relaxation_number 1 when no number is specified and there is only one relevant suggestion.
 Otherwise relaxation_number is null.
 Use null for preferences not stated in a new search. Do not guess missing preferences.
+For every budget explicitly stated in this turn, set budget_amount to the number and
+budget_currency to an uppercase ISO 4217 code. When no currency is stated, including
+the generic Chinese word "元", default to SGD. Normalize 新币/新加坡元 to SGD and
+人民币/RMB to CNY. A bare "$" or "¥" is ambiguous: set budget_currency null and do
+not guess. For SGD budgets, also set preferences.max_price_sgd to budget_amount. For
+foreign or ambiguous budgets, do not put the unconverted amount into max_price_sgd;
+the graph will convert it. Leave budget_amount and budget_currency null when the user
+does not state a new budget in this turn.
 Normalize Singapore district codes to uppercase and common room-type names to title case.
 The suggested_refinement_fields are optional, never search blockers. When room_type is
 suggested and the user says every/any room type is acceptable, keep room_type null, set

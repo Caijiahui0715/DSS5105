@@ -16,7 +16,12 @@ class ParserTest(unittest.TestCase):
             ranking_priority="mrt",
         )
         structured_model = Mock()
-        expected_turn = ParsedTurn(intent="search", preferences=expected)
+        expected_turn = ParsedTurn(
+            intent="search",
+            preferences=expected,
+            budget_amount=1_300,
+            budget_currency="SGD",
+        )
         structured_model.invoke.return_value = expected_turn
         model = Mock()
         model.with_structured_output.return_value = structured_model
@@ -30,6 +35,7 @@ class ParserTest(unittest.TestCase):
         model.with_structured_output.assert_called_once_with(ParsedTurn)
         messages = structured_model.invoke.call_args.args[0]
         self.assertEqual(messages[-1][0], "human")
+        self.assertIn("default to SGD", messages[0][1])
 
         with self.assertRaises(ValueError):
             parse_turn("   ", model)

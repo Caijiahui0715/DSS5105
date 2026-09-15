@@ -8,6 +8,7 @@ Listing = dict[str, Any]
 RestrictionSummary = dict[str, str]
 RankingResult = dict[str, Any]
 RelaxationSuggestion = dict[str, Any]
+ResponseLanguage = Literal["zh", "en"]
 UserIntent = Literal[
     "search",
     "compare_shortlist",
@@ -75,6 +76,16 @@ class ParsedTurn(BaseModel):
 
     intent: UserIntent
     preferences: SearchPreferences
+    budget_amount: int | None = Field(
+        default=None,
+        gt=0,
+        description="Budget amount stated in this turn before any currency conversion.",
+    )
+    budget_currency: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z]{3}$",
+        description="ISO 4217 currency code for budget_amount; null when a symbol is ambiguous.",
+    )
     relaxation_number: int | None = Field(
         default=None,
         ge=1,

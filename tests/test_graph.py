@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-from graph import build_graph
+from graph import _response_language, build_graph
 from mock_db import create_mock_database
 from models import ParsedTurn, SearchPreferences
 from tools import search_listings
@@ -21,6 +21,96 @@ def _memory() -> MemorySaver:
 
 
 class GraphTest(unittest.TestCase):
+    def test_converts_a_foreign_budget_before_searching(self):
+        preferences = SearchPreferences(room_type="Shared Room")
+        structured_model = Mock()
+        structured_model.invoke.return_value = ParsedTurn(
+            intent="search",
+            preferences=preferences,
+            budget_amount=5_000,
+            budget_currency="CNY",
+        )
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+        conversion = {
+            "original_amount": 5_000,
+            "original_currency": "CNY",
+            "rate_to_sgd": "0.18",
+            "rate_date": "2026-09-15",
+            "amount_sgd": 900,
+        }
+
+        with (
+            closing(create_mock_database()) as connection,
+            patch("graph.convert_to_sgd", return_value=conversion) as convert,
+        ):
+            result = build_graph(connection, model).invoke(
+                {"message": "我的预算是5000人民币，想找Shared Room"}
+            )
+
+        convert.assert_called_once_with(5_000, "CNY")
+        self.assertEqual(result["preferences"].max_price_sgd, 900)
+        self.assertEqual(result["budget_conversion"], conversion)
+        self.assertEqual(
+            [listing["listing_id"] for listing in result["listings"]],
+            ["S004"],
+        )
+        self.assertIn("5,000 CNY", result["response_draft"])
+        self.assertIn("S$900", result["response_draft"])
+
+    def test_does_not_search_with_an_ambiguous_currency_symbol(self):
+        structured_model = Mock()
+        structured_model.invoke.return_value = ParsedTurn(
+            intent="search",
+            preferences=SearchPreferences(),
+            budget_amount=5_000,
+            budget_currency=None,
+        )
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+
+        with (
+            closing(create_mock_database()) as connection,
+            patch("graph.search_listings", wraps=search_listings) as search,
+        ):
+            result = build_graph(connection, model).invoke(
+                {"message": "我的预算是¥5000"}
+            )
+
+        search.assert_not_called()
+        self.assertEqual(result["budget_conversion_error"], "ambiguous_currency")
+        self.assertIn("预算币种符号不明确", result["response_draft"])
+
+    def test_detects_or_preserves_the_response_language(self):
+        self.assertEqual(_response_language("Find me a room"), "en")
+        self.assertEqual(_response_language("帮我找房"), "zh")
+        self.assertEqual(_response_language("S010", "en"), "en")
+        self.assertEqual(_response_language("yes", "zh"), "zh")
+        self.assertEqual(_response_language("请用英文回答", "zh"), "en")
+
+    def test_english_input_rejects_a_wrong_language_response(self):
+        preferences = SearchPreferences(max_price_sgd=1_100)
+        structured_model = Mock()
+        structured_model.invoke.return_value = ParsedTurn(
+            intent="search", preferences=preferences
+        )
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+        model.invoke.return_value.content = "找到两套房源。"
+
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model).invoke(
+                {"message": "My monthly budget is 1100 SGD"}
+            )
+
+        self.assertEqual(result["response_language"], "en")
+        self.assertEqual(result["response"], result["response_draft"])
+        self.assertIn("Found 2 matching listings", result["response"])
+        self.assertIn("Monthly rent: S$850", result["response"])
+        prompt = model.invoke.call_args.args[0]
+        self.assertIn("Reply only in English", prompt[0][1])
+        self.assertIn("Verified factual draft", prompt[-1][1])
+
     def test_searches_first_then_refines_preferences_across_turns(self):
         district_only = SearchPreferences(district_code="D05")
         with_budget = district_only.model_copy(update={"max_price_sgd": 1_100})
@@ -106,6 +196,34 @@ class GraphTest(unittest.TestCase):
         self.assertIn("S001", result["response_draft"])
         prompt = model.invoke.call_args.args[0]
         self.assertIn("已验证事实草稿", prompt[-1][1])
+
+    def test_rejects_an_invented_offer_to_confirm_future_availability(self):
+        preferences = SearchPreferences(
+            max_price_sgd=4_800,
+            room_type="Shared Room",
+            move_in_date=date(2026, 10, 5),
+            cooking_required=True,
+        )
+        structured_model = Mock()
+        structured_model.invoke.return_value = ParsedTurn(
+            intent="search", preferences=preferences
+        )
+        model = Mock()
+        model.with_structured_output.return_value = structured_model
+        model.invoke.return_value.content = (
+            "需要我帮你确认这套是否接受 10 月 5 日入住吗？"
+        )
+
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model).invoke(
+                {"message": "预算4800，Shared Room，可以做饭，10月5日入住"}
+            )
+
+        self.assertEqual(result["response"], result["response_draft"])
+        self.assertIn("无法确认房源届时仍然可租", result["response"])
+        self.assertIn("不能代为联系发布方", result["response"])
+        prompt = model.invoke.call_args.args[0]
+        self.assertIn("cannot contact landlords", prompt[0][1])
 
     def test_parse_search_and_restrictions_flow(self):
         preferences = SearchPreferences(

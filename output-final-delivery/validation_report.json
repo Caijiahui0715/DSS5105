@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "row_count": 600,
+  "main_fields": 30,
+  "district_count": 28,
+  "required_missing_count": 0,
+  "duplicate_ids": 0,
+  "duplicate_urls": 0,
+  "numeric_null_cells": 1077,
+  "rows_with_review_flags": 345,
+  "factual_imputations": 0,
+  "deleted_records": 0,
+  "source_sha256": "cd5650097a6d9e166f7d079e83d744acc7bbe2123bfdf2bc2923f31fcb8251a5",
+  "checks": [
+    "types",
+    "dates",
+    "unique_ids_and_urls",
+    "metadata_and_district_links",
+    "Excel_JSON_agreement",
+    "source_unchanged"
+  ],
+  "caveat": "Data integrity checks pass; missing evidence, snapshot age and review flags still limit recommendations."
+}

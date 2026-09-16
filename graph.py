@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 from exchange import CurrencyConversionError, convert_to_sgd
 from models import (
     Listing,
+    ListingCheckSummary,
     RankingResult,
     RelaxationSuggestion,
     ResponseLanguage,
@@ -24,10 +25,12 @@ from response import (
 )
 from tools import (
     analyze_relaxations,
+    check_listing_url,
     extract_restrictions,
     get_listings_by_ids,
     rank_listings,
     search_listings,
+    validate_ranked_listings,
 )
 
 
@@ -52,6 +55,7 @@ class AgentState(TypedDict, total=False):
     listings: list[Listing]
     restrictions: dict[str, RestrictionSummary]
     ranked_listings: list[RankingResult]
+    listing_check_summary: ListingCheckSummary | None
     relaxations: list[RelaxationSuggestion]
     shown_listing_ids: list[str]
     excluded_listing_ids: list[str]
@@ -85,6 +89,8 @@ draft before presenting the facts in an easy-to-scan form. Preserve every listin
 price, MRT value, ranking order, restriction, warning, and whether a relaxation is
 only a preview. Preserve any currency-conversion amount, rate, and rate date. Do not
 invent or change listings, facts, availability, amenities, currencies, or user choices.
+Distinguish database matches, checked/displayable listings, and unchecked candidates.
+An active URL does not confirm rental availability; unknown does not mean inactive.
 When information is missing or uncertain, say so plainly. This agent
 cannot contact landlords, confirm future availability, reserve listings, or arrange
 viewings, so never claim or offer to do those things. Only suggest actions the agent
@@ -115,7 +121,20 @@ _REFINEMENT_LABELS = {
 }
 
 
-def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
+def build_graph(
+    connection: sqlite3.Connection,
+    model: Any,
+    checkpointer=None,
+    listing_checker=check_listing_url,
+):
+    def validated(ranked: list[RankingResult]) -> list[RankingResult]:
+        return validate_ranked_listings(
+            connection,
+            ranked,
+            listing_checker,
+            candidate_limit=len(ranked),
+        )["ranked_listings"]
+
     def language_node(state: AgentState):
         return {
             "response_language": _response_language(
@@ -451,7 +470,7 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
         listings = get_listings_by_ids(connection, listing_ids)
         ranked_by_id = {
             item["listing"]["listing_id"]: item
-            for item in rank_listings(listings, state["preferences"])
+            for item in validated(rank_listings(listings, state["preferences"]))
         }
         ranked = [ranked_by_id[listing_id] for listing_id in listing_ids if listing_id in ranked_by_id]
         restrictions = {
@@ -493,9 +512,11 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             listing["listing_id"]: extract_restrictions(listing)
             for listing in listings
         }
-        ranked = rank_listings(
-            listings,
-            state.get("preferences", SearchPreferences()),
+        ranked = validated(
+            rank_listings(
+                listings,
+                state.get("preferences", SearchPreferences()),
+            )
         )
         return {
             "response_draft": render_comparison(
@@ -548,7 +569,21 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
                     f"Listing {listing_id} was not found.",
                 )
             }
-        listing = listings[0]
+        ranked = validated(
+            rank_listings(
+                listings,
+                state.get("preferences", SearchPreferences()),
+            )
+        )
+        if not ranked:
+            return {
+                "response_draft": _text(
+                    state,
+                    f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。",
+                    f"Listing {listing_id} is no longer available at its original link and will not be recommended.",
+                )
+            }
+        listing = ranked[0]["listing"]
         return {
             "response_draft": render_listing_details(
                 listing,
@@ -622,6 +657,7 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             "listings": [],
             "restrictions": {},
             "ranked_listings": [],
+            "listing_check_summary": None,
             "relaxations": [],
             "shown_listing_ids": [],
             "missing_preferences": [],
@@ -642,14 +678,35 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             listing["listing_id"]: extract_restrictions(listing)
             for listing in listings
         }
-        ranked = rank_listings(listings, preferences)
+        validation = validate_ranked_listings(
+            connection,
+            rank_listings(listings, preferences),
+            listing_checker,
+            result_limit=3,
+        )
+        ranked = validation["ranked_listings"]
+        response = render_relaxation_preview(
+            suggestion,
+            ranked,
+            restrictions,
+            _language(state),
+            check_summary=validation["summary"],
+        )
+        if suggestion["match_count"] != len(ranked):
+            response = _text(
+                state,
+                "本次检查结果已更新，可展示数量与之前的建议不同。\n\n",
+                "The check results have changed, so the displayable count differs from the earlier suggestion.\n\n",
+            ) + response
+        suggestions = list(state["relaxations"])
+        suggestions[index] = {
+            **suggestion,
+            "match_count": len(ranked),
+            "check_summary": validation["summary"],
+        }
         return {
-            "response_draft": render_relaxation_preview(
-                suggestion,
-                ranked,
-                restrictions,
-                _language(state),
-            ),
+            "response_draft": response,
+            "relaxations": suggestions,
             "shown_listing_ids": _shown_listing_ids(ranked),
         }
 
@@ -675,17 +732,44 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             "ranked_listings": rank_listings(state["listings"], state["preferences"])
         }
 
+    def validate_listing_status_node(state: AgentState):
+        validation = validate_ranked_listings(
+            connection,
+            state["ranked_listings"],
+            listing_checker,
+            result_limit=3,
+        )
+        ranked = validation["ranked_listings"]
+        valid_ids = {item["listing"]["listing_id"] for item in ranked}
+        return {
+            "ranked_listings": ranked,
+            "listing_check_summary": validation["summary"],
+            "listings": [
+                listing
+                for listing in state["listings"]
+                if listing["listing_id"] in valid_ids
+            ],
+            "restrictions": {
+                item["listing"]["listing_id"]: extract_restrictions(item["listing"])
+                for item in ranked
+            },
+        }
+
     def relaxation_node(state: AgentState):
         return {
             "relaxations": analyze_relaxations(
                 connection,
                 state["preferences"],
                 _search_exclusions(state),
+                listing_checker,
             )
         }
 
     def route_after_search(state: AgentState):
         return "matches" if state["listings"] else "no_matches"
+
+    def route_after_validation(state: AgentState):
+        return "matches" if state["ranked_listings"] else "no_matches"
 
     def respond_node(state: AgentState):
         ranked = state.get("ranked_listings", [])
@@ -695,6 +779,7 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             state.get("restrictions"),
             state.get("relaxations"),
             language=_language(state),
+            check_summary=state.get("listing_check_summary"),
         )
         conversion = state.get("budget_conversion")
         if conversion:
@@ -718,10 +803,10 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
                 f"\n\nTo narrow the results, you can add {_REFINEMENT_LABELS[language][missing[0]]}.",
             )
         if ranked and state["preferences"].move_in_date:
-            response += _text(
+            response = _text(
                 state,
-                "\n\n入住日期说明：这里只能判断房源标注的可入住日期不晚于你的计划日期；无法确认房源届时仍然可租，也不能代为联系发布方。",
-                "\n\nMove-in date note: this only confirms that the listed availability date is no later than your planned date. It cannot confirm that the listing will still be available then, and this agent cannot contact the publisher for you.",
+                f"以下房源满足其他可验证条件，但具体入住日期仍需确认。\n\n{response}\n\n入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
+                f"These listings meet the other verifiable criteria, but the exact move-in date still needs confirmation.\n\n{response}\n\nMove-in date note: the current data cannot confirm that a listing accepts your exact move-in date or will still be available then; this agent cannot contact the publisher for you.",
             )
         return {
             "response_draft": response,
@@ -736,6 +821,7 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
             state.get("restrictions"),
             state.get("relaxations"),
             _language(state),
+            check_summary=state.get("listing_check_summary"),
         )
         update: AgentState = {"response_draft": response}
         if state["intent"] == "show_results" and state.get("ranked_listings"):
@@ -807,6 +893,7 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
     graph.add_node("search", search_node)
     graph.add_node("restrictions", restrictions_node)
     graph.add_node("rank", rank_node)
+    graph.add_node("validate_listing_status", validate_listing_status_node)
     graph.add_node("relaxation", relaxation_node)
     graph.add_node("respond", respond_node)
     graph.add_node("conversation", conversation_node)
@@ -849,7 +936,12 @@ def build_graph(connection: sqlite3.Connection, model: Any, checkpointer=None):
         {"matches": "restrictions", "no_matches": "relaxation"},
     )
     graph.add_edge("restrictions", "rank")
-    graph.add_edge("rank", "respond")
+    graph.add_edge("rank", "validate_listing_status")
+    graph.add_conditional_edges(
+        "validate_listing_status",
+        route_after_validation,
+        {"matches": "respond", "no_matches": "relaxation"},
+    )
     graph.add_edge("relaxation", "respond")
     graph.add_edge("respond", "generate_response")
     graph.add_edge("conversation", "generate_response")
@@ -899,7 +991,10 @@ def _asks_to_show_listing_details(message: str) -> bool:
 def _listing_ids_in(message: str) -> list[str]:
     return list(
         dict.fromkeys(
-            re.findall(r"(?<![A-Z0-9])S\d+(?![A-Z0-9])", message.upper())
+            re.findall(
+                r"(?<![A-Z0-9])(?:S\d+|\d{8,9})(?![A-Z0-9])",
+                message.upper(),
+            )
         )
     )
 
@@ -951,9 +1046,12 @@ def _has_search_criteria(preferences: SearchPreferences) -> bool:
         (
             preferences.max_price_sgd is not None,
             preferences.room_type is not None,
+            preferences.rental_scope is not None,
+            bool(preferences.property_types),
             preferences.district_code is not None,
             preferences.max_mrt_minutes is not None,
-            preferences.verified_only,
+            preferences.min_bedrooms is not None,
+            preferences.occupant_count is not None,
             preferences.move_in_date is not None,
             preferences.cooking_required,
             preferences.ranking_priority != "balanced",

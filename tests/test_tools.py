@@ -1,21 +1,273 @@
 import unittest
 from contextlib import closing
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from urllib.error import HTTPError, URLError
 
-from mock_db import create_mock_database
+from mock_db import create_database, create_mock_database
 from models import SearchPreferences
+from response import render_response
 from tools import (
     analyze_relaxations,
+    check_listing_url,
     extract_restrictions,
     load_listings,
     rank_listings,
     refresh_mrt_walk_data,
     search_listings,
+    validate_ranked_listings,
 )
 
 
 class ToolsTest(unittest.TestCase):
+    def test_imports_the_final_v1_contract(self):
+        with closing(create_database()) as connection:
+            listings = load_listings(connection)
+            main_fields = connection.execute("PRAGMA table_info(listings)").fetchall()
+
+        self.assertEqual(len(listings), 600)
+        self.assertEqual(len(main_fields), 30)
+        self.assertIn("rent_monthly_sgd", listings[0])
+        self.assertIn("availability_status", listings[0])
+        self.assertEqual(listings[0]["live_status"], "unknown")
+
+    def test_url_checks_compare_the_final_listing_id(self):
+        class Response:
+            status = 200
+
+            def __init__(self, final_url):
+                self.final_url = final_url
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return None
+
+            def geturl(self):
+                return self.final_url
+
+        source = "https://www.propertyguru.com.sg/listing/example-500253628"
+        with patch("tools.urlopen", return_value=Response(source)):
+            self.assertEqual(
+                check_listing_url("500253628", source)["status"],
+                "active",
+            )
+        with patch(
+            "tools.urlopen",
+            return_value=Response(
+                "https://www.propertyguru.com.sg/listing/replacement-500999999"
+            ),
+        ):
+            self.assertEqual(
+                check_listing_url("500253628", source)["status"],
+                "inactive",
+            )
+
+        for status_code, expected in ((404, "inactive"), (429, "unknown")):
+            with self.subTest(status_code=status_code), patch(
+                "tools.urlopen",
+                side_effect=HTTPError(source, status_code, "error", {}, None),
+            ):
+                result = check_listing_url("500253628", source)
+                self.assertEqual(result["status"], expected)
+                self.assertEqual(result["error_reason"], f"http_{status_code}")
+
+        with patch("tools.urlopen", side_effect=URLError("offline")):
+            result = check_listing_url("500253628", source)
+            self.assertEqual(result["status"], "unknown")
+            self.assertEqual(result["error_reason"], "network_error")
+
+    def test_live_validation_drops_redirected_listings(self):
+        with closing(create_mock_database()) as connection:
+            preferences = SearchPreferences(
+                max_price_sgd=1_300,
+                room_type="common_room",
+                district_code="D05",
+            )
+            ranked = rank_listings(search_listings(connection, preferences), preferences)
+            connection.execute(
+                "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
+            )
+
+            def checker(listing_id, url):
+                return {
+                    "status": "inactive" if listing_id == "S010" else "active",
+                    "final_url": url,
+                    "http_status": 200,
+                }
+
+            validated = validate_ranked_listings(connection, ranked, checker)["ranked_listings"]
+
+        self.assertEqual(
+            [item["listing"]["listing_id"] for item in validated],
+            ["S001"],
+        )
+
+    def test_live_validation_keeps_unknown_in_rank_order_and_explains_it(self):
+        with closing(create_mock_database()) as connection:
+            preferences = SearchPreferences(
+                max_price_sgd=1_300,
+                room_type="common_room",
+                district_code="D05",
+            )
+            ranked = rank_listings(search_listings(connection, preferences), preferences)
+            connection.execute(
+                "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
+            )
+
+            def checker(listing_id, url):
+                return {
+                    "status": "unknown" if listing_id == "S001" else "active",
+                    "final_url": None if listing_id == "S001" else url,
+                    "http_status": None if listing_id == "S001" else 200,
+                    "error_reason": "network_error" if listing_id == "S001" else None,
+                }
+
+            validation = validate_ranked_listings(connection, ranked, checker)
+            validated = validation["ranked_listings"]
+            response = render_response(validated, check_summary=validation["summary"])
+
+        self.assertEqual(
+            [item["listing"]["listing_id"] for item in validated],
+            ["S001", "S010"],
+        )
+        self.assertEqual(
+            validated[0]["listing"]["live_error_reason"],
+            "network_error",
+        )
+        self.assertIn("检查时发生网络错误", response)
+        self.assertIn("这不表示房源已下架", response)
+
+    def test_live_validation_refills_after_the_first_ten_are_inactive(self):
+        with closing(create_mock_database()) as connection:
+            ranked = [{"listing": listing} for listing in load_listings(connection)]
+            connection.execute("DELETE FROM listing_health")
+            later_ids = [item["listing"]["listing_id"] for item in ranked[10:]]
+            checked_ids = []
+
+            def checker(listing_id, url):
+                checked_ids.append(listing_id)
+                return {
+                    "status": "active" if listing_id in later_ids else "inactive",
+                    "final_url": url,
+                    "http_status": 200 if listing_id in later_ids else 404,
+                }
+
+            validation = validate_ranked_listings(connection, ranked, checker, result_limit=2)
+
+        self.assertEqual(
+            [item["listing"]["listing_id"] for item in validation["ranked_listings"]],
+            later_ids,
+        )
+        self.assertEqual(len(checked_ids), 12)
+        self.assertEqual(validation["summary"], {
+            "database_match_count": 12,
+            "checked_count": 12,
+            "active_count": 2,
+            "unknown_count": 0,
+            "inactive_count": 10,
+            "unchecked_count": 0,
+        })
+
+    def test_live_validation_stops_when_enough_unknown_or_active_results_exist(self):
+        with closing(create_mock_database()) as connection:
+            ranked = [{"listing": listing} for listing in load_listings(connection)]
+            connection.execute("DELETE FROM listing_health")
+            checker = Mock(side_effect=[
+                {"status": "unknown", "error_reason": "timeout"},
+                {"status": "active"},
+            ])
+            validation = validate_ranked_listings(connection, ranked, checker, result_limit=2)
+
+        self.assertEqual(checker.call_count, 2)
+        self.assertEqual(
+            [item["listing"]["listing_id"] for item in validation["ranked_listings"]],
+            [item["listing"]["listing_id"] for item in ranked[:2]],
+        )
+        self.assertEqual(validation["summary"]["unchecked_count"], 10)
+        self.assertEqual(validation["summary"]["unknown_count"], 1)
+
+    def test_live_validation_reports_unchecked_candidates_at_the_cap(self):
+        with closing(create_mock_database()) as connection:
+            ranked = [{"listing": listing} for listing in load_listings(connection)]
+            connection.execute("DELETE FROM listing_health")
+            checker = Mock(return_value={"status": "inactive"})
+            validation = validate_ranked_listings(
+                connection, ranked, checker, candidate_limit=3, result_limit=3
+            )
+            response = render_response([], check_summary=validation["summary"])
+            english = render_response([], check_summary=validation["summary"], language="en")
+
+        self.assertEqual(checker.call_count, 3)
+        self.assertEqual(validation["ranked_listings"], [])
+        self.assertEqual(validation["summary"]["unchecked_count"], 9)
+        self.assertIn("另有 9 套尚未检查", response)
+        self.assertIn("Another 9 candidates remain unchecked", english)
+
+    def test_relaxation_counts_only_displayable_checked_candidates(self):
+        preferences = SearchPreferences(max_price_sgd=1_200, room_type="common_room", district_code="D05")
+        with closing(create_mock_database()) as connection:
+            connection.execute("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
+
+            def checker(listing_id, url):
+                return {
+                    "status": "unknown" if listing_id == "S010" else "inactive",
+                    "error_reason": "http_403" if listing_id == "S010" else "http_404",
+                }
+
+            suggestions = analyze_relaxations(connection, preferences, checker=checker)
+            response = render_response(relaxations=suggestions)
+
+        self.assertEqual(len(suggestions), 1)
+        self.assertEqual(suggestions[0]["match_count"], 1)
+        self.assertEqual(suggestions[0]["check_summary"]["database_match_count"], 2)
+        self.assertEqual(suggestions[0]["check_summary"]["active_count"], 0)
+        self.assertEqual(suggestions[0]["check_summary"]["unknown_count"], 1)
+        self.assertEqual(suggestions[0]["check_summary"]["inactive_count"], 1)
+        self.assertIn("本次校验后可展示 1 套", response)
+        self.assertIn("状态无法确认 1 套", response)
+        self.assertNotIn("预计可找到 2", response)
+
+    def test_relaxations_do_not_offer_candidates_whose_links_are_all_inactive(self):
+        preferences = SearchPreferences(max_price_sgd=1_100, room_type="common_room", district_code="D05")
+        with closing(create_mock_database()) as connection:
+            connection.execute("DELETE FROM listing_health WHERE listing_id = 'S001'")
+            suggestions = analyze_relaxations(
+                connection, preferences, checker=lambda *_: {"status": "inactive"}
+            )
+
+        self.assertEqual(suggestions, [])
+
+    def test_only_keeps_small_area_review_warnings(self):
+        with closing(create_mock_database()) as connection:
+            connection.execute(
+                "UPDATE listings SET area_sqm = ? WHERE listing_id = ?",
+                (930.42, "S010"),
+            )
+            connection.execute(
+                "UPDATE listing_metadata SET review_flags = ? WHERE listing_id = ?",
+                ('["area_outside_review_range", "tenant_count_scope_unconfirmed"]', "S010"),
+            )
+            connection.execute(
+                "UPDATE listings SET area_sqm = ? WHERE listing_id = ?",
+                (4.09, "S009"),
+            )
+            connection.execute(
+                "UPDATE listing_metadata SET review_flags = ? WHERE listing_id = ?",
+                ('["area_outside_review_range"]', "S009"),
+            )
+            by_id = {
+                listing["listing_id"]: listing
+                for listing in load_listings(connection)
+            }
+
+        self.assertEqual(by_id["S010"]["review_flags"], [])
+        self.assertEqual(
+            by_id["S009"]["review_flags"],
+            ["area_outside_review_range"],
+        )
+
     def test_uses_ten_minutes_for_a_soft_mrt_preference(self):
         preferences = SearchPreferences(
             max_price_sgd=1_500,
@@ -28,6 +280,7 @@ class ToolsTest(unittest.TestCase):
             }
             ranking = rank_listings([by_id["S001"], by_id["S010"]], preferences)
 
+        self.assertEqual(by_id["S010"]["review_flags"], [])
         self.assertEqual(
             [item["listing"]["listing_id"] for item in ranking],
             ["S010", "S001"],
@@ -44,7 +297,6 @@ class ToolsTest(unittest.TestCase):
                 room_type=" common room ",
                 district_code="d05",
                 max_mrt_minutes=10,
-                verified_only=True,
             )
             matches = search_listings(connection, preferences)
             ranking = rank_listings(matches, preferences)
@@ -111,10 +363,10 @@ class ToolsTest(unittest.TestCase):
         with closing(create_mock_database()) as connection:
             pending = connection.execute(
                 """
-                SELECT count(*) FROM listings
-                WHERE listing_status_code = 'ACT'
+                SELECT count(*) FROM agent_listings
+                WHERE live_status <> 'inactive'
                   AND address IS NOT NULL AND trim(address) <> ''
-                  AND mrt_station IS NOT NULL AND trim(mrt_station) <> ''
+                  AND mrt_station <> 'unknown' AND trim(mrt_station) <> ''
                 """
             ).fetchone()[0]
             route = {
@@ -142,7 +394,6 @@ class ToolsTest(unittest.TestCase):
                 room_type="Common Room",
                 district_code="D05",
                 max_mrt_minutes=10,
-                verified_only=True,
             )
             self.assertEqual(search_listings(connection, preferences), [])
 

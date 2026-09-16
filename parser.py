@@ -45,13 +45,25 @@ not guess. For SGD budgets, also set preferences.max_price_sgd to budget_amount.
 foreign or ambiguous budgets, do not put the unconverted amount into max_price_sgd;
 the graph will convert it. Leave budget_amount and budget_currency null when the user
 does not state a new budget in this turn.
-Normalize Singapore district codes to uppercase and common room-type names to title case.
+Listing IDs may be synthetic IDs such as S010 or real PropertyGuru IDs containing 8-9
+digits. Never treat a budget, date, or MRT duration as a listing ID.
+Normalize Singapore district codes to uppercase and room types to snake_case values such
+as common_room, master_room, shared_room, studio, or room_unspecified.
+Set rental_scope to entire_unit for 整租 or a whole unit, and room for 合租, 单间 or a room;
+never encode rental scope as room_type.
+Set property_types only when a property type is named: 公寓, condo or private apartment means
+condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means hdb_flat;
+有地住宅 or landed means the house types. Property type does not decide rental_scope.
 The suggested_refinement_fields are optional, never search blockers. When room_type is
 suggested and the user says every/any room type is acceptable, keep room_type null, set
 room_type_flexible true, and use search. Set it false when a specific room type is chosen.
 Return move_in_date as YYYY-MM-DD. Resolve relative or yearless dates using the supplied
 current date. Set move_in_flexible only when the user explicitly says the date is flexible.
 Set cooking_required only when cooking is a requirement, not merely mentioned.
+Set min_bedrooms when the user gives a minimum bedroom count. Set occupant_count to the
+number of people who need to stay; tenant_count_reported is the advertised maximum allowed
+occupancy. The dataset has no reliable platform-verification field, so never invent or
+preserve a verified-only preference.
 Interpret MTR as MRT. Set ranking_priority to price or mrt only when the user explicitly
 prefers one; a numeric limit alone does not imply priority. Otherwise use balanced.
 When current preferences are supplied, preserve them unless the user explicitly changes them.

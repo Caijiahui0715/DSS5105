@@ -1,14 +1,46 @@
 from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 Listing = dict[str, Any]
 RestrictionSummary = dict[str, str]
 RankingResult = dict[str, Any]
 RelaxationSuggestion = dict[str, Any]
+
+
+class ListingCheckSummary(TypedDict):
+    database_match_count: int
+    checked_count: int
+    active_count: int
+    unknown_count: int
+    inactive_count: int
+    unchecked_count: int
+
+
+class ListingValidationResult(TypedDict):
+    ranked_listings: list[RankingResult]
+    summary: ListingCheckSummary
+
+
 ResponseLanguage = Literal["zh", "en"]
+PropertyType = Literal[
+    "apartment",
+    "bungalow_house",
+    "cluster_house",
+    "condominium",
+    "conservation_house",
+    "corner_terrace",
+    "detached_house",
+    "executive_condominium",
+    "good_class_bungalow",
+    "hdb_flat",
+    "semi_detached_house",
+    "shophouse",
+    "terraced_house",
+    "walk_up_apartment",
+]
 UserIntent = Literal[
     "search",
     "compare_shortlist",
@@ -40,6 +72,14 @@ class SearchPreferences(BaseModel):
         default=False,
         description="True when the user explicitly accepts any room type.",
     )
+    rental_scope: Literal["entire_unit", "room"] | None = Field(
+        default=None,
+        description="entire_unit for a whole-unit rental (整租); room for a room in a shared home (合租/单间); null when not stated.",
+    )
+    property_types: tuple[PropertyType, ...] | None = Field(
+        default=None,
+        description="Acceptable property types; 公寓 or condo means condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means hdb_flat; null when not stated.",
+    )
     district_code: str | None = Field(
         default=None,
         description="Singapore district code such as D05; null when absent.",
@@ -49,9 +89,15 @@ class SearchPreferences(BaseModel):
         ge=0,
         description="Maximum reported walking minutes to MRT; null when absent.",
     )
-    verified_only: bool = Field(
-        default=False,
-        description="True only when the user explicitly requires verified listings.",
+    min_bedrooms: int | None = Field(
+        default=None,
+        ge=0,
+        description="Minimum number of advertised bedrooms; null when absent.",
+    )
+    occupant_count: int | None = Field(
+        default=None,
+        gt=0,
+        description="Number of people who need to be allowed to occupy the listing.",
     )
     move_in_date: date | None = Field(
         default=None,
@@ -69,6 +115,11 @@ class SearchPreferences(BaseModel):
         default="balanced",
         description="Explicit soft preference: balanced, lower price, or nearer MRT.",
     )
+
+    @field_validator("property_types", mode="before")
+    @classmethod
+    def _no_empty_property_types(cls, value):
+        return value or None
 
 
 class ParsedTurn(BaseModel):

@@ -9,10 +9,9 @@ class ParserTest(unittest.TestCase):
     def test_structured_preference_parser(self):
         expected = SearchPreferences(
             max_price_sgd=1_300,
-            room_type="Common Room",
+            room_type="common_room",
             district_code="D05",
             max_mrt_minutes=10,
-            verified_only=True,
             ranking_priority="mrt",
         )
         structured_model = Mock()

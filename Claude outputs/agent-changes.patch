@@ -1,0 +1,1706 @@
+diff --git a/CONTEXT_HANDOFF.md b/CONTEXT_HANDOFF.md
+index 199fa57..6551aea 100644
+--- a/CONTEXT_HANDOFF.md
++++ b/CONTEXT_HANDOFF.md
+@@ -18,7 +18,7 @@
+ ## 用户明确的设计决定
+ 
+ 1. 编码使用 ponytail：复用现有代码、标准库优先、最小可工作的改动；用户不希望层层 if 和过度抽象。执行编码任务时先读取可用 ponytail/SKILL.md。
+-2. 继续保留当前 LangGraph 受控工作流，不改成“模型调用工具 → 阅读结果 → 再选工具”的自主循环。
++2. （2026-09-16 用户改为）采用“外层 agent、内层确定性工具”：agent.py 为默认入口，由模型选择工具；graph.py 受控工作流保留为评估对照（demo.py --workflow）。事实、排序、URL 校验和状态更新仍由代码决定。
+ 3. URL 三状态保留 active / inactive / unknown。网络失败不能被当作房源下架。
+ 4. 不允许按 URL 状态重新排序：不能 active 优先、unknown 作为不足时才补充。两者严格保持原推荐排序。
+ 5. 无法核实的事实要如实说，不编造、不承诺联系房东、确认未来可租、保留房源或预约看房。
+@@ -36,7 +36,9 @@
+ - tools.py：参数化 SQL 搜索、读取结构化房源限制、价格/MRT 排序、URL 健康检查与缓存、让步搜索、OneMap 数据补充。
+ - mock_db.py：create_database() 从 output-final-delivery/rental_data_v1.json 加载 600 条最终 V1 房源，创建内存 SQLite；create_mock_database() 将 12 条旧合成 fixture 适配为同一 V1 schema，并预置模拟 URL 健康状态。
+ - response.py：基于工具结果生成中英文事实草稿、房源详情、比较、让步建议/预览和 URL 不确定性说明。
+-- demo.py：ChatOpenAI + MemorySaver，--chat 多轮模式；使用 config.env() 加载环境变量/.env。MemorySaver 和 SQLite 都在内存中，关闭进程会丢失状态。
++- demo.py：ChatOpenAI + MemorySaver，--chat 多轮模式；默认运行 agent.py，--workflow 运行 graph.py，--trace 打印工具调用；使用 config.env() 加载环境变量/.env。MemorySaver 和 SQLite 都在内存中，关闭进程会丢失状态。
++- agent.py：tool-calling 循环（begin_turn → agent ⇄ tools → finalize）。6 个工具包装现有函数；同一条消息里的多个工具按顺序执行；保存条件需 user_quote 引用用户本轮原话；finalize 检查房源编号/金额/分钟数/套数是否出自工具输出，不通过则回退模板草稿。
++- decision.py：条件三态（pass / fail / unknown）、needs-confirmation 分组、逐个放开条件的诊断（decision_context）、排序溯源（读取 source_evidence_v1.json）。
+ 
+ 普通搜索主链：
+ START → language → interpret → normalize_budget → prepare_search → search
+@@ -48,7 +50,7 @@ START → language → interpret → normalize_budget → prepare_search → sea
+ 
+ 其他意图：shortlist_listing、remove_shortlisted_listing、show_shortlist、compare_shortlist、show_listing_details、show_results、accept_relaxation、reject_relaxation、reject_results、unknown。
+ 
+-模型主要用于需求理解和事实草稿自然语言改写。搜索、评分、URL 校验和状态更新由代码决定，不存在自由 bind_tools / ToolNode / ReAct 工具循环。收藏、移除收藏、查看清单及部分排除回复直接返回事实草稿，避免模型改错结果。
++graph.py 对照流程中，模型主要用于需求理解和事实草稿自然语言改写，搜索、评分、URL 校验和状态更新由代码决定。agent.py 中由模型选择工具，但工具本身和状态写入仍是确定性代码。收藏、移除收藏、查看清单及部分排除回复直接返回事实草稿，避免模型改错结果。
+ 
+ ## State 与多轮语义
+ 
+@@ -104,5 +106,10 @@ V1 listings 表 30 个字段，包括 listing_id、listing_url、rent_monthly_sg
+ - 上述测试没有调用真实 GPT、OneMap 或 PropertyGuru API，不要声称通过真实在线端到端测试。
+ - 手动真实模型测试：原目录 .\.venv\Scripts\python.exe .\demo.py --chat；需要已有 .env 配置 OPENAI_API_KEY / OPENAI_MODEL，不打印内容。
+ 
+-当前最新开发任务已完成。下一步等待用户选择，不擅自重做自主工具调用、不擅自实施 evaluation 或提交推送。后续可讨论持久化会话、队友 SQLite 接入、更多最终字段偏好和真实模型评估，但这些都还没有获得新的实施指令。
++## 2026-09-16 后续：Agent 化
++
++- 新增 agent.py、decision.py、tests/test_agent.py、tests/test_decision.py；修改 demo.py、response.py（render_response 增加 start 参数和“需确认”行，新增 needs-confirmation / decision-context / 排序溯源 / 条件变更渲染）、README.md。graph.py、tools.py、models.py 未改动。
++- 验证：unittest discover 共 81 个测试通过（原 61 个 + 新增 20 个），均使用脚本化假模型；尚未用真实 GPT 跑过 agent，真实效果需要用 demo.py --chat --trace 手动检查。
++
++当前最新开发任务已完成。下一步等待用户选择，不擅自实施 evaluation 或提交推送。后续可讨论持久化会话、队友 SQLite 接入、更多最终字段偏好和真实模型评估，但这些都还没有获得新的实施指令。
+ 
+diff --git a/README.md b/README.md
+index b43c4e6..970433a 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,26 @@
+-# DSS5105
+\ No newline at end of file
++# DSS5105 — Singapore Rental Decision Agent
++
++## 运行
++
++```powershell
++.\.venv\Scripts\python.exe .\demo.py --chat             # Agent（默认）
++.\.venv\Scripts\python.exe .\demo.py --chat --trace     # 同时打印每轮调用的工具
++.\.venv\Scripts\python.exe .\demo.py --chat --workflow  # 原固定 LangGraph workflow，作对照
++.\.venv\Scripts\python.exe -m unittest discover -s tests
++```
++
++需要 `.env` 中的 `OPENAI_API_KEY` 和 `OPENAI_MODEL`，模型需要支持 tool calling。
++
++## 架构
++
++- `agent.py`：外层 agent。模型读取对话、会话状态和工具结果，自己决定调用哪些工具、调用几次；每轮最多 5 轮工具调用。
++- 工具都是确定性代码：`search_listings`、`get_listing_details`、`explain_listing`、`compare_listings`、`shortlist`、`exclude_listings`。
++- `decision.py`：条件三态判断（符合 / 不符合 / 数据未注明）、逐个放开条件的诊断、排序溯源。严格匹配结果与 `tools.search_listings` 完全一致。
++- `graph.py`：原固定 workflow，保留作评估 baseline。
++- `tools.py`、`response.py`、`mock_db.py`：检索与 URL 校验、事实模板、数据加载，两套流程共用。
++
++## Agent 的边界
++
++- 事实只来自工具结果或会话状态。回复里的房源编号、金额、分钟数、套数必须出现在本轮工具输出中，否则回退为模板草稿；提出联系房东、确认可租、预约看房等超出能力的动作也会回退。
++- 保存条件变更时，工具参数必须引用用户本轮原话（`user_quote`）；`preview=true` 只看不改。条件变更、收藏和排除以固定文字显示给用户。
++- 数据未注明不再等同于不符合：其他条件都符合、只是部分要求未注明的房源单独列为“需确认”，并说明是哪个条件卡住了结果。
+diff --git a/agent.py b/agent.py
+new file mode 100644
+index 0000000..d3ab656
+--- /dev/null
++++ b/agent.py
+@@ -0,0 +1,647 @@
++"""Tool-calling agent: the model chooses tools, code owns facts and state.
++
++graph.py stays as the fixed-workflow baseline (python demo.py --workflow).
++"""
++
++import json
++import re
++import sqlite3
++from datetime import date
++from decimal import Decimal, InvalidOperation
++from typing import Annotated, Any, TypedDict
++
++from langchain_core.messages import (
++    AIMessage,
++    AnyMessage,
++    HumanMessage,
++    SystemMessage,
++    ToolMessage,
++)
++from langchain_core.utils.function_calling import convert_to_openai_tool
++from langgraph.graph import END, START, StateGraph
++from langgraph.graph.message import add_messages
++from pydantic import BaseModel, Field, ValidationError
++
++from decision import (
++    active_conditions,
++    condition_status,
++    diagnose_conditions,
++    explain_listing,
++    load_source_evidence,
++    mrt_minutes,
++    search_with_unknowns,
++    whole,
++)
++from exchange import CurrencyConversionError, convert_to_sgd
++from graph import (
++    _CYRILLIC,
++    _HAN,
++    _REFINEMENT_LABELS,
++    _UNSUPPORTED_ACTION_OFFER,
++    _has_search_criteria,
++    _listing_ids_in,
++    _open_preferences,
++    _response_language,
++    _search_exclusions,
++    _text,
++)
++from models import ResponseLanguage, SearchPreferences
++from response import (
++    _check_summary_text,
++    render_comparison,
++    render_decision_context,
++    render_listing_details,
++    render_listing_explanation,
++    render_needs_confirmation,
++    render_preference_changes,
++    render_response,
++)
++from tools import (
++    check_listing_url,
++    extract_restrictions,
++    get_listings_by_ids,
++    rank_listings,
++    validate_ranked_listings,
++)
++
++
++MAX_TOOL_ROUNDS = 5
++_HISTORY_MESSAGES = 12
++
++_SYSTEM_PROMPT = """You are the Singapore Rental Decision Agent. You help first-time renters in
++Singapore, such as students, fresh graduates and new arrivals, find and compare rental listings.
++Reply only in {language}, concisely, like a helpful rental adviser. Answer the user's actual
++question first and point out the main trade-off when there is one.
++
++Facts
++- Every listing fact, price, MRT time, count and link status must come from a tool result in
++  this turn or from the conversation state below. Never invent or estimate facts and do not
++  calculate new numbers; quote the differences that tools provide.
++- "unknown" means the data does not say. Listings under needs_confirmation meet every known
++  condition but lack data for some requirements: name those requirements and never call them
++  matches.
++- decision_context counts are database counts before link checks. An active link does not
++  prove the room is still available; an unknown link status does not mean the listing is gone.
++- You cannot contact landlords or agents, confirm availability, reserve rooms or arrange
++  viewings, so never offer to. Only offer what the tools do: search, preview a change, show
++  details, explain a ranking, compare, shortlist, exclude or restore listings.
++
++Using tools
++- Search as soon as the user gives at least one criterion instead of asking questions first.
++  Afterwards you may mention one item from missing_refinements.
++- Resolve "the second one" with shown_listings_in_display_order, "this one" with
++  last_viewed_listing_id or a single shown listing, and saved listings with the shortlist.
++  Ask when a reference is ambiguous.
++- Call as many tools as the request needs, for example shortlist one listing and show the
++  details of another in the same turn.
++- When there are no or few strict matches, use decision_context to explain which condition
++  blocks results and whether that is only because the data does not state it. You may preview
++  one relaxation, but only the user can accept it.
++- Save a preference change only when the latest user message asks for it, and copy the user's
++  words that ask for it into user_quote. Use preview=true to look without saving. Never loosen
++  a condition on your own.
++- Budgets without a currency, including the generic 元, are SGD; 新币 and 新加坡元 are SGD;
++  人民币 and RMB are CNY. A bare $ or ¥ is ambiguous, so ask. Pass non-SGD amounts as budget.
++- Room types are common_room, master_room, shared_room or studio; district codes look like
++  D05. Resolve relative move-in dates from today. Set cooking_required only when cooking is
++  required. When the user accepts any room type, clear room_type and set room_type_flexible.
++- Present listings in the order and numbering the tools give. Saved preference changes,
++  shortlist changes and exclusions are shown to the user automatically, so do not repeat them.
++"""
++
++_MOVE_IN_NOTE = (
++    "入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
++    "Move-in date note: the current data cannot confirm that a listing accepts your exact move-in date or will still be available then; this agent cannot contact the publisher for you.",
++)
++_FALLBACK = (
++    "抱歉，我没能可靠地回答这个问题。你可以告诉我搜索条件，或者让我查看、比较、收藏某套房源。",
++    "Sorry, I could not answer that reliably. You can give me search criteria, or ask me to show, compare or shortlist a listing.",
++)
++_OFFER = r"\b(?:I can(?!not|'t|’t)|I could(?! not|n't|n’t)|I will(?! not)|I'll(?! not)|let me(?! know)|shall I|want me to)\b[^.?!\n]{0,60}"
++_UNSUPPORTED_OFFER_EN = re.compile(
++    _OFFER + r"\b(?:contact|call|email|reach out|book|schedule|arrange|reserve|hold|confirm (?:the )?availability)",
++    re.IGNORECASE,
++)
++_NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
++_CLAIMED_NUMBER = re.compile(
++    rf"(?:S\$|SGD|\$)\s*({_NUMBER})|({_NUMBER})\s*(?:新币|新加坡元|SGD|元|分钟|mins?\b|minutes?\b|套|listings?\b)",
++    re.IGNORECASE,
++)
++
++
++class AgentState(TypedDict, total=False):
++    message: str
++    response: str
++    messages: Annotated[list[AnyMessage], add_messages]
++    response_language: ResponseLanguage
++    preferences: SearchPreferences
++    shown_listing_ids: list[str]
++    shortlisted_listing_ids: list[str]
++    excluded_listing_ids: list[str]
++    viewed_listing_id: str | None
++    # Reset at the start of every turn.
++    tool_rounds: int
++    drafts: list[str]
++    notes: list[str]
++    observations: list[str]
++    trace: list[str]
++
++
++class Budget(BaseModel):
++    amount: int = Field(gt=0)
++    currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code such as SGD, CNY or USD.")
++
++
++class SearchArgs(BaseModel):
++    """Search with the saved preferences plus optional changes. Returns strict matches, listings that need confirmation because the data does not state some requirement, and decision_context: what dropping each condition alone would yield."""
++
++    set: SearchPreferences = Field(
++        default_factory=SearchPreferences,
++        description="Only the preference fields to change; null clears a field.",
++    )
++    budget: Budget | None = Field(None, description="A budget stated in a currency other than SGD.")
++    preview: bool = Field(False, description="True to look at results without saving the changes.")
++    user_quote: str = Field("", description="The user's words from the latest message that ask for the saved change.")
++
++
++class ListingArgs(BaseModel):
++    """Show one listing's details and how it meets each saved condition."""
++
++    listing_id: str
++
++
++class ExplainArgs(ListingArgs):
++    """Explain why a listing ranks where it does, how each condition is met, and where each fact comes from."""
++
++
++class CompareArgs(BaseModel):
++    """Compare two or more listings with precomputed differences; an empty list compares the shortlist."""
++
++    listing_ids: list[str] = Field(default_factory=list)
++
++
++class ShortlistArgs(BaseModel):
++    """Add or remove shortlisted listings. Call with no arguments to show the shortlist."""
++
++    add: list[str] = Field(default_factory=list)
++    remove: list[str] = Field(default_factory=list)
++
++
++class ExcludeArgs(BaseModel):
++    """Exclude listings the user rejects from later searches, or restore excluded listings."""
++
++    exclude: list[str] = Field(default_factory=list)
++    restore: list[str] = Field(default_factory=list)
++
++
++class ToolError(ValueError):
++    """An expected problem the model should read and act on."""
++
++
++def build_agent(
++    connection: sqlite3.Connection,
++    model: Any,
++    checkpointer=None,
++    listing_checker=check_listing_url,
++    max_tool_rounds: int = MAX_TOOL_ROUNDS,
++):
++    def validate(ranked, **limits):
++        return validate_ranked_listings(connection, ranked, listing_checker, **limits)
++
++    def restrictions_of(ranked):
++        return {
++            item["listing"]["listing_id"]: extract_restrictions(item["listing"])
++            for item in ranked
++        }
++
++    def one_listing(listing_id: str):
++        listings = get_listings_by_ids(connection, _clean_ids([listing_id]))
++        if not listings:
++            raise ToolError(f"Listing {listing_id} was not found.")
++        return listings[0]
++
++    def search(work, args: SearchArgs):
++        current = work["preferences"]
++        changes = {
++            field: value
++            for field, value in args.set.model_dump(exclude_unset=True).items()
++            if getattr(current, field) != value
++        }
++        conversion = None
++        if args.budget:
++            amount = args.budget.amount
++            if args.budget.currency != "SGD":
++                try:
++                    conversion = convert_to_sgd(amount, args.budget.currency)
++                except (CurrencyConversionError, ValueError) as error:
++                    raise ToolError(f"{error}. Do not search with the unconverted amount.") from error
++                amount = conversion["amount_sgd"]
++            if amount != current.max_price_sgd:
++                changes["max_price_sgd"] = amount
++        if changes and not args.preview and not _quotes(args.user_quote, work["message"]):
++            raise ToolError(
++                "Saving preference changes needs user_quote copied from the latest user message. "
++                "Use preview=true to only look."
++            )
++        preferences = current.model_copy(update=changes)
++        if not _has_search_criteria(preferences):
++            raise ToolError("There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time.")
++
++        excluded = _search_exclusions(work)
++        strict, pending = search_with_unknowns(connection, preferences, excluded)
++        strict_check = validate(rank_listings(strict, preferences), result_limit=3)
++        shown = strict_check["ranked_listings"]
++        pending_check = (
++            validate(rank_listings(pending, preferences), result_limit=3 - len(shown))
++            if pending and len(shown) < 3
++            else None
++        )
++        pending_shown = pending_check["ranked_listings"] if pending_check else []
++        context = diagnose_conditions(connection, preferences, excluded)
++        language = work["response_language"]
++
++        if not args.preview and changes:
++            work["notes"].append(render_preference_changes(current, changes, language))
++            work["preferences"] = preferences
++        if conversion:
++            (work["drafts"] if args.preview else work["notes"]).append(_conversion_text(work, conversion))
++        work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in [*shown, *pending_shown]]
++
++        parts = [_text(work, "预览（尚未修改你的搜索条件）：", "Preview (your saved criteria have not changed):")] if args.preview else []
++        if shown:
++            parts.append(render_response(shown, restrictions_of(shown), language=language, check_summary=strict_check["summary"]))
++        else:
++            parts.append(_text(work, "当前没有可展示的完全符合条件的房源。", "There are no listings meeting every condition to display."))
++            if strict:
++                parts.append(_check_summary_text(strict_check["summary"], language))
++        parts.append(
++            render_needs_confirmation(
++                pending_shown,
++                restrictions_of(pending_shown),
++                language,
++                start=len(shown) + 1,
++                check_summary=pending_check and pending_check["summary"],
++            )
++        )
++        missing = _open_preferences(preferences)
++        if not shown:
++            parts.append(render_decision_context(context, language))
++        elif missing:
++            label = _REFINEMENT_LABELS[language][missing[0]]
++            parts.append(_text(work, f"如果想继续缩小范围，可以补充{label}。", f"To narrow the results, you can add {label}."))
++        if preferences.move_in_date:
++            parts.append(_text(work, *_MOVE_IN_NOTE))
++        work["drafts"].append("\n\n".join(part for part in parts if part))
++
++        return {
++            "preview": args.preview,
++            "preferences": preferences.model_dump(mode="json", exclude_defaults=True),
++            "saved_changes": {} if args.preview else changes,
++            "budget_conversion": conversion,
++            "strict_matches": {
++                "database_count": len(strict),
++                "check_summary": strict_check["summary"],
++                "listings": [_facts(item, position) for position, item in enumerate(shown, 1)],
++            },
++            "needs_confirmation": {
++                "database_count": len(pending),
++                "check_summary": pending_check and pending_check["summary"],
++                "listings": [
++                    _facts(item, position)
++                    for position, item in enumerate(pending_shown, len(shown) + 1)
++                ],
++            },
++            "decision_context": context,
++            "missing_refinements": missing,
++            "move_in_date_cannot_be_verified": preferences.move_in_date is not None,
++        }
++
++    def details(work, args: ListingArgs):
++        listing = one_listing(args.listing_id)
++        listing_id = listing["listing_id"]
++        work["viewed_listing_id"] = listing_id
++        ranked = validate(rank_listings([listing], work["preferences"]), candidate_limit=1)["ranked_listings"]
++        if not ranked:
++            work["drafts"].append(_text(work, f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。", f"Listing {listing_id} is no longer available at its original link and will not be recommended."))
++            return {"listing_id": listing_id, "link_status": "inactive"}
++        listing = ranked[0]["listing"]
++        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"]))
++        preferences = work["preferences"]
++        return {
++            **_facts(ranked[0]),
++            "bedrooms": listing.get("bedrooms"),
++            "bathrooms": listing.get("bathrooms"),
++            "area_sqm": listing.get("area_sqm"),
++            "max_occupants": listing.get("tenant_count_reported"),
++            "address": listing.get("address"),
++            "listing_url": listing.get("final_url") or listing.get("listing_url"),
++            "conditions": {
++                field: condition_status(field, listing, preferences)
++                for field in active_conditions(preferences)
++            },
++        }
++
++    def explain(work, args: ExplainArgs):
++        listing = one_listing(args.listing_id)
++        listing_id = listing["listing_id"]
++        explanation = explain_listing(listing, work["preferences"], load_source_evidence().get(listing_id))
++        shown = work["shown_listing_ids"]
++        explanation["position_in_shown_listings"] = shown.index(listing_id) + 1 if listing_id in shown else None
++        work["viewed_listing_id"] = listing_id
++        work["drafts"].append(render_listing_explanation(explanation, work["response_language"]))
++        return explanation
++
++    def compare(work, args: CompareArgs):
++        listings = get_listings_by_ids(connection, _clean_ids(args.listing_ids) or work["shortlisted_listing_ids"])
++        ranked = validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings))["ranked_listings"]
++        if len(ranked) < 2:
++            raise ToolError("At least two existing listings with working links are needed; the shortlist may have fewer.")
++        rents = {item["listing"]["listing_id"]: whole(item["listing"]["rent_monthly_sgd"]) for item in ranked}
++        minutes = {
++            item["listing"]["listing_id"]: mrt_minutes(item["listing"])
++            for item in ranked
++            if mrt_minutes(item["listing"]) is not None
++        }
++        work["shown_listing_ids"] = list(rents)
++        work["drafts"].append(render_comparison(ranked, restrictions_of(ranked), work["response_language"]))
++        return {
++            "listings": [_facts(item, position) for position, item in enumerate(ranked, 1)],
++            "rent_above_cheapest_sgd": {key: rent - min(rents.values()) for key, rent in rents.items()},
++            "mrt_minutes_above_closest": {key: value - min(minutes.values()) for key, value in minutes.items()},
++        }
++
++    def shortlist(work, args: ShortlistArgs):
++        add, remove = _clean_ids(args.add), _clean_ids(args.remove)
++        found = [listing["listing_id"] for listing in get_listings_by_ids(connection, add)]
++        before = work["shortlisted_listing_ids"]
++        work["shortlisted_listing_ids"] = [
++            listing_id for listing_id in dict.fromkeys([*before, *found]) if listing_id not in remove
++        ]
++        work["excluded_listing_ids"] = [
++            listing_id for listing_id in work["excluded_listing_ids"] if listing_id not in found
++        ]
++        saved = work["shortlisted_listing_ids"]
++        if add or remove:
++            removed = [listing_id for listing_id in remove if listing_id in before]
++            not_found = [listing_id for listing_id in add if listing_id not in found]
++            # Shown verbatim, like the workflow's shortlist replies, so a wrong pick is visible.
++            work["notes"].append(
++                _text(
++                    work,
++                    f"候选清单已更新：加入 {'、'.join(found) or '无'}；移除 {'、'.join(removed) or '无'}；未找到 {'、'.join(not_found) or '无'}。当前候选：{'、'.join(saved) or '空'}。",
++                    f"Shortlist updated: added {', '.join(found) or 'none'}; removed {', '.join(removed) or 'none'}; not found {', '.join(not_found) or 'none'}. Current shortlist: {', '.join(saved) or 'empty'}.",
++                )
++            )
++            return {"added": found, "removed": removed, "not_found": not_found, "shortlist": saved}
++
++        listings = get_listings_by_ids(connection, saved)
++        by_id = {
++            item["listing"]["listing_id"]: item
++            for item in validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings))["ranked_listings"]
++        }
++        ranked = [by_id[listing_id] for listing_id in saved if listing_id in by_id]
++        work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in ranked]
++        work["drafts"].append(
++            render_response(
++                ranked,
++                restrictions_of(ranked),
++                heading=_text(work, f"候选清单共有 {len(ranked)} 套房源：", f"Your shortlist contains {len(ranked)} listings:"),
++                limit=len(ranked),
++                language=work["response_language"],
++            )
++            if ranked
++            else _text(work, "候选清单目前是空的。", "Your shortlist is empty.")
++        )
++        return {"shortlist": [_facts(item, position) for position, item in enumerate(ranked, 1)]}
++
++    def exclude(work, args: ExcludeArgs):
++        excluded, restored = _clean_ids(args.exclude), _clean_ids(args.restore)
++        work["excluded_listing_ids"] = [
++            listing_id
++            for listing_id in dict.fromkeys([*work["excluded_listing_ids"], *excluded])
++            if listing_id not in restored
++        ]
++        work["shortlisted_listing_ids"] = [
++            listing_id for listing_id in work["shortlisted_listing_ids"] if listing_id not in excluded
++        ]
++        if excluded:
++            work["notes"].append(_text(work, f"已排除房源 {'、'.join(excluded)}，之后的搜索不再显示（可以说“恢复 {excluded[0]}”撤销）。", f"Excluded listings {', '.join(excluded)} from later searches (say \"restore {excluded[0]}\" to undo)."))
++        if restored:
++            work["notes"].append(_text(work, f"已恢复房源 {'、'.join(restored)}。", f"Restored listings {', '.join(restored)}."))
++        return {"excluded": excluded, "restored": restored, "excluded_listing_ids": work["excluded_listing_ids"]}
++
++    tools = {
++        "search_listings": (SearchArgs, search),
++        "get_listing_details": (ListingArgs, details),
++        "explain_listing": (ExplainArgs, explain),
++        "compare_listings": (CompareArgs, compare),
++        "shortlist": (ShortlistArgs, shortlist),
++        "exclude_listings": (ExcludeArgs, exclude),
++    }
++    bound_model = model.bind_tools([_tool_spec(name, schema) for name, (schema, _) in tools.items()])
++
++    def snapshot(state: AgentState) -> dict:
++        preferences = state["preferences"]
++
++        def brief(listing_ids):
++            return [
++                {
++                    "position": position,
++                    "listing_id": listing["listing_id"],
++                    "title": listing.get("title"),
++                    "rent_monthly_sgd": whole(listing.get("rent_monthly_sgd")),
++                    "mrt_minutes": mrt_minutes(listing),
++                    "district_code": listing.get("district_code"),
++                }
++                for position, listing in enumerate(get_listings_by_ids(connection, listing_ids), 1)
++            ]
++
++        return {
++            "today": date.today().isoformat(),
++            "saved_preferences": preferences.model_dump(mode="json", exclude_defaults=True),
++            "missing_refinements": _open_preferences(preferences),
++            "shown_listings_in_display_order": brief(state["shown_listing_ids"]),
++            "last_viewed_listing_id": state.get("viewed_listing_id"),
++            "shortlist": brief(state["shortlisted_listing_ids"]),
++            "excluded_listing_ids": state["excluded_listing_ids"],
++        }
++
++    def begin_turn(state: AgentState):
++        return {
++            "messages": [HumanMessage(content=state["message"])],
++            "response_language": _response_language(state["message"], state.get("response_language")),
++            "preferences": state.get("preferences") or SearchPreferences(),
++            "shown_listing_ids": state.get("shown_listing_ids", []),
++            "shortlisted_listing_ids": state.get("shortlisted_listing_ids", []),
++            "excluded_listing_ids": state.get("excluded_listing_ids", []),
++            "tool_rounds": 0,
++            "drafts": [],
++            "notes": [],
++            "observations": [],
++            "trace": [],
++        }
++
++    def agent_node(state: AgentState):
++        language = "English" if state["response_language"] == "en" else "Simplified Chinese"
++        system = (
++            _SYSTEM_PROMPT.format(language=language)
++            + "\nConversation state:\n"
++            + json.dumps(snapshot(state), ensure_ascii=False, default=str)
++        )
++        messages = state["messages"]
++        turn_start = max(index for index, message in enumerate(messages) if isinstance(message, HumanMessage))
++        # Earlier turns keep only what the user saw; tool traffic stays in its own turn.
++        history = [
++            message
++            for message in messages[:turn_start]
++            if isinstance(message, HumanMessage) or (isinstance(message, AIMessage) and not message.tool_calls)
++        ]
++        try:
++            reply = bound_model.invoke([SystemMessage(content=system), *history[-_HISTORY_MESSAGES:], *messages[turn_start:]])
++        except Exception:
++            if not state["drafts"]:
++                raise
++            reply = AIMessage(content="")
++        return {"messages": [reply], "tool_rounds": state["tool_rounds"] + bool(reply.tool_calls)}
++
++    def tools_node(state: AgentState):
++        work = {
++            key: list(state[key]) if isinstance(state.get(key), list) else state.get(key)
++            for key in (
++                "message",
++                "response_language",
++                "preferences",
++                "shown_listing_ids",
++                "shortlisted_listing_ids",
++                "excluded_listing_ids",
++                "viewed_listing_id",
++                "drafts",
++                "notes",
++                "observations",
++                "trace",
++            )
++        }
++        messages = []
++        # Sequential on purpose: later calls in the same message see earlier state changes.
++        for call in state["messages"][-1].tool_calls:
++            schema, handler = tools.get(call["name"], (None, None))
++            try:
++                if handler is None:
++                    raise ToolError(f"Unknown tool: {call['name']}")
++                observation = handler(work, schema.model_validate(call["args"]))
++            except (ToolError, ValidationError) as error:
++                observation = {"error": str(error)[:600]}
++            content = json.dumps(observation, ensure_ascii=False, default=str)
++            work["observations"].append(content)
++            work["trace"].append(
++                f"{call['name']}({json.dumps(call['args'], ensure_ascii=False, default=str)})"
++                + (" -> error" if "error" in observation else "")
++            )
++            messages.append(ToolMessage(content=content, tool_call_id=call["id"], name=call["name"]))
++        work.pop("message")
++        return {**work, "messages": messages}
++
++    def route_after_agent(state: AgentState):
++        last = state["messages"][-1]
++        return "tools" if last.tool_calls and state["tool_rounds"] <= max_tool_rounds else "finalize"
++
++    def finalize(state: AgentState):
++        last = state["messages"][-1]
++        reply = last.content if isinstance(last.content, str) and not last.tool_calls else ""
++        sources = [
++            state["message"],
++            *state["observations"],
++            json.dumps(snapshot(state), ensure_ascii=False, default=str),
++        ]
++        if not reply.strip() or not _grounded(reply, sources) or _off_policy(reply, state["response_language"]):
++            reply = "\n\n".join(state["drafts"]) or _text(state, *_FALLBACK)
++        response = "\n\n".join([*state["notes"], reply.strip()])
++        return {"response": response, "messages": [AIMessage(content=response, id=last.id)]}
++
++    graph = StateGraph(AgentState)
++    graph.add_node("begin_turn", begin_turn)
++    graph.add_node("agent", agent_node)
++    graph.add_node("tools", tools_node)
++    graph.add_node("finalize", finalize)
++    graph.add_edge(START, "begin_turn")
++    graph.add_edge("begin_turn", "agent")
++    graph.add_conditional_edges("agent", route_after_agent, {"tools": "tools", "finalize": "finalize"})
++    graph.add_edge("tools", "agent")
++    graph.add_edge("finalize", END)
++    return graph.compile(checkpointer=checkpointer)
++
++
++def _tool_spec(name: str, schema: type[BaseModel]) -> dict:
++    spec = convert_to_openai_tool(schema)
++    spec["function"]["name"] = name
++    return spec
++
++
++def _facts(item: dict, position: int | None = None) -> dict:
++    listing = item["listing"]
++    facts = {
++        "position": position,
++        "listing_id": listing["listing_id"],
++        "title": listing.get("title"),
++        "rent_monthly_sgd": whole(listing.get("rent_monthly_sgd")),
++        "room_type": listing.get("room_type"),
++        "rental_scope": listing.get("rental_scope"),
++        "district_code": listing.get("district_code"),
++        "mrt_station": listing.get("mrt_station"),
++        "mrt_minutes": mrt_minutes(listing),
++        "mrt_from_onemap": listing.get("mrt_walk_minutes") is not None,
++        "availability": listing.get("availability_status"),
++        "link_status": listing.get("live_status"),
++        "link_error": listing.get("live_error_reason"),
++        "known_conditions": {
++            key: value for key, value in extract_restrictions(listing).items() if value != "unknown"
++        },
++        "unknown_conditions": listing.get("unknown_conditions"),
++        "warnings": item.get("warnings"),
++        "rank_value": item.get("rank_value"),
++    }
++    return {key: value for key, value in facts.items() if value not in (None, [], {})}
++
++
++def _clean_ids(listing_ids: list[str]) -> list[str]:
++    return list(dict.fromkeys(value.strip().upper() for value in listing_ids if value.strip()))
++
++
++def _quotes(quote: str, message: str) -> bool:
++    quote, message = (re.sub(r"\W+", "", text.casefold()) for text in (quote, message))
++    return bool(quote) and quote in message
++
++
++def _conversion_text(state, conversion: dict) -> str:
++    amount, currency = conversion["original_amount"], conversion["original_currency"]
++    rate, sgd, rate_date = conversion["rate_to_sgd"], conversion["amount_sgd"], conversion["rate_date"]
++    return _text(
++        state,
++        f"预算换算：{amount:,} {currency} × {rate} = S${sgd:,}（汇率日期 {rate_date}）。搜索使用 S${sgd:,} 作为月租上限。",
++        f"Budget conversion: {amount:,} {currency} × {rate} = S${sgd:,} (rate date {rate_date}). The search used S${sgd:,} as the monthly rent limit.",
++    )
++
++
++def _grounded(reply: str, sources: list[str]) -> bool:
++    """Listing IDs and money, minute or count figures in the reply must appear in the sources."""
++    source = "\n".join(sources)
++    claimed = {_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)}
++    known = {_number(value) for value in re.findall(_NUMBER, source)}
++    return set(_listing_ids_in(reply)) <= set(_listing_ids_in(source)) and claimed <= known
++
++
++def _number(text: str) -> str:
++    try:
++        return format(Decimal(text.replace(",", "")).normalize(), "f")
++    except InvalidOperation:
++        return text
++
++
++def _off_policy(reply: str, language: ResponseLanguage) -> bool:
++    return bool(
++        _UNSUPPORTED_ACTION_OFFER.search(reply)
++        or _UNSUPPORTED_OFFER_EN.search(reply)
++        or _CYRILLIC.search(reply)
++        or (language == "en" and _HAN.search(reply))
++        or (language == "zh" and not _HAN.search(reply))
++    )
+diff --git a/decision.py b/decision.py
+new file mode 100644
+index 0000000..c27338b
+--- /dev/null
++++ b/decision.py
+@@ -0,0 +1,206 @@
++"""Decision logic on top of tools.py.
++
++Strict matches stay identical to search_listings(). Listings that fail only
++because the data does not state a requested condition are reported as
++needs-confirmation instead of disappearing, and each condition can be
++diagnosed by dropping it on its own.
++"""
++
++import json
++import sqlite3
++from collections import Counter
++from functools import cache
++from pathlib import Path
++
++from models import Listing, SearchPreferences
++from tools import _enum, rank_listings, search_listings
++
++
++EVIDENCE_PATH = Path(__file__).parent / "output-final-delivery" / "source_evidence_v1.json"
++
++# A condition is active when its preference differs from this neutral value.
++_NEUTRAL = {
++    "max_price_sgd": None,
++    "district_code": None,
++    "room_type": None,
++    "max_mrt_minutes": None,
++    "min_bedrooms": None,
++    "occupant_count": None,
++    "cooking_required": False,
++}
++# Rent and district are required V1 fields; these conditions can be unstated.
++_SPARSE = ("room_type", "max_mrt_minutes", "min_bedrooms", "occupant_count", "cooking_required")
++_EVIDENCE_FIELDS = (
++    "headline",
++    "card_text",
++    "availability_text",
++    "tenant_label_text",
++    "rule_evidence",
++    "source_url",
++)
++
++
++def active_conditions(preferences: SearchPreferences) -> list[str]:
++    return [
++        field
++        for field, neutral in _NEUTRAL.items()
++        if getattr(preferences, field) != neutral
++    ]
++
++
++def condition_status(
++    field: str,
++    listing: Listing,
++    preferences: SearchPreferences,
++) -> str:
++    """Return pass, fail or unknown; pass uses the same rule as the SQL filter."""
++    wanted = getattr(preferences, field)
++    if field == "max_price_sgd":
++        return _check(listing.get("rent_monthly_sgd"), lambda rent: rent <= wanted)
++    if field == "district_code":
++        return _check(
++            listing.get("district_code"),
++            lambda code: code.casefold() == wanted.strip().casefold(),
++        )
++    if field == "room_type":
++        room = listing.get("room_type")
++        if room == _enum(wanted):
++            return "pass"
++        # An unstated room could still be the requested type; a whole unit cannot.
++        unstated = room in {None, "unknown", "room_unspecified"}
++        return "unknown" if unstated and listing.get("rental_scope") != "entire_unit" else "fail"
++    if field == "max_mrt_minutes":
++        return _check(mrt_minutes(listing), lambda minutes: minutes <= wanted)
++    if field == "min_bedrooms":
++        if listing.get("rental_scope") == "room":
++            return "fail"
++        return _check(listing.get("bedrooms"), lambda bedrooms: bedrooms >= wanted)
++    if field == "occupant_count":
++        return _check(listing.get("tenant_count_reported"), lambda count: count >= wanted)
++    if field == "cooking_required":
++        policy = listing.get("cooking_policy")
++        return _check(
++            None if policy == "unknown" else policy,
++            lambda value: value in {"allowed", "light_only"},
++        )
++    raise ValueError(f"unsupported condition: {field}")
++
++
++def search_with_unknowns(
++    connection: sqlite3.Connection,
++    preferences: SearchPreferences,
++    excluded_listing_ids: list[str] | None = None,
++) -> tuple[list[Listing], list[Listing]]:
++    """Split candidates into strict matches and listings blocked only by unstated data."""
++    base = preferences.model_copy(update={field: _NEUTRAL[field] for field in _SPARSE})
++    active = [field for field in active_conditions(preferences) if field in _SPARSE]
++    strict, needs_confirmation = [], []
++    for listing in search_listings(connection, base, excluded_listing_ids):
++        statuses = {field: condition_status(field, listing, preferences) for field in active}
++        if "fail" in statuses.values():
++            continue
++        unknown = [field for field, status in statuses.items() if status == "unknown"]
++        if unknown:
++            needs_confirmation.append({**listing, "unknown_conditions": unknown})
++        else:
++            strict.append(listing)
++    return strict, needs_confirmation
++
++
++def diagnose_conditions(
++    connection: sqlite3.Connection,
++    preferences: SearchPreferences,
++    excluded_listing_ids: list[str] | None = None,
++) -> list[dict]:
++    """For each active condition, report what dropping only that condition yields.
++
++    Counts are database matches before URL checks. known_fail and unknown split
++    the listings that meet every other condition by their status on this one.
++    """
++    rows = []
++    for field in active_conditions(preferences):
++        others = preferences.model_copy(update={field: _NEUTRAL[field]})
++        candidates, _ = search_with_unknowns(connection, others, excluded_listing_ids)
++        statuses = Counter(
++            condition_status(field, listing, preferences) for listing in candidates
++        )
++        row = {
++            "condition": field,
++            "value": getattr(preferences, field),
++            "database_matches_without_it": len(candidates),
++            "known_fail": statuses["fail"],
++            "unknown": statuses["unknown"],
++        }
++        limit_of = {"max_price_sgd": lambda listing: listing["rent_monthly_sgd"], "max_mrt_minutes": mrt_minutes}
++        if field in limit_of:
++            values = [value for value in map(limit_of[field], candidates) if value is not None]
++            row["smallest_limit_with_a_match"] = whole(min(values)) if values else None
++        rows.append(row)
++    return rows
++
++
++def explain_listing(
++    listing: Listing,
++    preferences: SearchPreferences,
++    evidence: dict | None = None,
++) -> dict:
++    """Ranking factors, per-condition status and the source of each fact."""
++    ranked = rank_listings([listing], preferences)[0]
++    walk_minutes = listing.get("mrt_walk_minutes")
++    return {
++        "listing_id": listing["listing_id"],
++        "rank_value": ranked["rank_value"],
++        "rank_value_lower_is_better": True,
++        "factors": ranked["factors"],
++        "factor_formulas": {
++            "price": "rent_monthly_sgd / max_price_sgd",
++            "mrt": "MRT walking minutes / max_mrt_minutes (10 minutes when only MRT priority is stated)",
++        },
++        "conditions": {
++            field: condition_status(field, listing, preferences)
++            for field in active_conditions(preferences)
++        },
++        "rent_monthly_sgd": whole(listing.get("rent_monthly_sgd")),
++        "mrt_minutes": mrt_minutes(listing),
++        "sources": {
++            "rent_monthly_sgd": "listing_card",
++            "mrt_minutes": (
++                "onemap_walking_route"
++                if walk_minutes is not None
++                else "listing_card"
++                if listing.get("mrt_minutes_reported") is not None
++                else None
++            ),
++        },
++        "collected_at": listing.get("collected_at"),
++        "listing_url": listing.get("listing_url"),
++        "evidence": evidence,
++    }
++
++
++@cache
++def load_source_evidence(path: Path = EVIDENCE_PATH) -> dict[str, dict]:
++    """Source quotes by listing_id; an absent file simply means no quotes."""
++    try:
++        records = json.loads(path.read_text(encoding="utf-8"))
++    except OSError:
++        return {}
++    return {
++        str(record["listing_id"]): {
++            field: record[field] for field in _EVIDENCE_FIELDS if record.get(field)
++        }
++        for record in records
++    }
++
++
++def mrt_minutes(listing: Listing) -> int | float | None:
++    walked = listing.get("mrt_walk_minutes")
++    return walked if walked is not None else listing.get("mrt_minutes_reported")
++
++
++def whole(value):
++    return int(value) if isinstance(value, float) and value.is_integer() else value
++
++
++def _check(value, test) -> str:
++    return "unknown" if value is None else "pass" if test(value) else "fail"
+diff --git a/demo.py b/demo.py
+index 035b544..a6eb3e6 100644
+--- a/demo.py
++++ b/demo.py
+@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
+ from langgraph.checkpoint.memory import MemorySaver
+ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+ 
++from agent import build_agent
+ from config import env
+ from graph import build_graph
+ from mock_db import create_database
+@@ -13,13 +14,18 @@ from mock_db import create_database
+ def main() -> None:
+     sys.stdout.reconfigure(encoding="utf-8")
+     args = sys.argv[1:]
+-    chat_mode = args == ["--chat"]
+-    message = "" if chat_mode else " ".join(args).strip()
++    flags = {arg for arg in args if arg.startswith("--")}
++    chat_mode = "--chat" in flags
++    message = " ".join(arg for arg in args if not arg.startswith("--")).strip()
+     api_key = env("OPENAI_API_KEY")
+     model_name = env("OPENAI_MODEL")
+ 
+-    if not chat_mode and not message:
+-        raise SystemExit('Usage: python demo.py "your rental requirements" or python demo.py --chat')
++    if flags - {"--chat", "--workflow", "--trace"} or not (chat_mode or message):
++        raise SystemExit(
++            'Usage: python demo.py [--workflow] [--trace] "your rental requirements"\n'
++            "       python demo.py [--workflow] [--trace] --chat\n"
++            "--workflow runs the fixed LangGraph workflow baseline; --trace prints agent tool calls."
++        )
+     if not api_key:
+         raise SystemExit("Set OPENAI_API_KEY before running the demo")
+     if not model_name:
+@@ -32,8 +38,16 @@ def main() -> None:
+                 allowed_msgpack_modules=[("models", "SearchPreferences")]
+             )
+         )
+-        graph = build_graph(connection, model, memory)
++        graph = (build_graph if "--workflow" in flags else build_agent)(connection, model, memory)
+         config = {"configurable": {"thread_id": "demo"}}
++
++        def reply(text: str) -> str:
++            result = graph.invoke({"message": text}, config=config)
++            if "--trace" in flags:
++                for line in result.get("trace", []):
++                    print(f"  [tool] {line}")
++            return result["response"]
++
+         if chat_mode:
+             print("输入租房需求；输入 exit 退出。")
+             while True:
+@@ -44,13 +58,10 @@ def main() -> None:
+                 if message.casefold() in {"exit", "quit"}:
+                     break
+                 if message:
+-                    result = graph.invoke({"message": message}, config=config)
+-                    print(f"Agent：{result['response']}")
++                    print(f"Agent：{reply(message)}")
+             return
+ 
+-        result = graph.invoke({"message": message}, config=config)
+-
+-    print(result["response"])
++        print(reply(message))
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/response.py b/response.py
+index 3f470fd..f2269c2 100644
+--- a/response.py
++++ b/response.py
+@@ -5,6 +5,7 @@ from models import (
+     RelaxationSuggestion,
+     ResponseLanguage,
+     RestrictionSummary,
++    SearchPreferences,
+     UserIntent,
+ )
+ 
+@@ -69,6 +70,71 @@ _AVAILABILITY_TEXT = {
+     },
+ }
+ 
++PREFERENCE_LABELS = {
++    "zh": {
++        "max_price_sgd": "每月最高预算",
++        "room_type": "房型",
++        "room_type_flexible": "房型不限",
++        "district_code": "地区",
++        "max_mrt_minutes": "MRT 步行上限（分钟）",
++        "min_bedrooms": "最少卧室数",
++        "occupant_count": "入住人数",
++        "move_in_date": "入住日期",
++        "move_in_flexible": "入住日期灵活",
++        "cooking_required": "需要做饭",
++        "ranking_priority": "排序偏好",
++    },
++    "en": {
++        "max_price_sgd": "maximum monthly budget",
++        "room_type": "room type",
++        "room_type_flexible": "any room type",
++        "district_code": "district",
++        "max_mrt_minutes": "MRT walking limit (minutes)",
++        "min_bedrooms": "minimum bedrooms",
++        "occupant_count": "occupants",
++        "move_in_date": "move-in date",
++        "move_in_flexible": "flexible move-in date",
++        "cooking_required": "cooking required",
++        "ranking_priority": "ranking priority",
++    },
++}
++
++_CONDITION_LABELS = {
++    "zh": {
++        "max_price_sgd": "预算",
++        "district_code": "地区",
++        "room_type": "房型",
++        "max_mrt_minutes": "MRT 步行时间",
++        "min_bedrooms": "卧室数",
++        "occupant_count": "可入住人数",
++        "cooking_required": "做饭政策",
++    },
++    "en": {
++        "max_price_sgd": "budget",
++        "district_code": "district",
++        "room_type": "room type",
++        "max_mrt_minutes": "MRT walking time",
++        "min_bedrooms": "bedrooms",
++        "occupant_count": "occupancy limit",
++        "cooking_required": "cooking policy",
++    },
++}
++
++_CONDITION_STATUS_TEXT = {
++    "zh": {"pass": "符合", "fail": "不符合", "unknown": "未注明"},
++    "en": {"pass": "meets", "fail": "fails", "unknown": "not stated"},
++}
++
++_SOURCE_TEXT = {
++    "zh": {"listing_card": "房源卡片", "onemap_walking_route": "OneMap 步行路线", None: "无数据"},
++    "en": {"listing_card": "the listing card", "onemap_walking_route": "a OneMap walking route", None: "no data"},
++}
++
++_FACTOR_FORMULAS = {
++    "zh": {"price": "月租 ÷ 预算上限", "mrt": "MRT 步行分钟 ÷ 步行上限（只要求离 MRT 近时按 10 分钟）"},
++    "en": {"price": "rent ÷ budget", "mrt": "MRT walking minutes ÷ walking limit (10 minutes when only MRT priority is stated)"},
++}
++
+ 
+ def render_response(
+     ranked_listings: list[RankingResult] | None = None,
+@@ -79,6 +145,7 @@ def render_response(
+     limit: int = 3,
+     language: ResponseLanguage = "zh",
+     check_summary: ListingCheckSummary | None = None,
++    start: int = 1,
+ ) -> str:
+     ranked_listings = ranked_listings or []
+     restrictions = restrictions or {}
+@@ -98,7 +165,7 @@ def render_response(
+     ]
+     if check_summary:
+         lines.append(_check_summary_text(check_summary, language))
+-    for index, item in enumerate(ranked_listings[:limit], 1):
++    for index, item in enumerate(ranked_listings[:limit], start):
+         listing = item["listing"]
+         listing_id = listing["listing_id"]
+         price = listing.get("rent_monthly_sgd")
+@@ -155,6 +222,12 @@ def render_response(
+                     f"   Conditions: {'; '.join(rules)}",
+                 )
+             )
++        if listing.get("unknown_conditions"):
++            separator = "、" if language == "zh" else ", "
++            unstated = separator.join(
++                _CONDITION_LABELS[language][field] for field in listing["unknown_conditions"]
++            )
++            lines.append(_text(language, f"   需确认（数据未注明）：{unstated}", f"   To confirm (not stated): {unstated}"))
+         if item.get("warnings"):
+             lines.append(
+                 _text(
+@@ -312,6 +385,138 @@ def render_relaxation_preview(
+     )
+ 
+ 
++def render_needs_confirmation(
++    ranked_listings: list[RankingResult],
++    restrictions: dict[str, RestrictionSummary],
++    language: ResponseLanguage = "zh",
++    *,
++    start: int = 1,
++    check_summary: ListingCheckSummary | None = None,
++) -> str:
++    if not ranked_listings:
++        return ""
++    return render_response(
++        ranked_listings,
++        restrictions,
++        heading=_text(
++            language,
++            "以下房源其他已知条件都符合，但部分要求在数据中未注明，需要你向发布方确认：",
++            "These listings meet every known condition, but some requirements are not stated in the data and need your confirmation with the publisher:",
++        ),
++        limit=len(ranked_listings),
++        language=language,
++        check_summary=check_summary,
++        start=start,
++    )
++
++
++def render_decision_context(rows: list[dict], language: ResponseLanguage = "zh") -> str:
++    helpful = sorted(
++        (row for row in rows if row["database_matches_without_it"]),
++        key=lambda row: row["database_matches_without_it"],
++        reverse=True,
++    )
++    if not helpful:
++        return _text(
++            language,
++            "单独放开任何一个条件，数据库中仍没有符合其余条件的房源。",
++            "Relaxing any single condition still leaves no database listing that meets the rest.",
++        )
++    lines = [
++        _text(
++            language,
++            "结果主要被以下条件卡住（数据库匹配数，尚未检查链接）：",
++            "Results are mainly blocked by these conditions (database counts before link checks):",
++        )
++    ]
++    for row in helpful:
++        label = _CONDITION_LABELS[language][row["condition"]]
++        count = row["database_matches_without_it"]
++        line = _text(
++            language,
++            f"- 放开「{label}」：{count} 套符合其余条件",
++            f"- Without the {label} condition: {count} listings meet the rest",
++        )
++        if row["unknown"]:
++            line += _text(
++                language,
++                f"，其中 {row['unknown']} 套只是没有注明该项",
++                f", and {row['unknown']} of them simply do not state it",
++            )
++        limit = row.get("smallest_limit_with_a_match")
++        if limit is not None and row["condition"] == "max_price_sgd":
++            line += _text(language, f"；预算至少 S${limit:,} 才有完全符合的房源", f"; a budget of at least S${limit:,} gives a full match")
++        elif limit is not None:
++            line += _text(language, f"；MRT 步行上限至少 {limit} 分钟才有完全符合的房源", f"; an MRT limit of at least {limit} minutes gives a full match")
++        lines.append(line)
++    return "\n".join(lines)
++
++
++def render_listing_explanation(explanation: dict, language: ResponseLanguage = "zh") -> str:
++    listing_id = explanation["listing_id"]
++    score = _display(explanation["rank_value"], _text(language, "无可计算项", "not computable"))
++    lines = [
++        _text(
++            language,
++            f"房源 {listing_id} 的排序依据（综合值越小越靠前）：综合值 {score}",
++            f"Why listing {listing_id} ranks where it does (lower scores rank higher): score {score}",
++        )
++    ]
++    for name, factor in explanation["factors"].items():
++        weight = round(factor["weight"] * 100)
++        lines.append(
++            _text(
++                language,
++                f"- {_FACTOR_LABELS['zh'][name]}：{_FACTOR_FORMULAS['zh'][name]} = {factor['ratio']}，权重 {weight}%",
++                f"- {_FACTOR_LABELS['en'][name]}: {_FACTOR_FORMULAS['en'][name]} = {factor['ratio']}, weight {weight}%",
++            )
++        )
++    if explanation["conditions"]:
++        separator = "；" if language == "zh" else "; "
++        checks = separator.join(
++            f"{_CONDITION_LABELS[language][field]} {_CONDITION_STATUS_TEXT[language][status]}"
++            for field, status in explanation["conditions"].items()
++        )
++        lines.append(_text(language, f"- 条件核对：{checks}", f"- Conditions: {checks}"))
++    mrt_source = _SOURCE_TEXT[language][explanation["sources"]["mrt_minutes"]]
++    lines.append(
++        _text(
++            language,
++            f"- 数据来源：月租来自房源卡片，MRT 时间来自{mrt_source}；采集时间 {explanation['collected_at']}",
++            f"- Sources: rent from the listing card, MRT time from {mrt_source}; collected at {explanation['collected_at']}",
++        )
++    )
++    card_text = (explanation.get("evidence") or {}).get("card_text")
++    if card_text:
++        lines.append(_text(language, f"- 原文：{card_text}", f"- Source text: {card_text}"))
++    lines.append(_text(language, f"- 房源链接：{explanation['listing_url']}", f"- Listing URL: {explanation['listing_url']}"))
++    return "\n".join(lines)
++
++
++def render_preference_changes(
++    before: SearchPreferences,
++    changes: dict,
++    language: ResponseLanguage = "zh",
++) -> str:
++    def shown(value):
++        if value is None:
++            return _text(language, "不限", "any")
++        if isinstance(value, bool):
++            return _text(language, "是" if value else "否", "yes" if value else "no")
++        return str(value)
++
++    separator = "；" if language == "zh" else "; "
++    changed = separator.join(
++        _text(
++            language,
++            f"{PREFERENCE_LABELS['zh'][field]} {shown(getattr(before, field))} → {shown(value)}",
++            f"{PREFERENCE_LABELS['en'][field]} {shown(getattr(before, field))} → {shown(value)}",
++        )
++        for field, value in changes.items()
++    )
++    return _text(language, f"已保存条件变更：{changed}", f"Saved preference changes: {changed}")
++
++
+ def _mrt_text(listing: dict, language: ResponseLanguage) -> str:
+     minutes = _mrt_minutes(listing)
+     if listing.get("mrt_walk_minutes") is not None:
+diff --git a/tests/test_agent.py b/tests/test_agent.py
+new file mode 100644
+index 0000000..31e1664
+--- /dev/null
++++ b/tests/test_agent.py
+@@ -0,0 +1,307 @@
++import json
++import unittest
++from contextlib import closing
++from unittest.mock import patch
++
++from langchain_core.messages import AIMessage
++from langgraph.checkpoint.memory import MemorySaver
++from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
++
++from agent import build_agent
++from mock_db import create_database, create_mock_database
++
++
++class ScriptedModel:
++    """Returns prepared replies; a callable step receives the messages sent to the model."""
++
++    def __init__(self, *steps):
++        self.steps = list(steps)
++        self.calls = []
++        self.tools = []
++
++    def bind_tools(self, tools, **_):
++        self.tools = tools
++        return self
++
++    def invoke(self, messages):
++        self.calls.append(messages)
++        step = self.steps.pop(0)
++        return step(messages) if callable(step) else step
++
++
++def tool_calls(*calls):
++    return AIMessage(
++        content="",
++        tool_calls=[
++            {"name": name, "args": args, "id": f"call_{index}_{name}"}
++            for index, (name, args) in enumerate(calls)
++        ],
++    )
++
++
++def active_links(listing_id, url):
++    return {"status": "active", "final_url": url, "http_status": 200}
++
++
++def run_agent(connection, model, *messages):
++    graph = build_agent(
++        connection,
++        model,
++        MemorySaver(
++            serde=JsonPlusSerializer(
++                allowed_msgpack_modules=[("models", "SearchPreferences")]
++            )
++        ),
++        listing_checker=active_links,
++    )
++    config = {"configurable": {"thread_id": "test"}}
++    return [graph.invoke({"message": message}, config=config) for message in messages]
++
++
++class AgentTest(unittest.TestCase):
++    def test_model_can_call_every_tool(self):
++        model = ScriptedModel(AIMessage(content="你好，请告诉我你的租房要求。"))
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "你好")
++
++        self.assertEqual(
++            [tool["function"]["name"] for tool in model.tools],
++            [
++                "search_listings",
++                "get_listing_details",
++                "explain_listing",
++                "compare_listings",
++                "shortlist",
++                "exclude_listings",
++            ],
++        )
++        self.assertEqual(result["response"], "你好，请告诉我你的租房要求。")
++
++    def test_view_words_do_not_force_a_details_route(self):
++        model = ScriptedModel(
++            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009"]})),
++            lambda messages: AIMessage(
++                content=f"{json.loads(messages[-1].content)['listings'][0]['listing_id']} 综合排名更靠前。"
++            ),
++        )
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "帮我看看 S010 和 S009 哪个好")
++
++        observation = json.loads(result["observations"][0])
++        self.assertEqual(result["trace"], ['compare_listings({"listing_ids": ["S010", "S009"]})'])
++        self.assertEqual(sorted(result["shown_listing_ids"]), ["S009", "S010"])
++        self.assertEqual(min(observation["rent_above_cheapest_sgd"].values()), 0)
++        self.assertIn("综合排名更靠前", result["response"])
++
++    def test_one_turn_can_shortlist_and_show_another_listing(self):
++        model = ScriptedModel(
++            tool_calls(
++                ("shortlist", {"add": ["S010"]}),
++                ("get_listing_details", {"listing_id": "S009"}),
++            ),
++            AIMessage(content="已收藏 S010，下面是 S009 的要点。"),
++        )
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "把 S010 加入候选，再给我看看 S009 的详情")
++
++        self.assertEqual(result["shortlisted_listing_ids"], ["S010"])
++        self.assertEqual(result["viewed_listing_id"], "S009")
++        self.assertTrue(result["response"].startswith("候选清单已更新：加入 S010"))
++        self.assertIn("下面是 S009 的要点", result["response"])
++
++    def test_invented_figures_or_listings_fall_back_to_the_verified_draft(self):
++        for reply in ("S010 月租只要 S$999。", "S010 不错，S099 也可以看看。"):
++            model = ScriptedModel(
++                tool_calls(("get_listing_details", {"listing_id": "S010"})),
++                AIMessage(content=reply),
++            )
++            with self.subTest(reply=reply), closing(create_mock_database()) as connection:
++                (result,) = run_agent(connection, model, "S010 的详情")
++                self.assertTrue(result["response"].startswith("房源详情"))
++                self.assertNotIn(reply, result["response"])
++
++    def test_unsupported_offers_and_wrong_language_fall_back(self):
++        cases = (
++            ("S010 的详情", "需要我帮你联系房东确认入住吗？", "房源详情"),
++            ("show me S010", "S010 的月租是 S$1,280。", "Listing details"),
++        )
++        for message, reply, draft_start in cases:
++            model = ScriptedModel(
++                tool_calls(("get_listing_details", {"listing_id": "S010"})),
++                AIMessage(content=reply),
++            )
++            with self.subTest(reply=reply), closing(create_mock_database()) as connection:
++                (result,) = run_agent(connection, model, message)
++                self.assertTrue(result["response"].startswith(draft_start))
++
++        honest = "I can't contact the landlord, but S010 is in D05."
++        model = ScriptedModel(
++            tool_calls(("get_listing_details", {"listing_id": "S010"})),
++            AIMessage(content=honest),
++        )
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "show me S010")
++        self.assertEqual(result["response"], honest)
++
++    def test_saved_changes_must_quote_the_latest_user_message(self):
++        search = {"set": {"max_price_sgd": 1300, "district_code": "D05"}}
++        model = ScriptedModel(
++            tool_calls(("search_listings", {**search, "user_quote": "预算2000"})),
++            tool_calls(("search_listings", {**search, "user_quote": "预算1300"})),
++            AIMessage(content=""),
++        )
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "预算1300，D05")
++
++        rejected, saved = map(json.loads, result["observations"])
++        self.assertIn("user_quote", rejected["error"])
++        self.assertEqual(saved["saved_changes"], {"max_price_sgd": 1300, "district_code": "D05"})
++        self.assertEqual(result["preferences"].max_price_sgd, 1300)
++        self.assertTrue(result["response"].startswith("已保存条件变更"))
++
++    def test_preview_keeps_saved_preferences(self):
++        model = ScriptedModel(
++            tool_calls(("search_listings", {"set": {"max_price_sgd": 1000}, "user_quote": "预算1000"})),
++            AIMessage(content=""),
++            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500}, "preview": True})),
++            AIMessage(content=""),
++        )
++        with closing(create_mock_database()) as connection:
++            _, preview = run_agent(connection, model, "预算1000", "如果预算1500呢？")
++
++        self.assertEqual(preview["preferences"].max_price_sgd, 1000)
++        self.assertEqual(json.loads(preview["observations"][0])["saved_changes"], {})
++        self.assertTrue(preview["response"].startswith("预览（尚未修改你的搜索条件）"))
++
++    def test_unstated_cooking_policy_is_shown_for_confirmation(self):
++        request = "预算1000，common room，要能做饭"
++        model = ScriptedModel(
++            tool_calls(
++                (
++                    "search_listings",
++                    {
++                        "set": {"max_price_sgd": 1000, "room_type": "common_room", "cooking_required": True},
++                        "user_quote": request,
++                    },
++                )
++            ),
++            AIMessage(content=""),
++        )
++        with closing(create_database()) as connection:
++            (result,) = run_agent(connection, model, request)
++
++        observation = json.loads(result["observations"][0])
++        pending = observation["needs_confirmation"]["listings"]
++        blocking = max(
++            observation["decision_context"],
++            key=lambda row: row["database_matches_without_it"],
++        )
++        self.assertEqual(observation["strict_matches"]["listings"], [])
++        self.assertEqual(len(pending), 3)
++        self.assertTrue(all("cooking_required" in item["unknown_conditions"] for item in pending))
++        self.assertEqual(blocking["condition"], "cooking_required")
++        self.assertEqual(result["shown_listing_ids"], [item["listing_id"] for item in pending])
++        self.assertIn("需确认（数据未注明）：做饭政策", result["response"])
++        self.assertIn("放开「做饭政策」", result["response"])
++
++    def test_explain_listing_quotes_the_source_text(self):
++        model = ScriptedModel(
++            tool_calls(("explain_listing", {"listing_id": "500253628"})),
++            AIMessage(content=""),
++        )
++        with closing(create_database()) as connection:
++            (result,) = run_agent(connection, model, "为什么推荐 500253628？")
++
++        observation = json.loads(result["observations"][0])
++        self.assertIn("card_text", observation["evidence"])
++        self.assertIn("原文：", result["response"])
++
++    def test_exclude_and_restore_change_later_searches(self):
++        search = ("search_listings", {"set": {"max_price_sgd": 1300, "district_code": "D05"}, "user_quote": "预算1300 D05"})
++        model = ScriptedModel(
++            tool_calls(search),
++            AIMessage(content=""),
++            tool_calls(("exclude_listings", {"exclude": ["S001"]}), ("search_listings", {})),
++            AIMessage(content=""),
++            tool_calls(("exclude_listings", {"restore": ["S001"]}), ("search_listings", {})),
++            AIMessage(content=""),
++        )
++        with closing(create_mock_database()) as connection:
++            first, excluded, restored = run_agent(
++                connection, model, "预算1300 D05", "不要 S001 了，再找找", "还是把 S001 加回来"
++            )
++
++        self.assertIn("S001", first["shown_listing_ids"])
++        self.assertNotIn("S001", excluded["shown_listing_ids"])
++        self.assertIn("已排除房源 S001", excluded["response"])
++        self.assertIn("S001", restored["shown_listing_ids"])
++
++    def test_foreign_budget_is_converted_before_saving(self):
++        conversion = {
++            "original_amount": 5_000,
++            "original_currency": "CNY",
++            "rate_to_sgd": "0.18",
++            "rate_date": "2026-09-15",
++            "amount_sgd": 900,
++        }
++        model = ScriptedModel(
++            tool_calls(
++                (
++                    "search_listings",
++                    {"budget": {"amount": 5000, "currency": "CNY"}, "user_quote": "预算5000人民币"},
++                )
++            ),
++            AIMessage(content=""),
++        )
++        with patch("agent.convert_to_sgd", return_value=conversion) as convert, closing(
++            create_mock_database()
++        ) as connection:
++            (result,) = run_agent(connection, model, "预算5000人民币")
++
++        convert.assert_called_once_with(5_000, "CNY")
++        self.assertEqual(result["preferences"].max_price_sgd, 900)
++        self.assertIn("预算换算：5,000 CNY × 0.18 = S$900", result["response"])
++
++    def test_earlier_tool_traffic_is_not_resent_to_the_model(self):
++        model = ScriptedModel(
++            tool_calls(("shortlist", {"add": ["S001"]})),
++            AIMessage(content="已收藏。"),
++            AIMessage(content="候选清单里有 1 套。"),
++        )
++        with closing(create_mock_database()) as connection:
++            _, second = run_agent(connection, model, "收藏 S001", "我收藏了几套？")
++
++        sent = model.calls[2]
++        self.assertEqual(
++            [type(message).__name__ for message in sent],
++            ["SystemMessage", "HumanMessage", "AIMessage", "HumanMessage"],
++        )
++        self.assertIn('"listing_id": "S001"', sent[0].content)
++        self.assertEqual(second["response"], "候选清单里有 1 套。")
++
++    def test_tool_rounds_are_capped(self):
++        model = ScriptedModel(*[tool_calls(("shortlist", {})) for _ in range(10)])
++        with closing(create_mock_database()) as connection:
++            graph = build_agent(connection, model, listing_checker=active_links, max_tool_rounds=2)
++            result = graph.invoke({"message": "看看候选清单"})
++
++        self.assertEqual(len(model.calls), 3)
++        self.assertEqual(len(result["trace"]), 2)
++        self.assertIn("候选清单目前是空的", result["response"])
++
++    def test_model_failure_after_a_tool_returns_the_draft(self):
++        def unavailable(_):
++            raise RuntimeError("model unavailable")
++
++        model = ScriptedModel(
++            tool_calls(("get_listing_details", {"listing_id": "S010"})),
++            unavailable,
++        )
++        with closing(create_mock_database()) as connection:
++            (result,) = run_agent(connection, model, "S010 的详情")
++
++        self.assertTrue(result["response"].startswith("房源详情"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_decision.py b/tests/test_decision.py
+new file mode 100644
+index 0000000..3212dcb
+--- /dev/null
++++ b/tests/test_decision.py
+@@ -0,0 +1,122 @@
++import unittest
++from contextlib import closing
++from itertools import product
++from pathlib import Path
++
++from decision import (
++    diagnose_conditions,
++    explain_listing,
++    load_source_evidence,
++    search_with_unknowns,
++)
++from mock_db import create_database
++from models import SearchPreferences
++from tools import search_listings
++
++
++class DecisionTest(unittest.TestCase):
++    def test_strict_matches_are_exactly_the_sql_search(self):
++        grid = product(
++            (None, 1000, 2500),
++            (None, "common_room", "Master Room", "studio"),
++            (None, "D05"),
++            (None, 8),
++            (None, 2),
++            (None, 2),
++            (False, True),
++        )
++        with closing(create_database()) as connection:
++            for price, room, district, mrt, bedrooms, occupants, cooking in grid:
++                preferences = SearchPreferences(
++                    max_price_sgd=price,
++                    room_type=room,
++                    district_code=district,
++                    max_mrt_minutes=mrt,
++                    min_bedrooms=bedrooms,
++                    occupant_count=occupants,
++                    cooking_required=cooking,
++                )
++                with self.subTest(preferences=preferences):
++                    strict, _ = search_with_unknowns(connection, preferences)
++                    self.assertEqual(
++                        [listing["listing_id"] for listing in strict],
++                        [listing["listing_id"] for listing in search_listings(connection, preferences)],
++                    )
++
++    def test_unstated_conditions_need_confirmation_instead_of_failing(self):
++        preferences = SearchPreferences(
++            max_price_sgd=1000,
++            room_type="common_room",
++            cooking_required=True,
++        )
++        with closing(create_database()) as connection:
++            strict, pending = search_with_unknowns(connection, preferences)
++
++        self.assertEqual(strict, [])
++        self.assertTrue(pending)
++        for listing in pending:
++            self.assertIn("cooking_required", listing["unknown_conditions"])
++            self.assertLessEqual(listing["rent_monthly_sgd"], 1000)
++            self.assertNotEqual(listing["cooking_policy"], "not_allowed")
++
++    def test_whole_units_fail_a_room_type_request(self):
++        with closing(create_database()) as connection:
++            _, pending = search_with_unknowns(
++                connection, SearchPreferences(room_type="common_room")
++            )
++
++        self.assertTrue(pending)
++        self.assertNotIn("entire_unit", {listing["rental_scope"] for listing in pending})
++
++    def test_diagnosis_reports_what_dropping_each_condition_yields(self):
++        preferences = SearchPreferences(
++            max_price_sgd=1000,
++            room_type="common_room",
++            cooking_required=True,
++        )
++        with closing(create_database()) as connection:
++            rows = {
++                row["condition"]: row
++                for row in diagnose_conditions(connection, preferences)
++            }
++            without_cooking = search_listings(
++                connection, preferences.model_copy(update={"cooking_required": False})
++            )
++            without_budget = search_listings(
++                connection, preferences.model_copy(update={"max_price_sgd": None})
++            )
++
++        cooking = rows["cooking_required"]
++        self.assertEqual(set(rows), {"max_price_sgd", "room_type", "cooking_required"})
++        self.assertEqual(cooking["database_matches_without_it"], len(without_cooking))
++        self.assertGreater(cooking["unknown"], 0)
++        self.assertEqual(cooking["unknown"] + cooking["known_fail"], len(without_cooking))
++        self.assertEqual(
++            rows["max_price_sgd"]["smallest_limit_with_a_match"],
++            min(listing["rent_monthly_sgd"] for listing in without_budget),
++        )
++
++    def test_explanation_links_the_ranking_to_source_evidence(self):
++        preferences = SearchPreferences(max_price_sgd=2000)
++        with closing(create_database()) as connection:
++            listing = search_listings(connection, preferences)[0]
++        explanation = explain_listing(
++            listing,
++            preferences,
++            load_source_evidence().get(listing["listing_id"]),
++        )
++
++        self.assertEqual(
++            explanation["factors"]["price"]["ratio"],
++            round(listing["rent_monthly_sgd"] / 2000, 3),
++        )
++        self.assertEqual(explanation["conditions"], {"max_price_sgd": "pass"})
++        self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "listing_card")
++        self.assertIn("S$", explanation["evidence"]["card_text"])
++
++    def test_a_missing_evidence_file_means_no_quotes(self):
++        self.assertEqual(load_source_evidence(Path("missing-evidence.json")), {})
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -33,6 +33,8 @@ _NEUTRAL = {
 }
 # Rent and district are required V1 fields; these conditions can be unstated.
 _SPARSE = ("room_type", "rental_scope", "max_mrt_minutes", "min_bedrooms", "occupant_count", "cooking_required")
+# A stated ranking priority also needs data; without it a listing cannot be ranked on it.
+_PRIORITY_DATA = {"amenities": ("nearby_food", "food_rank")}
 _EVIDENCE_FIELDS = (
     "headline",
     "card_text",
@@ -110,11 +112,18 @@ def search_with_unknowns(
         if "fail" in statuses.values():
             continue
         unknown = [field for field, status in statuses.items() if status == "unknown"]
+        unknown += _unranked_priority(listing, preferences)
         if unknown:
             needs_confirmation.append({**listing, "unknown_conditions": unknown})
         else:
             strict.append(listing)
     return strict, needs_confirmation
+
+
+def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
+    """Name the stated ranking priority this listing has no data for."""
+    label, field = _PRIORITY_DATA.get(preferences.ranking_priority, (None, None))
+    return [label] if label and listing.get(field) is None else []
 
 
 def diagnose_conditions(
@@ -194,15 +203,26 @@ def explain_listing(
         "factor_formulas": {
             "price": "rent_monthly_sgd / max_price_sgd",
             "mrt": "MRT walking minutes / max_mrt_minutes (10 minutes when only MRT priority is stated)",
+            "food": "position among all listings on nearby F&B and hawker centres within 1 km (0 is the most choice)",
         },
         "conditions": {
             field: condition_status(field, listing, preferences)
             for field in active_conditions(preferences)
         },
         "rent_monthly_sgd": whole(listing.get("rent_monthly_sgd")),
+        "rent_monthly_sgd_card": whole(listing.get("rent_monthly_sgd_card")),
+        "nearby_1km": {
+            key: listing[field]
+            for key, field in (("fnb", "poi_fnb_1km"), ("hawker_centres", "poi_hawker_1km"))
+            if listing.get(field) is not None
+        },
         "mrt_minutes": mrt_minutes(listing),
         "sources": {
-            "rent_monthly_sgd": "listing_card",
+            "rent_monthly_sgd": (
+                "rechecked_listing"
+                if listing.get("rent_monthly_sgd_now") is not None
+                else "listing_card"
+            ),
             "mrt_minutes": (
                 "onemap_walking_route"
                 if walk_minutes is not None

@@ -111,9 +111,12 @@ class SearchPreferences(BaseModel):
         default=False,
         description="True only when the listing must allow at least limited cooking.",
     )
-    ranking_priority: Literal["balanced", "price", "mrt"] = Field(
+    ranking_priority: Literal["balanced", "price", "mrt", "amenities"] = Field(
         default="balanced",
-        description="Explicit soft preference: balanced, lower price, or nearer MRT.",
+        description=(
+            "Explicit soft preference: balanced, lower price, nearer MRT, or amenities "
+            "for more places to eat nearby (吃饭方便、周边餐饮多)."
+        ),
     )
 
     @field_validator("property_types", mode="before")

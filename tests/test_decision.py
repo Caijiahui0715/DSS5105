@@ -11,9 +11,10 @@ from decision import (
     load_source_evidence,
     search_with_unknowns,
 )
-from mock_db import create_database
+from mock_db import create_database, create_mock_database
 from models import SearchPreferences
-from tools import search_listings
+from response import render_listing_explanation
+from tools import get_listings_by_ids, search_listings
 
 
 class DecisionTest(unittest.TestCase):
@@ -87,7 +88,8 @@ class DecisionTest(unittest.TestCase):
             self.assertEqual(row["strict_matches"]["count"], len(strict))
             self.assertEqual(row["needs_confirmation"]["count"], len(pending))
             self.assertLessEqual(row["needs_confirmation"]["mrt_within_10_min"], len(pending))
-        self.assertEqual({row["strict_matches"]["count"] for row in rows}, {1})
+        # V2 states cooking for rooms at many prices, so a higher budget adds strict matches.
+        self.assertLess(rows[0]["strict_matches"]["count"], rows[-1]["strict_matches"]["count"])
 
     def test_unstated_conditions_need_confirmation_instead_of_failing(self):
         preferences = SearchPreferences(
@@ -98,7 +100,8 @@ class DecisionTest(unittest.TestCase):
         with closing(create_database()) as connection:
             strict, pending = search_with_unknowns(connection, preferences)
 
-        self.assertEqual(strict, [])
+        self.assertTrue(strict)
+        self.assertTrue(all(listing["cooking_policy"] in {"allowed", "light_only"} for listing in strict))
         self.assertTrue(pending)
         for listing in pending:
             self.assertIn("cooking_required", listing["unknown_conditions"])
@@ -142,12 +145,13 @@ class DecisionTest(unittest.TestCase):
             without_budget = search_listings(
                 connection, preferences.model_copy(update={"max_price_sgd": None})
             )
+            strict = search_listings(connection, preferences)
 
         cooking = rows["cooking_required"]
         self.assertEqual(set(rows), {"max_price_sgd", "room_type", "cooking_required"})
         self.assertEqual(cooking["database_matches_without_it"], len(without_cooking))
         self.assertGreater(cooking["unknown"], 0)
-        self.assertEqual(cooking["unknown"] + cooking["known_fail"], len(without_cooking))
+        self.assertEqual(cooking["unknown"] + cooking["known_fail"] + len(strict), len(without_cooking))
         self.assertEqual(
             rows["max_price_sgd"]["smallest_limit_with_a_match"],
             min(listing["rent_monthly_sgd"] for listing in without_budget),
@@ -170,6 +174,28 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual(explanation["conditions"], {"max_price_sgd": "pass"})
         self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "listing_card")
         self.assertIn("S$", explanation["evidence"]["card_text"])
+
+    def test_explanation_names_the_rent_source(self):
+        preferences = SearchPreferences(max_price_sgd=6000)
+        with closing(create_database()) as connection:
+            rechecked, card_only = get_listings_by_ids(connection, ["24842419", "500253628"])
+        explanation = explain_listing(rechecked, preferences)
+        text = render_listing_explanation(explanation)
+
+        self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "rechecked_listing")
+        self.assertEqual(explain_listing(card_only, preferences)["sources"]["rent_monthly_sgd"], "listing_card")
+        self.assertIn("月租来自重新采集的现价", text)
+        self.assertIn("采集时房源卡片为 S$5,900，现价 S$5,800", text)
+
+    def test_a_stated_priority_without_data_needs_confirmation(self):
+        preferences = SearchPreferences(max_price_sgd=1500, ranking_priority="amenities")
+        with closing(create_mock_database()) as connection:
+            strict, pending = search_with_unknowns(connection, preferences)
+
+        # The legacy fixture has no nearby counts, so nothing can be ranked on food.
+        self.assertEqual(strict, [])
+        self.assertTrue(pending)
+        self.assertTrue(all(listing["unknown_conditions"] == ["nearby_food"] for listing in pending))
 
     def test_a_missing_evidence_file_means_no_quotes(self):
         self.assertEqual(load_source_evidence(Path("missing-evidence.json")), {})

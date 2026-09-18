@@ -759,6 +759,11 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None) 
         "mrt_minutes": mrt_minutes(listing),
         "mrt_from_onemap": listing.get("mrt_walk_minutes") is not None,
         "availability_note": _availability_text(listing, language),
+        "nearby_1km": {
+            key: listing[field]
+            for key, field in (("fnb", "poi_fnb_1km"), ("hawker_centres", "poi_hawker_1km"), ("healthcare", "poi_healthcare_1km"))
+            if listing.get(field) is not None
+        },
         "link_status": listing.get("live_status"),
         "link_error": listing.get("live_error_reason"),
         "link_note": _link_status_text(listing, language),

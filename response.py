@@ -11,8 +11,8 @@ from models import (
 
 
 _FACTOR_LABELS = {
-    "zh": {"price": "价格", "mrt": "MRT"},
-    "en": {"price": "price", "mrt": "MRT"},
+    "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮"},
+    "en": {"price": "price", "mrt": "MRT", "food": "nearby food"},
 }
 
 _RESTRICTION_TEXT = {
@@ -23,6 +23,7 @@ _RESTRICTION_TEXT = {
         ("owner_staying", "yes"): "房东同住",
         ("owner_staying", "no"): "房东不同住",
         ("tenant_gender", "female_only"): "仅限女性租客",
+        ("tenant_gender", "male_only"): "仅限男性租客",
         ("tenant_gender", "male_preferred"): "偏好男性租客",
         ("tenant_gender", "female_preferred"): "偏好女性租客",
         ("visitors", "not_allowed"): "不允许访客",
@@ -35,6 +36,7 @@ _RESTRICTION_TEXT = {
         ("owner_staying", "yes"): "owner staying",
         ("owner_staying", "no"): "owner not staying",
         ("tenant_gender", "female_only"): "female tenants only",
+        ("tenant_gender", "male_only"): "male tenants only",
         ("tenant_gender", "male_preferred"): "male tenant preferred",
         ("tenant_gender", "female_preferred"): "female tenant preferred",
         ("visitors", "not_allowed"): "no visitors",
@@ -114,6 +116,7 @@ _CONDITION_LABELS = {
         "min_bedrooms": "卧室数",
         "occupant_count": "可入住人数",
         "cooking_required": "做饭政策",
+        "nearby_food": "周边餐饮",
     },
     "en": {
         "max_price_sgd": "budget",
@@ -125,6 +128,7 @@ _CONDITION_LABELS = {
         "min_bedrooms": "bedrooms",
         "occupant_count": "occupancy limit",
         "cooking_required": "cooking policy",
+        "nearby_food": "nearby food",
     },
 }
 
@@ -134,13 +138,13 @@ _CONDITION_STATUS_TEXT = {
 }
 
 _SOURCE_TEXT = {
-    "zh": {"listing_card": "房源卡片", "onemap_walking_route": "OneMap 步行路线", None: "无数据"},
-    "en": {"listing_card": "the listing card", "onemap_walking_route": "a OneMap walking route", None: "no data"},
+    "zh": {"listing_card": "房源卡片", "rechecked_listing": "重新采集的现价", "onemap_walking_route": "OneMap 步行路线", None: "无数据"},
+    "en": {"listing_card": "the listing card", "rechecked_listing": "the rechecked current price", "onemap_walking_route": "a OneMap walking route", None: "no data"},
 }
 
 _FACTOR_FORMULAS = {
-    "zh": {"price": "月租 ÷ 预算上限", "mrt": "MRT 步行分钟 ÷ 步行上限（只要求离 MRT 近时按 10 分钟）"},
-    "en": {"price": "rent ÷ budget", "mrt": "MRT walking minutes ÷ walking limit (10 minutes when only MRT priority is stated)"},
+    "zh": {"price": "月租 ÷ 预算上限", "mrt": "MRT 步行分钟 ÷ 步行上限（只要求离 MRT 近时按 10 分钟）", "food": "按 1 公里内餐饮和小贩中心数在全部房源里的排位"},
+    "en": {"price": "rent ÷ budget", "mrt": "MRT walking minutes ÷ walking limit (10 minutes when only MRT priority is stated)", "food": "position among all listings on F&B and hawker centres within 1 km"},
 }
 
 
@@ -355,6 +359,7 @@ def render_listing_details(
         _text(language, f"- 地址：{listing.get('address') or '未知'}", f"- Address: {listing.get('address') or 'unknown'}"),
         _text(language, f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing, language)}", f"- MRT: {listing.get('mrt_station') or 'unknown station'}, {_mrt_text(listing, language)}"),
         _text(language, f"- 入住状态：{_availability_text(listing, language)}", f"- Availability: {_availability_text(listing, language)}"),
+        _nearby_text(listing, language),
         _text(language, f"- 链接状态：{_link_status_text(listing, language)}", f"- Link status: {_link_status_text(listing, language)}"),
         _text(language, f"- 房源链接：{listing.get('final_url') or listing.get('listing_url')}", f"- Listing URL: {listing.get('final_url') or listing.get('listing_url')}"),
     ]
@@ -367,7 +372,7 @@ def render_listing_details(
         lines.append(_text(language, f"- 居住条件：{'；'.join(rules)}", f"- Conditions: {'; '.join(rules)}"))
     if listing.get("review_flags"):
         lines.append(_text(language, f"- 数据提示：{'；'.join(_warning_text(flag, language) for flag in listing['review_flags'])}", f"- Data notes: {'; '.join(_warning_text(flag, language) for flag in listing['review_flags'])}"))
-    return "\n".join(lines)
+    return "\n".join(line for line in lines if line)
 
 
 def render_relaxation_preview(
@@ -487,14 +492,24 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
             for field, status in explanation["conditions"].items()
         )
         lines.append(_text(language, f"- 条件核对：{checks}", f"- Conditions: {checks}"))
+    rent_source = _SOURCE_TEXT[language][explanation["sources"]["rent_monthly_sgd"]]
     mrt_source = _SOURCE_TEXT[language][explanation["sources"]["mrt_minutes"]]
     lines.append(
         _text(
             language,
-            f"- 数据来源：月租来自房源卡片，MRT 时间来自{mrt_source}；采集时间 {explanation['collected_at']}",
-            f"- Sources: rent from the listing card, MRT time from {mrt_source}; collected at {explanation['collected_at']}",
+            f"- 数据来源：月租来自{rent_source}，MRT 时间来自{mrt_source}；采集时间 {explanation['collected_at']}",
+            f"- Sources: rent from {rent_source}, MRT time from {mrt_source}; collected at {explanation['collected_at']}",
         )
     )
+    rent, card_rent = explanation["rent_monthly_sgd"], explanation.get("rent_monthly_sgd_card")
+    if card_rent not in (None, rent):
+        lines.append(
+            _text(
+                language,
+                f"- 价格变化：采集时房源卡片为 S${card_rent:,}，现价 S${rent:,}；下面的原文是采集时的内容",
+                f"- Price change: the listing card showed S${card_rent:,} when collected and the current price is S${rent:,}; the source text below is from collection time",
+            )
+        )
     card_text = (explanation.get("evidence") or {}).get("card_text")
     if card_text:
         lines.append(_text(language, f"- 原文：{card_text}", f"- Source text: {card_text}"))
@@ -587,8 +602,15 @@ def _preference_value(value: object, language: ResponseLanguage) -> str:
         return _text(language, "是" if value else "否", "yes" if value else "no")
     if isinstance(value, (list, tuple)):
         return ("、" if language == "zh" else ", ").join(value)
-    scope = {"entire_unit": ("整租", "whole unit"), "room": ("合租/单间", "room")}.get(value)
-    return _text(language, *scope) if scope else str(value)
+    label = {
+        "entire_unit": ("整租", "whole unit"),
+        "room": ("合租/单间", "room"),
+        "balanced": ("均衡", "balanced"),
+        "price": ("价格优先", "lower price"),
+        "mrt": ("离 MRT 近", "nearer MRT"),
+        "amenities": ("吃饭方便", "more food nearby"),
+    }.get(value)
+    return _text(language, *label) if label else str(value)
 
 
 def _mrt_text(listing: dict, language: ResponseLanguage) -> str:
@@ -653,6 +675,25 @@ def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLangu
     if field == "max_mrt_minutes":
         return _text(language, f"将 MRT 步行上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the MRT walking limit from {suggestion['current']} to {suggestion['suggested']} minutes")
     return _text(language, f"调整 {field}", f"changing {field}")
+
+
+_NEARBY_COUNTS = {
+    "zh": (("poi_fnb_1km", "餐饮 {} 处"), ("poi_hawker_1km", "小贩中心 {} 个"), ("poi_healthcare_1km", "医疗 {} 处"), ("poi_library_1km", "图书馆 {} 个"), ("poi_sport_1km", "体育设施 {} 处"), ("poi_community_1km", "民众俱乐部 {} 个")),
+    "en": (("poi_fnb_1km", "{} F&B"), ("poi_hawker_1km", "{} hawker centres"), ("poi_healthcare_1km", "{} healthcare"), ("poi_library_1km", "{} libraries"), ("poi_sport_1km", "{} sports facilities"), ("poi_community_1km", "{} community clubs")),
+}
+
+
+def _nearby_text(listing: Listing, language: ResponseLanguage) -> str:
+    """V2 counts sit within 1 km in a straight line; the school walk is a route."""
+    counts = [text.format(listing[field]) for field, text in _NEARBY_COUNTS[language] if listing.get(field)]
+    school = listing.get("pg_school_nearest_walk_m")
+    if not counts:
+        return ""
+    joined = ("、" if language == "zh" else ", ").join(counts)
+    line = _text(language, f"- 周边（直线 1 公里内）：{joined}", f"- Nearby (within 1 km, straight line): {joined}")
+    if school is not None:
+        line += _text(language, f"；最近学校步行 {school:,.0f} 米", f"; nearest school {school:,.0f} m on foot")
+    return line
 
 
 def _availability_text(listing: Listing, language: ResponseLanguage) -> str:

@@ -64,8 +64,9 @@ Set min_bedrooms when the user gives a minimum bedroom count. Set occupant_count
 number of people who need to stay; tenant_count_reported is the advertised maximum allowed
 occupancy. The dataset has no reliable platform-verification field, so never invent or
 preserve a verified-only preference.
-Interpret MTR as MRT. Set ranking_priority to price or mrt only when the user explicitly
-prefers one; a numeric limit alone does not imply priority. Otherwise use balanced.
+Interpret MTR as MRT. Set ranking_priority to price, mrt or amenities only when the user
+explicitly prefers one; a numeric limit alone does not imply priority. Use amenities when the
+user wants more places to eat nearby. Otherwise use balanced.
 When current preferences are supplied, preserve them unless the user explicitly changes them.
 """
 

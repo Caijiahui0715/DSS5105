@@ -1,13 +1,30 @@
+import csv
 import json
 import re
 import sqlite3
+from bisect import bisect_left
 from datetime import datetime, timezone
 from pathlib import Path
 
 
 ROOT = Path(__file__).parent
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
-DEFAULT_FINAL_DATA = ROOT / "output-final-delivery" / "rental_data_v1.json"
+DEFAULT_FINAL_DATA = ROOT / "output-final-delivery" / "rental_data_v2.csv"
+# V2 only replaces the listings table; availability, review flags and districts stay in V1.
+V1_DATA = ROOT / "output-final-delivery" / "rental_data_v1.json"
+_SQM_PER_SQFT = 0.09290304
+# Nearby food is ranked on these V2 counts; see _food_ranks().
+_FOOD_FIELDS = ("poi_fnb_1km", "poi_hawker_1km")
+# V2 labels mapped to the V1 values that search filters and reply templates use.
+_V1_LABELS = {
+    "cooking_policy": {
+        "light_cooking": "light_only",
+        "cooking_any_cooking": "allowed",
+        "cooking_not_allowed": "not_allowed",
+        "cooking_prefer_not_to_say": "unknown",
+    },
+    "pets_policy": {"no_pets": "not_allowed", "pets_allowed": "allowed"},
+}
 
 LISTING_FIELDS = (
     "listing_id",
@@ -40,13 +57,62 @@ LISTING_FIELDS = (
     "private_bathroom",
     "air_conditioning",
     "pets_policy",
+    "rent_monthly_sgd_now",
+    "scrape_status",
+    "enriched_at",
+    "postcode",
+    "street_name",
+    "latitude",
+    "longitude",
+    "poi_hawker_1km",
+    "poi_library_1km",
+    "poi_sport_1km",
+    "poi_healthcare_1km",
+    "poi_community_1km",
+    "pg_school_count",
+    "pg_school_nearest_walk_m",
+    "pg_school_nearest_walk_min",
+    "pg_mrt_count",
+    "pg_mrt_nearest_walk_m",
+    "coord_source",
+    "coord_error_m",
+    "poi_fnb_1km",
 )
+# Derived at load time, not a V2 column: see _food_ranks().
+FOOD_RANK_FIELD = "food_rank"
+_COLUMNS = (*LISTING_FIELDS, FOOD_RANK_FIELD)
 
 
 def create_database(path: Path = DEFAULT_FINAL_DATA) -> sqlite3.Connection:
-    """Load the frozen V1 JSON contract into an in-memory SQLite database."""
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    return _create_database(payload)
+    """Load the V2 listings CSV, with V1 metadata and districts, into in-memory SQLite."""
+    with path.open(encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+        missing = [field for field in LISTING_FIELDS if field not in (reader.fieldnames or [])]
+        if missing:
+            raise ValueError(f"{path.name} is missing columns: {', '.join(missing)}")
+        # Empty cells become NULL; column affinity turns numeric text into numbers.
+        listings = [
+            {field: value or None for field, value in row.items()}
+            for row in reader
+        ]
+    for listing in listings:
+        for field, labels in _V1_LABELS.items():
+            listing[field] = labels.get(listing[field], listing[field])
+    ranks = _food_ranks(listings)
+    for listing in listings:
+        listing[FOOD_RANK_FIELD] = ranks.get(listing["listing_id"])
+    v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
+    metadata = {row["listing_id"]: row for row in v1["listing_metadata"]}
+    return _create_database(
+        {
+            "listings": listings,
+            "listing_metadata": [
+                _v2_metadata(listing, metadata.get(listing["listing_id"]))
+                for listing in listings
+            ],
+            "district_lookup": v1["district_lookup"],
+        }
+    )
 
 
 def create_mock_database(path: Path = DEFAULT_FIXTURE) -> sqlite3.Connection:
@@ -76,8 +142,11 @@ def create_mock_database(path: Path = DEFAULT_FIXTURE) -> sqlite3.Connection:
 def _create_database(payload: dict) -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     connection.execute("PRAGMA foreign_keys = ON")
+    view_columns = ", ".join(
+        f"l.{field}" for field in _COLUMNS if field != "rent_monthly_sgd"
+    )
     connection.executescript(
-        """
+        f"""
         CREATE TABLE listings (
             listing_id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
@@ -108,7 +177,28 @@ def _create_database(payload: dict) -> sqlite3.Connection:
             landlord_lives_in TEXT NOT NULL,
             private_bathroom TEXT NOT NULL,
             air_conditioning TEXT NOT NULL,
-            pets_policy TEXT NOT NULL
+            pets_policy TEXT NOT NULL,
+            rent_monthly_sgd_now REAL,
+            scrape_status TEXT,
+            enriched_at TEXT,
+            postcode TEXT,
+            street_name TEXT,
+            latitude REAL,
+            longitude REAL,
+            poi_hawker_1km INTEGER,
+            poi_library_1km INTEGER,
+            poi_sport_1km INTEGER,
+            poi_healthcare_1km INTEGER,
+            poi_community_1km INTEGER,
+            pg_school_count INTEGER,
+            pg_school_nearest_walk_m INTEGER,
+            pg_school_nearest_walk_min INTEGER,
+            pg_mrt_count INTEGER,
+            pg_mrt_nearest_walk_m INTEGER,
+            coord_source TEXT,
+            coord_error_m REAL,
+            poi_fnb_1km INTEGER,
+            food_rank REAL
         );
 
         CREATE TABLE listing_metadata (
@@ -141,7 +231,10 @@ def _create_database(payload: dict) -> sqlite3.Connection:
 
         CREATE VIEW agent_listings AS
         SELECT
-            l.*,
+            {view_columns},
+            -- The agent uses the rechecked rent when V2 has one; the card rent stays for evidence.
+            COALESCE(l.rent_monthly_sgd_now, l.rent_monthly_sgd) AS rent_monthly_sgd,
+            l.rent_monthly_sgd AS rent_monthly_sgd_card,
             d.district,
             m.availability_status,
             m.review_flags,
@@ -160,11 +253,11 @@ def _create_database(payload: dict) -> sqlite3.Connection:
         LEFT JOIN listing_route_enrichment r USING (listing_id);
         """
     )
-    placeholders = ", ".join("?" for _ in LISTING_FIELDS)
+    placeholders = ", ".join("?" for _ in _COLUMNS)
     with connection:
         connection.executemany(
-            f"INSERT INTO listings ({', '.join(LISTING_FIELDS)}) VALUES ({placeholders})",
-            [[row[field] for field in LISTING_FIELDS] for row in payload["listings"]],
+            f"INSERT INTO listings ({', '.join(_COLUMNS)}) VALUES ({placeholders})",
+            [[row.get(field) for field in _COLUMNS] for row in payload["listings"]],
         )
         connection.executemany(
             "INSERT INTO listing_metadata VALUES (?, ?, ?)",
@@ -185,6 +278,40 @@ def _create_database(payload: dict) -> sqlite3.Connection:
             ],
         )
     return connection
+
+
+def _food_ranks(listings: list[dict]) -> dict[str, float]:
+    """Rank listings by nearby food: 0 has the most choice, 1 the least.
+
+    Counts of very different size (F&B 3-1395, hawker centres 0-8) are compared
+    by position among the listings that state them, then averaged.
+    """
+    positions: dict[str, list[float]] = {}
+    for field in _FOOD_FIELDS:
+        counts = sorted(float(row[field]) for row in listings if row.get(field) is not None)
+        for row in listings:
+            value = row.get(field)
+            if value is not None:
+                share = bisect_left(counts, float(value)) / len(counts)
+                positions.setdefault(row["listing_id"], []).append(1 - share)
+    return {
+        listing_id: round(sum(shares) / len(shares), 3)
+        for listing_id, shares in positions.items()
+    }
+
+
+def _v2_metadata(listing: dict, metadata: dict | None) -> dict:
+    metadata = metadata or {"availability_status": "unknown", "review_flags": []}
+    # V1 area flags predate the V2 room areas; re-check only the under-80 sqft rule.
+    flags = [flag for flag in metadata["review_flags"] if flag != "area_outside_review_range"]
+    area = listing["area_sqm"]
+    if area is not None and round(float(area) / _SQM_PER_SQFT) < 80:
+        flags.append("area_outside_review_range")
+    return {
+        "listing_id": listing["listing_id"],
+        "availability_status": metadata["availability_status"],
+        "review_flags": flags,
+    }
 
 
 def _legacy_payload(rows: list[dict]) -> dict:
@@ -238,6 +365,9 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 ),
                 "air_conditioning": "unknown",
                 "pets_policy": "unknown",
+                "rent_monthly_sgd_now": None,
+                "scrape_status": None,
+                "enriched_at": None,
             }
         )
         metadata.append(

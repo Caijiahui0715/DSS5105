@@ -20,16 +20,49 @@ from tools import (
 
 
 class ToolsTest(unittest.TestCase):
-    def test_imports_the_final_v1_contract(self):
+    def test_imports_the_v2_listings(self):
         with closing(create_database()) as connection:
             listings = load_listings(connection)
             main_fields = connection.execute("PRAGMA table_info(listings)").fetchall()
+        by_id = {listing["listing_id"]: listing for listing in listings}
 
-        self.assertEqual(len(listings), 600)
-        self.assertEqual(len(main_fields), 30)
-        self.assertIn("rent_monthly_sgd", listings[0])
+        self.assertEqual(len(listings), 519)
+        self.assertEqual(len(main_fields), 51)
         self.assertIn("availability_status", listings[0])
         self.assertEqual(listings[0]["live_status"], "unknown")
+        self.assertTrue(all(listing["district"] for listing in listings))
+        # V2 labels are stored as the V1 values that search filters understand.
+        self.assertLessEqual({listing["cooking_policy"] for listing in listings}, {"allowed", "light_only", "not_allowed", "unknown"})
+        self.assertLessEqual({listing["pets_policy"] for listing in listings}, {"allowed", "not_allowed", "unknown"})
+        # The rechecked rent is used when V2 has one; the card rent is kept.
+        self.assertEqual((by_id["24842419"]["rent_monthly_sgd"], by_id["24842419"]["rent_monthly_sgd_card"]), (5800, 5900))
+        self.assertEqual((by_id["500253628"]["rent_monthly_sgd"], by_id["500253628"]["rent_monthly_sgd_now"]), (1850, None))
+        # The 80 sqft check runs on V2 areas; 7.43 sqm is an 80 sqft room.
+        self.assertIn("area_outside_review_range", by_id["25107881"]["review_flags"])
+        self.assertNotIn("area_outside_review_range", by_id["25558367"]["review_flags"])
+        # V2.3 adds coordinates and nearby counts; food_rank is derived at load time.
+        self.assertEqual(by_id["24842419"]["coord_source"], "onemap_postcode")
+        self.assertTrue(all(listing["poi_fnb_1km"] is not None for listing in listings))
+        # food_rank averages the F&B and hawker positions: 0 is the most choice, 1 the least.
+        self.assertLess(by_id["24970286"]["food_rank"], 0.05)   # 1282 F&B, 8 hawker centres
+        self.assertGreater(by_id["500249175"]["food_rank"], 0.95)  # 3 F&B, no hawker centre
+
+    def test_amenities_priority_ranks_by_nearby_food(self):
+        preferences = SearchPreferences(max_price_sgd=5000, ranking_priority="amenities")
+        with closing(create_database()) as connection:
+            listings = search_listings(connection, preferences)
+            ranked = rank_listings(listings, preferences)
+            balanced = rank_listings(listings, preferences.model_copy(update={"ranking_priority": "balanced"}))
+
+        self.assertEqual(ranked[0]["factors"]["food"]["weight"], 0.7)
+        self.assertEqual(ranked[0]["factors"]["price"]["weight"], 0.3)
+        # The top three all sit in the busiest tenth for nearby food.
+        self.assertTrue(all(item["listing"]["food_rank"] <= 0.1 for item in ranked[:3]))
+        self.assertNotEqual(
+            [item["listing"]["listing_id"] for item in ranked[:3]],
+            [item["listing"]["listing_id"] for item in balanced[:3]],
+        )
+        self.assertNotIn("food", balanced[0]["factors"])
 
     def test_url_checks_compare_the_final_listing_id(self):
         class Response:

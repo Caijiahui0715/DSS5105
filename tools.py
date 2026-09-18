@@ -26,6 +26,9 @@ _IGNORED_REVIEW_FLAGS = {
     "tenant_count_scope_unconfirmed",
 }
 
+# Nearby food is a position among candidates, so it is read from the loaded rank.
+_FOOD_RANK = "food_rank"
+
 _RANKING_CRITERIA = {
     "price": (
         1.0,
@@ -256,6 +259,9 @@ def rank_listings(
             if ratio is not None:
                 boost = _PRIORITY_BOOST if preferences.ranking_priority == name else 1.0
                 components.append((name, ratio, base_weight * boost))
+        # Only scored when the user asks for it; the data states it for every listing or none.
+        if preferences.ranking_priority == "amenities" and listing.get(_FOOD_RANK) is not None:
+            components.append(("food", listing[_FOOD_RANK], _PRIORITY_BOOST))
 
         total_weight = sum(weight for _, _, weight in components)
         rank_value = (

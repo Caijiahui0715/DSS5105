@@ -185,13 +185,14 @@ class AgentTest(unittest.TestCase):
         self.assertTrue(preview["response"].startswith("预览（尚未修改你的搜索条件）"))
 
     def test_unstated_cooking_policy_is_shown_for_confirmation(self):
-        request = "预算1000，common room，要能做饭"
+        # V2 states no cooking policy for any whole unit.
+        request = "预算4000，D03，整租，要能做饭"
         model = ScriptedModel(
             tool_calls(
                 (
                     "search_listings",
                     {
-                        "set": {"max_price_sgd": 1000, "room_type": "common_room", "cooking_required": True},
+                        "set": {"max_price_sgd": 4000, "district_code": "D03", "rental_scope": "entire_unit", "cooking_required": True},
                         "user_quote": request,
                     },
                 )
@@ -216,12 +217,12 @@ class AgentTest(unittest.TestCase):
         self.assertIn("放开「做饭政策」", result["response"])
 
     def test_first_search_is_saved_and_empty_results_list_relaxations(self):
-        request = "我的预算是1100，我想要能做饭的房子，有什么推荐吗"
+        request = "我的预算是650，我想要能做饭的房子，有什么推荐吗"
         model = ScriptedModel(
             tool_calls(
                 (
                     "search_listings",
-                    {"set": {"max_price_sgd": 1100, "cooking_required": True}, "preview": True, "user_quote": "我的预算是1100，我想要能做饭的房子"},
+                    {"set": {"max_price_sgd": 650, "cooking_required": True}, "preview": True, "user_quote": "我的预算是650，我想要能做饭的房子"},
                 )
             ),
             AIMessage(content="预算内还没有明确可以做饭的房源，下面几套需要确认。"),
@@ -232,12 +233,43 @@ class AgentTest(unittest.TestCase):
 
         observation = json.loads(first["observations"][0])
         self.assertFalse(observation["preview"])
-        self.assertEqual(first["preferences"].max_price_sgd, 1100)
+        self.assertEqual(first["preferences"].max_price_sgd, 650)
         self.assertTrue(first["preferences"].cooking_required)
-        self.assertEqual(observation["relaxation_suggestions"][0]["suggested"], 1210)
+        self.assertEqual(observation["relaxation_suggestions"][0]["suggested"], 715)
         self.assertTrue(first["response"].startswith("已保存条件变更"))
-        self.assertIn("将最高预算从 S$1,100 提高到 S$1,210", first["response"].split("下面几套需要确认。")[1])
-        self.assertIn('"suggested": 1210', model.calls[2][0].content)
+        self.assertIn("将最高预算从 S$650 提高到 S$715", first["response"].split("下面几套需要确认。")[1])
+        self.assertIn('"suggested": 715', model.calls[2][0].content)
+
+    def test_food_request_ranks_by_nearby_amenities(self):
+        request = "我预算5000，我想要周围能吃饭的地方多一点"
+        model = ScriptedModel(
+            tool_calls(
+                (
+                    "search_listings",
+                    {"set": {"max_price_sgd": 5000, "ranking_priority": "amenities"}, "user_quote": request},
+                )
+            ),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
+        self.assertEqual([item["listing_id"] for item in shown], ["500029855", "24970286", "60186053"])
+        self.assertEqual(shown[1]["nearby_1km"], {"fnb": 1282, "hawker_centres": 8, "healthcare": 15})
+        self.assertIn("排序偏好 均衡 → 吃饭方便", result["response"])
+        self.assertIn("周边餐饮 70%", result["response"])
+
+    def test_listing_details_report_the_nearby_counts(self):
+        model = ScriptedModel(
+            tool_calls(("get_listing_details", {"listing_id": "24970286"})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, "看看 24970286")
+
+        self.assertIn("周边（直线 1 公里内）：餐饮 1282 处、小贩中心 8 个", result["response"])
+        self.assertIn("最近学校步行 280 米", result["response"])
 
     def test_whole_unit_request_uses_rental_scope(self):
         request = "我想要整租的，预算5000"
@@ -432,7 +464,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("上次展示的房源：1. ", result["response"])
 
     def test_budget_question_without_a_number_explores_without_saving(self):
-        request = "预算1300，要能做饭"
+        request = "预算1300，D23，要能做饭"
         question = "我可以进一步提高我的预算，还有更好的选择吗"
 
         def reply_from_ladder(messages):
@@ -448,7 +480,7 @@ class AgentTest(unittest.TestCase):
             )
 
         model = ScriptedModel(
-            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300, "cooking_required": True}, "user_quote": request})),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300, "district_code": "D23", "cooking_required": True}, "user_quote": request})),
             AIMessage(content=""),
             tool_calls(("explore_budgets", {})),
             reply_from_ladder,

@@ -165,7 +165,12 @@ def calculate_mrt_walk(
     }
 
 
-def _geocode(query: str, token: str, opener) -> tuple[float, float]:
+def geocode_location(query: str, *, opener=urlopen) -> tuple[float, float]:
+    """Resolve a user-named Singapore place using the existing OneMap search API."""
+    return _geocode(query, load_token(opener=opener), opener, require_unique=True)
+
+
+def _geocode(query: str, token: str, opener, *, require_unique: bool = False) -> tuple[float, float]:
     payload = _get_json(
         "/api/common/elastic/search",
         {
@@ -184,6 +189,8 @@ def _geocode(query: str, token: str, opener) -> tuple[float, float]:
         )
 
     try:
+        if require_unique and len({(float(row["LATITUDE"]), float(row["LONGITUDE"])) for row in results}) > 1:
+            raise OneMapNotFound(f"More than one place matches {query!r}; use a precise address/postcode or coordinates.")
         result = results[0]
         return float(result["LATITUDE"]), float(result["LONGITUDE"])
     except (KeyError, IndexError, TypeError, ValueError) as error:

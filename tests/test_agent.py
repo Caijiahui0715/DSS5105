@@ -11,6 +11,8 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from agent import build_agent
 from mock_db import create_database, create_mock_database
+from exchange import CurrencyConversionError, UnknownCurrencyError
+from models import SearchPreferences
 
 
 class ScriptedModel:
@@ -51,7 +53,7 @@ def run_agent(connection, model, *messages):
         model,
         MemorySaver(
             serde=JsonPlusSerializer(
-                allowed_msgpack_modules=[("models", "SearchPreferences")]
+                allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")]
             )
         ),
         listing_checker=active_links,
@@ -255,10 +257,148 @@ class AgentTest(unittest.TestCase):
             (result,) = run_agent(connection, model, request)
 
         shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
-        self.assertEqual([item["listing_id"] for item in shown], ["500029855", "24970286", "60186053"])
-        self.assertEqual(shown[1]["nearby_1km"], {"fnb": 1282, "hawker_centres": 8, "healthcare": 15})
+        # Food takes 70%, so the busiest food areas lead even over the cheapest room.
+        self.assertEqual([item["listing_id"] for item in shown], ["24970286", "60186053", "500029855"])
+        self.assertEqual(shown[0]["nearby_1km"], {"fnb": 1282, "hawker_centres": 8, "healthcare": 15})
         self.assertIn("排序偏好 均衡 → 吃饭方便", result["response"])
         self.assertIn("周边餐饮 70%", result["response"])
+
+    def test_space_request_or_minimum_area_can_start_a_search(self):
+        cases = (
+            ("我想要空间大一点的房子", {"ranking_priority": "space"}),
+            ("我要至少80平米", {"min_area_sqm": 80}),
+        )
+        for request, changes in cases:
+            model = ScriptedModel(
+                tool_calls(("search_listings", {"set": changes, "user_quote": request})),
+                AIMessage(content=""),
+            )
+            with self.subTest(request=request), closing(create_database()) as connection:
+                (result,) = run_agent(connection, model, request)
+                shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
+                self.assertEqual(len(shown), 3)
+                self.assertEqual(result["preferences"].rental_scope, None)
+                self.assertEqual(result["preferences"].max_price_sgd, None)
+                self.assertEqual(result["preferences"].min_bedrooms, None)
+                self.assertTrue(all(item["area_scope"] in {"floor_reported", "room_reported"} for item in shown))
+                self.assertIn("广告", result["response"])
+                self.assertNotIn("There are no search criteria", " ".join(result["trace"]))
+                if "ranking_priority" in changes:
+                    self.assertEqual(result["preferences"].min_area_sqm, None)
+                    self.assertIn("空间大小 70%", result["response"])
+                else:
+                    self.assertTrue(all(item["area_sqm"] >= 80 for item in shown))
+
+    def test_a_fixable_tool_error_is_explained_traced_and_retried(self):
+        def retry_with_iso_code(messages):
+            if "call again with its ISO 4217 code" not in messages[-1].content:
+                return AIMessage(content="换算失败。")
+            return tool_calls(("search_listings", {"budget": {"amount": 10000, "currency": "TWD"}, "user_quote": "预算一万台币"}))
+
+        conversion = {"original_amount": 10000, "original_currency": "TWD", "rate_to_sgd": "0.042", "rate_date": "2026-10-02", "amount_sgd": 420}
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 10000, "currency": "NTD"}, "user_quote": "预算一万台币"})),
+            retry_with_iso_code,
+            AIMessage(content="好的。"),
+        )
+        refused = UnknownCurrencyError("Exchange-rate service rejected NTD (HTTP 404)")
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", side_effect=[refused, conversion]):
+            (result,) = run_agent(connection, model, "预算一万台币")
+
+        self.assertIn("fix the arguments and call it\n  again before answering", model.calls[0][0].content)
+        self.assertEqual(result["preferences"].max_price_sgd, 420)
+        self.assertTrue(result["trace"][0].startswith(
+            '[tool] search_listings({"budget": {"amount": 10000, "currency": "NTD"}, "user_quote": "预算一万台币"}) '
+            "-> error: Exchange-rate service rejected NTD (HTTP 404): it is not a currency code"
+        ))
+        self.assertIn("[fx] 10000 TWD -> S$420 (rate 0.042, 2026-10-02)", result["trace"])
+        self.assertTrue(result["response"].startswith("已保存条件变更：每月最高预算 不限 → 420"))
+
+    def test_other_tool_errors_say_what_to_do_next(self):
+        model = ScriptedModel(
+            tool_calls(
+                ("search_listings", {"budget": {"amount": 5000, "currency": "CNY"}, "user_quote": "预算5000人民币"}),
+                ("get_listing_details", {"listing_id": "S999"}),
+                ("search_listings", {"set": {"max_price_sgd": "cheap"}}),
+            ),
+            AIMessage(content="抱歉，换算服务暂时不可用，请告诉我新币预算。"),
+        )
+        outage = CurrencyConversionError("Exchange-rate service is unavailable")
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", side_effect=outage):
+            (result,) = run_agent(connection, model, "预算5000人民币")
+
+        errors = [json.loads(observation)["error"] for observation in result["observations"]]
+        self.assertIn("ask for the budget in SGD", errors[0])
+        self.assertIn("Use a listing_id from shown_listings_in_display_order", errors[1])
+        self.assertTrue(errors[2].startswith("The arguments do not match the search_listings schema; fix them and call again."))
+        self.assertIsNone(result["preferences"].max_price_sgd)
+        self.assertTrue(all(" -> error: " in line for line in result["trace"]))
+
+    def test_echoed_defaults_keep_saved_criteria_and_clear_drops_one(self):
+        conversion = {"original_amount": 5000, "original_currency": "CNY", "rate_to_sgd": "0.18", "rate_date": "2026-10-02", "amount_sgd": 900}
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300, "district_code": "D05", "rental_scope": "room"}, "user_quote": "预算1300，D05，合租"})),
+            AIMessage(content="好的。"),
+            # A real model echoed every field at its default along with the new budget.
+            tool_calls(
+                (
+                    "search_listings",
+                    {"set": SearchPreferences().model_dump(mode="json"), "budget": {"amount": 5000, "currency": "RMB"}, "user_quote": "我的预算变成了5000rmb"},
+                )
+            ),
+            AIMessage(content="好的。"),
+            tool_calls(("search_listings", {"clear": ["district_code"], "user_quote": "地区不限"})),
+            AIMessage(content="好的。"),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=conversion) as convert:
+            _, budget, any_district = run_agent(connection, model, "预算1300，D05，合租", "我的预算变成了5000rmb", "地区不限")
+
+        convert.assert_called_once_with(5000, "RMB")
+        self.assertEqual(
+            budget["preferences"],
+            SearchPreferences(max_price_sgd=900, district_code="D05", rental_scope="room"),
+        )
+        self.assertTrue(budget["response"].startswith("已保存条件变更：每月最高预算 1300 → 900\n"))
+        self.assertEqual(any_district["preferences"], SearchPreferences(max_price_sgd=900, rental_scope="room"))
+        self.assertIn("地区 D05 → 不限", any_district["response"])
+
+    def test_mixed_rental_scopes_are_pointed_out(self):
+        request = "预算5000"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 5000}, "user_quote": request})),
+            AIMessage(content="这几套离 MRT 都很近。"),
+        )
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        observation = json.loads(result["observations"][0])
+        self.assertEqual(observation["rental_scope_mix"]["shown_scopes"], ["room"])
+        self.assertTrue(result["response"].endswith(
+            "提示：展示的都是合租房间；数据库里符合条件的整租有 128 套，最低 S$2,000。想只看一种，告诉我要整租还是合租即可。"
+        ))
+        # The note already asks the question, so the draft does not repeat it.
+        self.assertNotIn("rental_scope", observation["missing_refinements"])
+
+    def test_unstated_gender_rule_is_shown_as_needing_confirmation(self):
+        request = "我是女生，预算3000，整租"
+        model = ScriptedModel(
+            tool_calls(
+                (
+                    "search_listings",
+                    {"set": {"max_price_sgd": 3000, "tenant_gender": "female", "rental_scope": "entire_unit"}, "user_quote": request},
+                )
+            ),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        observation = json.loads(result["observations"][0])
+        self.assertEqual(observation["strict_matches"]["database_count"], 0)
+        self.assertTrue(all(item["unknown_conditions"] == ["tenant_gender"] for item in observation["needs_confirmation"]["listings"]))
+        self.assertIn("租客性别 不限 → 女性", result["response"])
+        self.assertIn("需确认（数据未注明）：租客性别限制", result["response"])
+        self.assertIn("放开「租客性别限制」", result["response"])
 
     def test_listing_details_report_the_nearby_counts(self):
         model = ScriptedModel(
@@ -429,7 +569,7 @@ class AgentTest(unittest.TestCase):
             [item.get("type") for item in second["input"][-3:]],
             ["reasoning", "function_call", "function_call_output"],
         )
-        self.assertTrue(result["response"].endswith("第一套是 S004，月租 S$850。"))
+        self.assertTrue(result["response"].endswith("第一套是 S010，月租 S$1280。"))
 
     def test_rejected_reply_is_retried_and_left_out_of_history(self):
         model = ScriptedModel(
@@ -545,10 +685,11 @@ class AgentTest(unittest.TestCase):
                 ).fetchone()
 
                 facts = json.loads(result["observations"][0])["strict_matches"]["listings"]
-                self.assertEqual(result["shown_listing_ids"], ["S004", "S001"])
+                # S001 is nearer MRT than S004, so it keeps first place with an unverified link.
+                self.assertEqual(result["shown_listing_ids"], ["S001", "S004"])
                 self.assertEqual(health, ("unknown", "http_403"))
-                self.assertEqual(facts[1]["link_note"], note)
-                self.assertIn("[links] S004 active; S001 unknown (http_403); 1 inactive skipped", result["trace"])
+                self.assertEqual(facts[0]["link_note"], note)
+                self.assertIn("[links] S001 unknown (http_403); S004 active; 1 inactive skipped", result["trace"])
                 self.assertEqual(result["response"].count(note), 1)
                 if reply:
                     self.assertTrue(result["response"].endswith(f"链接检查：\n- Synthetic Clementi Common Room（S001）：{note}。"))

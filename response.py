@@ -8,11 +8,12 @@ from models import (
     SearchPreferences,
     UserIntent,
 )
+from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, mrt_minutes
 
 
 _FACTOR_LABELS = {
-    "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮"},
-    "en": {"price": "price", "mrt": "MRT", "food": "nearby food"},
+    "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮", "commute": "到 NUS 通勤", "space": "空间大小"},
+    "en": {"price": "price", "mrt": "MRT", "food": "nearby food", "commute": "commute to NUS", "space": "space"},
 }
 
 _RESTRICTION_TEXT = {
@@ -26,6 +27,13 @@ _RESTRICTION_TEXT = {
         ("tenant_gender", "male_only"): "仅限男性租客",
         ("tenant_gender", "male_preferred"): "偏好男性租客",
         ("tenant_gender", "female_preferred"): "偏好女性租客",
+        ("tenant_gender", "no_restriction"): "不限租客性别",
+        ("furnishing", "fully_furnished"): "全家具",
+        ("furnishing", "partially_furnished"): "部分家具",
+        ("furnishing", "furnished_unspecified"): "带家具（程度未注明）",
+        ("furnishing", "unfurnished"): "无家具",
+        ("air_conditioning", "yes"): "有空调",
+        ("air_conditioning", "no"): "无空调",
         ("visitors", "not_allowed"): "不允许访客",
         ("smoking", "not_allowed"): "禁止吸烟",
     },
@@ -39,6 +47,13 @@ _RESTRICTION_TEXT = {
         ("tenant_gender", "male_only"): "male tenants only",
         ("tenant_gender", "male_preferred"): "male tenant preferred",
         ("tenant_gender", "female_preferred"): "female tenant preferred",
+        ("tenant_gender", "no_restriction"): "any tenant gender",
+        ("furnishing", "fully_furnished"): "fully furnished",
+        ("furnishing", "partially_furnished"): "partially furnished",
+        ("furnishing", "furnished_unspecified"): "furnished (level not stated)",
+        ("furnishing", "unfurnished"): "unfurnished",
+        ("air_conditioning", "yes"): "air conditioning",
+        ("air_conditioning", "no"): "no air conditioning",
         ("visitors", "not_allowed"): "no visitors",
         ("smoking", "not_allowed"): "no smoking",
     },
@@ -82,10 +97,16 @@ PREFERENCE_LABELS = {
         "district_code": "地区",
         "max_mrt_minutes": "MRT 步行上限（分钟）",
         "min_bedrooms": "最少卧室数",
+        "min_area_sqm": "最低出租面积（平方米）",
         "occupant_count": "入住人数",
         "move_in_date": "入住日期",
         "move_in_flexible": "入住日期灵活",
         "cooking_required": "需要做饭",
+        "tenant_gender": "租客性别",
+        "landlord_not_living_in": "不要房东同住",
+        "furnished_required": "需要家具",
+        "air_conditioning_required": "需要空调",
+        "max_commute_minutes": "到 NUS 公共交通上限（分钟）",
         "ranking_priority": "排序偏好",
     },
     "en": {
@@ -97,10 +118,16 @@ PREFERENCE_LABELS = {
         "district_code": "district",
         "max_mrt_minutes": "MRT walking limit (minutes)",
         "min_bedrooms": "minimum bedrooms",
+        "min_area_sqm": "minimum rental area (sqm)",
         "occupant_count": "occupants",
         "move_in_date": "move-in date",
         "move_in_flexible": "flexible move-in date",
         "cooking_required": "cooking required",
+        "tenant_gender": "tenant gender",
+        "landlord_not_living_in": "no live-in landlord",
+        "furnished_required": "furnished",
+        "air_conditioning_required": "air conditioning",
+        "max_commute_minutes": "public-transport limit to NUS (minutes)",
         "ranking_priority": "ranking priority",
     },
 }
@@ -114,8 +141,14 @@ _CONDITION_LABELS = {
         "property_types": "物业类型",
         "max_mrt_minutes": "MRT 步行时间",
         "min_bedrooms": "卧室数",
+        "min_area_sqm": "出租面积",
         "occupant_count": "可入住人数",
         "cooking_required": "做饭政策",
+        "tenant_gender": "租客性别限制",
+        "landlord_not_living_in": "房东是否同住",
+        "furnished_required": "家具",
+        "air_conditioning_required": "空调",
+        "max_commute_minutes": "到 NUS 通勤时间",
         "nearby_food": "周边餐饮",
     },
     "en": {
@@ -126,8 +159,14 @@ _CONDITION_LABELS = {
         "property_types": "property type",
         "max_mrt_minutes": "MRT walking time",
         "min_bedrooms": "bedrooms",
+        "min_area_sqm": "rental area",
         "occupant_count": "occupancy limit",
         "cooking_required": "cooking policy",
+        "tenant_gender": "tenant gender rule",
+        "landlord_not_living_in": "whether the landlord lives in",
+        "furnished_required": "furnishing",
+        "air_conditioning_required": "air conditioning",
+        "max_commute_minutes": "commute time to NUS",
         "nearby_food": "nearby food",
     },
 }
@@ -138,14 +177,56 @@ _CONDITION_STATUS_TEXT = {
 }
 
 _SOURCE_TEXT = {
-    "zh": {"listing_card": "房源卡片", "rechecked_listing": "重新采集的现价", "onemap_walking_route": "OneMap 步行路线", None: "无数据"},
-    "en": {"listing_card": "the listing card", "rechecked_listing": "the rechecked current price", "onemap_walking_route": "a OneMap walking route", None: "no data"},
+    "zh": {"listing_card": "房源卡片", "rechecked_listing": "重新采集的现价", "onemap_walking_route": "OneMap 步行路线", "onemap_public_transport_route": "OneMap 公共交通路线", None: "无数据"},
+    "en": {"listing_card": "the listing card", "rechecked_listing": "the rechecked current price", "onemap_walking_route": "a OneMap walking route", "onemap_public_transport_route": "a OneMap public-transport route", None: "no data"},
 }
 
 _FACTOR_FORMULAS = {
-    "zh": {"price": "月租 ÷ 预算上限", "mrt": "MRT 步行分钟 ÷ 步行上限（只要求离 MRT 近时按 10 分钟）", "food": "按 1 公里内餐饮和小贩中心数在全部房源里的排位"},
-    "en": {"price": "rent ÷ budget", "mrt": "MRT walking minutes ÷ walking limit (10 minutes when only MRT priority is stated)", "food": "position among all listings on F&B and hawker centres within 1 km"},
+    "zh": {
+        "price": "月租 ÷ 预算上限",
+        "mrt": "到已通车 MRT 站的步行米数 ÷ 参考距离（米数上限或分钟上限 × 85 米，两者取小；均未指定时 850 米）",
+        "commute": "到 NUS 公共交通分钟 ÷ 通勤上限（没给上限时 45 分钟）",
+        "food": "按 1 公里内餐饮和小贩中心数在全部房源里的排位",
+        "space": "同一出租方式和面积口径内，广告面积从大到小的百分位（0 最大）",
+    },
+    "en": {
+        "price": "rent ÷ budget",
+        "mrt": "walking metres to an operating MRT station ÷ reference (metres limit or minutes × 85 m, the smaller when both are given; 850 m without either)",
+        "commute": "public-transport minutes to NUS ÷ commute limit (45 minutes without a limit)",
+        "food": "position among all listings on F&B and hawker centres within 1 km",
+        "space": "descending area percentile within the same rental type and area scope (0 is largest)",
+    },
 }
+_NO_DATA_FACTOR = {
+    "zh": {"mrt": "没有数据或车站尚未通车，按参考距离计 1", "commute": "没有数据，按上限计 1", "food": "没有数据，按中间排位计 0.5", "space": "出租面积未注明或口径不符，按中间排位计 0.5"},
+    "en": {"mrt": "no data or the station is not open yet, so it counts as the reference, 1", "commute": "no data, so it counts as the limit, 1", "food": "no data, so it counts as the middle position, 0.5", "space": "rental area is unstated or its scope does not match; counts as the middle position, 0.5"},
+}
+
+
+_AMENITY_LABELS = {
+    "food_places": ("餐饮点", "F&B places"), "hawker": ("小贩中心", "hawker centres"),
+    "libraries": ("图书馆", "libraries"), "sports": ("体育设施", "sports facilities"),
+    "healthcare": ("医疗设施", "healthcare places"), "community": ("民众俱乐部", "community clubs"),
+    "schools": ("周边学校", "nearby schools"), "school_distance": ("最近学校步行距离", "walk to the nearest school"),
+}
+for language, index in (("zh", 0), ("en", 1)):
+    labels = {field: pair[index] for field, pair in EXTRA_CONDITION_LABELS.items()}
+    PREFERENCE_LABELS[language].update(labels)
+    _CONDITION_LABELS[language].update(labels)
+    _FACTOR_LABELS[language].update({name: pair[index] for name, pair in _AMENITY_LABELS.items()})
+    _CONDITION_LABELS[language].update({name: pair[index] for name, pair in _AMENITY_LABELS.items()})
+    for name in AMENITY_FIELDS:
+        label = _AMENITY_LABELS[name][index]
+        _FACTOR_FORMULAS[language][name] = f"按{label}数量在全部有数据房源里的排位（越小选择越多）" if language == "zh" else f"descending position among all listings with {label} counts (lower means more choice)"
+        _NO_DATA_FACTOR[language][name] = _NO_DATA_FACTOR[language]["food"]
+    _FACTOR_FORMULAS[language]["school_distance"] = "最近学校步行分钟 ÷ 参考上限（未指定时 10 分钟）" if language == "zh" else "walking minutes to the nearest school ÷ limit (10 minutes without a limit)"
+    _NO_DATA_FACTOR[language]["school_distance"] = _NO_DATA_FACTOR[language]["commute"]
+    _RESTRICTION_TEXT[language].update({
+        ("pets", "allowed"): "允许宠物" if language == "zh" else "pets allowed",
+        ("pets", "not_allowed"): "不允许宠物" if language == "zh" else "no pets",
+        ("private_bathroom", "yes"): "独立卫浴" if language == "zh" else "private bathroom",
+        ("private_bathroom", "no"): "无独立卫浴" if language == "zh" else "no private bathroom",
+    })
 
 
 def render_response(
@@ -197,6 +278,11 @@ def render_response(
                 ),
             ]
         )
+        if commute := _commute_text(listing, language):
+            lines.append(_text(language, f"   到 NUS：{commute}", f"   To NUS: {commute}"))
+        lines.append(_text(language, f"   面积：{_area_text(listing, language)}", f"   Area: {_area_text(listing, language)}"))
+        if listing.get("bathrooms") is not None:
+            lines.append(_text(language, f"   卫生间：{listing['bathrooms']} 个", f"   Bathrooms: {listing['bathrooms']}"))
 
         factors = item.get("factors", {})
         weights = [
@@ -324,9 +410,9 @@ def render_comparison(
         )
 
     with_mrt = [
-        (listing, _mrt_minutes(listing))
+        (listing, mrt_minutes(listing))
         for listing in listings
-        if _mrt_minutes(listing) is not None
+        if mrt_minutes(listing) is not None
     ]
     if with_mrt:
         closest, minutes = min(with_mrt, key=lambda item: item[1])
@@ -342,7 +428,6 @@ def render_listing_details(
     language: ResponseLanguage = "zh",
 ) -> str:
     price = listing.get("rent_monthly_sgd")
-    area = listing.get("area_sqm")
     bedrooms = listing.get("bedrooms")
     bathrooms = listing.get("bathrooms")
     occupants = listing.get("tenant_count_reported")
@@ -353,11 +438,12 @@ def render_listing_details(
         _text(language, f"- 出租范围：{_display(listing.get('rental_scope'), '未知')}", f"- Rental scope: {_display(listing.get('rental_scope'), 'unknown')}"),
         _text(language, f"- 物业类型：{_display(listing.get('property_type'), '未知')}", f"- Property type: {_display(listing.get('property_type'), 'unknown')}"),
         _text(language, f"- 卧室/卫生间：{bedrooms if bedrooms is not None else '未知'} / {bathrooms if bathrooms is not None else '未知'}", f"- Bedrooms/bathrooms: {bedrooms if bedrooms is not None else 'unknown'} / {bathrooms if bathrooms is not None else 'unknown'}"),
-        _text(language, f"- 面积：{f'{area:,.2f}㎡' if isinstance(area, (int, float)) else '未注明'}", f"- Area: {f'{area:,.2f} sqm' if isinstance(area, (int, float)) else 'not stated'}"),
+        _text(language, f"- 面积：{_area_text(listing, language)}", f"- Area: {_area_text(listing, language)}"),
         _text(language, f"- 最大入住人数：{occupants if occupants is not None else '未注明'}", f"- Maximum occupants: {occupants if occupants is not None else 'not stated'}"),
         _text(language, f"- 地区：{listing.get('district_code') or '未知'}", f"- District: {listing.get('district_code') or 'unknown'}"),
         _text(language, f"- 地址：{listing.get('address') or '未知'}", f"- Address: {listing.get('address') or 'unknown'}"),
         _text(language, f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing, language)}", f"- MRT: {listing.get('mrt_station') or 'unknown station'}, {_mrt_text(listing, language)}"),
+        _text(language, f"- 到 NUS：{_commute_text(listing, language)}", f"- To NUS: {_commute_text(listing, language)}") if listing.get("commute_nus_minutes") is not None else "",
         _text(language, f"- 入住状态：{_availability_text(listing, language)}", f"- Availability: {_availability_text(listing, language)}"),
         _nearby_text(listing, language),
         _text(language, f"- 链接状态：{_link_status_text(listing, language)}", f"- Link status: {_link_status_text(listing, language)}"),
@@ -478,11 +564,12 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
     ]
     for name, factor in explanation["factors"].items():
         weight = round(factor["weight"] * 100)
+        value = _NO_DATA_FACTOR[language][name] if factor.get("no_data") else factor["ratio"]
         lines.append(
             _text(
                 language,
-                f"- {_FACTOR_LABELS['zh'][name]}：{_FACTOR_FORMULAS['zh'][name]} = {factor['ratio']}，权重 {weight}%",
-                f"- {_FACTOR_LABELS['en'][name]}: {_FACTOR_FORMULAS['en'][name]} = {factor['ratio']}, weight {weight}%",
+                f"- {_FACTOR_LABELS['zh'][name]}：{_FACTOR_FORMULAS['zh'][name]} = {value}，权重 {weight}%",
+                f"- {_FACTOR_LABELS['en'][name]}: {_FACTOR_FORMULAS['en'][name]} = {value}, weight {weight}%",
             )
         )
     if explanation["conditions"]:
@@ -494,11 +581,13 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
         lines.append(_text(language, f"- 条件核对：{checks}", f"- Conditions: {checks}"))
     rent_source = _SOURCE_TEXT[language][explanation["sources"]["rent_monthly_sgd"]]
     mrt_source = _SOURCE_TEXT[language][explanation["sources"]["mrt_minutes"]]
+    commute_source = explanation["sources"].get("commute_nus_minutes")
+    commute = _text(language, f"，到 NUS 通勤时间来自{_SOURCE_TEXT['zh'][commute_source]}", f", commute to NUS from {_SOURCE_TEXT['en'][commute_source]}") if commute_source else ""
     lines.append(
         _text(
             language,
-            f"- 数据来源：月租来自{rent_source}，MRT 时间来自{mrt_source}；采集时间 {explanation['collected_at']}",
-            f"- Sources: rent from {rent_source}, MRT time from {mrt_source}; collected at {explanation['collected_at']}",
+            f"- 数据来源：月租来自{rent_source}，MRT 时间来自{mrt_source}{commute}；采集时间 {explanation['collected_at']}",
+            f"- Sources: rent from {rent_source}, MRT time from {mrt_source}{commute}; collected at {explanation['collected_at']}",
         )
     )
     rent, card_rent = explanation["rent_monthly_sgd"], explanation.get("rent_monthly_sgd_card")
@@ -596,12 +685,20 @@ def render_saved_preferences(preferences: SearchPreferences, language: ResponseL
 
 
 def _preference_value(value: object, language: ResponseLanguage) -> str:
+    if hasattr(value, "model_dump"):
+        value = value.model_dump()
+    if isinstance(value, dict) and "radius_m" in value:
+        anchor = value.get("query") or f"({value.get('latitude')}, {value.get('longitude')})"
+        return _text(language, f"{anchor} 直线 {value['radius_m']:g} 米内", f"within {value['radius_m']:g} m straight-line of {anchor}")
     if value is None:
         return _text(language, "不限", "any")
     if isinstance(value, bool):
         return _text(language, "是" if value else "否", "yes" if value else "no")
     if isinstance(value, (list, tuple)):
-        return ("、" if language == "zh" else ", ").join(value)
+        return ("、" if language == "zh" else ", ").join(_preference_value(item, language) for item in value)
+    if value in _AMENITY_LABELS:
+        label = _AMENITY_LABELS[value]
+        return _text(language, f"{label[0]}优先", f"prioritise {label[1]}")
     label = {
         "entire_unit": ("整租", "whole unit"),
         "room": ("合租/单间", "room"),
@@ -609,23 +706,83 @@ def _preference_value(value: object, language: ResponseLanguage) -> str:
         "price": ("价格优先", "lower price"),
         "mrt": ("离 MRT 近", "nearer MRT"),
         "amenities": ("吃饭方便", "more food nearby"),
+        "commute": ("到 NUS 通勤近", "shorter commute to NUS"),
+        "space": ("空间大优先", "more space"),
+        "female": ("女性", "female"),
+        "male": ("男性", "male"),
+        "mixed": ("男女同住", "mixed male and female"),
+        "fully_furnished": ("全家具", "fully furnished"),
+        "partially_furnished": ("部分家具", "partly furnished"),
+        "unfurnished": ("无家具", "unfurnished"),
+        "furnished_unspecified": ("带家具，程度未注明", "furnished, level unstated"),
+        "light": ("允许轻炊或不限烹饪", "light or unrestricted cooking"),
+        "full": ("不限烹饪", "unrestricted cooking"),
+        "none": ("禁止做饭", "cooking prohibited"),
+        "asking": ("要价", "asking price"),
+        "negotiable": ("可议价", "negotiable"),
+        "starting_from": ("起价", "starting price"),
+        "guide_price": ("指导价", "guide price"),
     }.get(value)
     return _text(language, *label) if label else str(value)
 
 
+def _area_text(listing: dict, language: ResponseLanguage) -> str:
+    area = listing.get("area_sqm")
+    if not isinstance(area, (int, float)) or area <= 0:
+        return _text(language, "未注明", "not stated")
+    scope = {
+        "floor_reported": ("广告整套面积", "advertised whole-home area"),
+        "room_reported": ("广告房间面积", "advertised room area"),
+    }.get(listing.get("area_scope"), ("广告面积，范围未注明", "advertised area, scope unstated"))
+    text = _text(language, f"{area:,.2f}㎡（{scope[0]}）", f"{area:,.2f} sqm ({scope[1]})")
+    if listing.get("rental_scope") == "room" and listing.get("area_scope") == "floor_reported":
+        text += _text(language, "；房间面积未注明", "; room area not stated")
+    return text
+
+
 def _mrt_text(listing: dict, language: ResponseLanguage) -> str:
-    minutes = _mrt_minutes(listing)
+    if listing.get("mrt_operation_status") == "under_construction":
+        return _text(language, "最近的车站尚未通车，不计入 MRT 步行时间", "the nearest station is not open yet, so no MRT walking time counts")
+    minutes = mrt_minutes(listing)
     if listing.get("mrt_walk_minutes") is not None:
         distance = listing.get("mrt_walk_distance_m")
         suffix = _text(language, f"（{distance:,} 米）", f" ({distance:,} m)") if isinstance(distance, (int, float)) else ""
         return _text(language, f"OneMap 步行约 {minutes} 分钟{suffix}", f"about {minutes} minutes on foot via OneMap{suffix}")
 
-    return _text(language, f"房源描述约 {minutes} 分钟", f"about {minutes} minutes according to the listing") if minutes is not None else _text(language, "时间未知", "walking time unknown")
+    distance = listing.get("mrt_distance_m")
+    suffix = _text(language, f"（{distance:,.0f} 米）", f" ({distance:,.0f} m)") if isinstance(distance, (int, float)) else ""
+    return _text(language, f"房源描述约 {minutes} 分钟{suffix}", f"about {minutes} minutes according to the listing{suffix}") if minutes is not None else _text(language, "时间未知", "walking time unknown")
 
 
-def _mrt_minutes(listing: dict) -> int | float | None:
-    walked = listing.get("mrt_walk_minutes")
-    return walked if walked is not None else listing.get("mrt_minutes_reported")
+def _commute_text(listing: dict, language: ResponseLanguage) -> str:
+    minutes = listing.get("commute_nus_minutes")
+    if minutes is None:
+        return ""
+    return _text(language, f"公共交通约 {minutes:g} 分钟", f"about {minutes:g} minutes by public transport")
+
+
+def render_rental_scope_mix(mix: dict, language: ResponseLanguage = "zh") -> str:
+    """Name the kind of listing shown when the user has not chosen a whole unit or a room."""
+    whole_unit, room = mix["entire_unit"], mix["room"]
+    if mix["shown_scopes"] == ["room"]:
+        text = _text(
+            language,
+            f"提示：展示的都是合租房间；数据库里符合条件的整租有 {whole_unit['database_count']} 套，最低 S${whole_unit['cheapest_sgd']:,}。",
+            f"Note: the listings shown are all rooms; the database has {whole_unit['database_count']} whole units meeting your criteria, from S${whole_unit['cheapest_sgd']:,}.",
+        )
+    elif mix["shown_scopes"] == ["entire_unit"]:
+        text = _text(
+            language,
+            f"提示：展示的都是整租；数据库里符合条件的合租房间有 {room['database_count']} 套，最低 S${room['cheapest_sgd']:,}。",
+            f"Note: the listings shown are all whole units; the database has {room['database_count']} rooms meeting your criteria, from S${room['cheapest_sgd']:,}.",
+        )
+    else:
+        text = _text(
+            language,
+            f"提示：结果里整租和合租房间混在一起（数据库里整租 {whole_unit['database_count']} 套、合租 {room['database_count']} 套）。",
+            f"Note: the results mix whole units and rooms (the database has {whole_unit['database_count']} whole units and {room['database_count']} rooms).",
+        )
+    return text + _text(language, "想只看一种，告诉我要整租还是合租即可。", " Tell me whether you want a whole unit or a room to see only one kind.")
 
 
 def _render_relaxations(relaxations: list[RelaxationSuggestion], language: ResponseLanguage) -> str:

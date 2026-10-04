@@ -8,7 +8,7 @@ import re
 import sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import (
     AIMessage,
@@ -32,10 +32,11 @@ from decision import (
     explain_listing,
     load_source_evidence,
     mrt_minutes,
+    rental_scope_mix,
     search_with_unknowns,
     whole,
 )
-from exchange import CurrencyConversionError, convert_to_sgd
+from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
 from graph import (
     _CYRILLIC,
     _HAN,
@@ -49,6 +50,8 @@ from graph import (
     _text,
 )
 from models import ResponseLanguage, SearchPreferences
+from onemap import OneMapError
+from parser import PREFERENCE_GUIDANCE
 from response import (
     _availability_text,
     _check_summary_text,
@@ -62,6 +65,7 @@ from response import (
     render_listing_explanation,
     render_needs_confirmation,
     render_preference_changes,
+    render_rental_scope_mix,
     render_response,
     render_saved_preferences,
 )
@@ -70,7 +74,10 @@ from tools import (
     check_listing_url,
     extract_restrictions,
     get_listings_by_ids,
+    mrt_distance_m,
     rank_listings,
+    location_distance_m,
+    resolve_search_location,
     validate_ranked_listings,
 )
 
@@ -101,6 +108,9 @@ Facts
   details, explain a ranking, compare, shortlist, exclude or restore listings.
 
 Using tools
+- When a tool returns an error that says how to fix the call, fix the arguments and call it
+  again before answering. Tell the user about a failure only when the error says to ask them
+  or the corrected call fails too.
 - Search as soon as the user gives at least one criterion instead of asking questions first.
   Afterwards you may mention one item from missing_refinements.
 - Resolve "the second one" with shown_listings_in_display_order, "this one" with
@@ -110,6 +120,9 @@ Using tools
   details of another in the same turn.
 - When there are no or few strict matches, use decision_context to explain which condition
   blocks results and whether that is only because the data does not state it.
+- For a listing under needs_confirmation, name each requirement in its unknown_conditions and
+  say the listing does not state it, so the user should ask the publisher; for example, a room
+  whose tenant gender rule is not stated may or may not accept them.
 - When the user can spend more, is willing to compromise, or asks for better options without
   naming a value, do not ask first and do not save anything. For budget, call explore_budgets;
   for other conditions, preview a search. Say plainly whether the budget is the bottleneck
@@ -123,7 +136,8 @@ Using tools
   suggestions with checked counts, so do not repeat them. If the user accepts one, for example
   好 or 接受, save its suggested value with the user's words as user_quote.
 - Budgets without a currency, including the generic 元, are SGD; 新币 and 新加坡元 are SGD;
-  人民币 and RMB are CNY. A bare $ or ¥ is ambiguous, so ask. Pass non-SGD amounts as budget.
+  人民币 and RMB are CNY. A bare $ or ¥ is ambiguous, so ask. Pass non-SGD amounts as budget
+  with the ISO 4217 code, for example CNY.
 - 整租 or a whole unit is rental_scope=entire_unit; 合租, 单间 or a room is rental_scope=room.
   Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
   or studio; district codes look like D05.
@@ -132,10 +146,31 @@ Using tools
   hdb_flat; 有地住宅 or landed means the house types. Property type does not decide rental_scope.
 - Resolve relative move-in dates from today. Set cooking_required only when cooking is
   required. When the user accepts any room type, clear room_type and set room_type_flexible.
+- In search_listings, put only the fields that change in set; never echo saved or empty fields.
+  To drop a saved condition (any district, cooking no longer needed, back to balanced ranking),
+  name it in clear.
+- Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
+  female means female, 我是男生 means male, a male-female couple or group means mixed. Never infer
+  gender from a name or writing style.
+- 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
+  furnished_required; 要空调 or aircon sets air_conditioning_required.
+- Commute times exist only for public transport to NUS (Kent Ridge campus). 到 NUS 40 分钟以内
+  sets max_commute_minutes=40; a short commute to NUS sets ranking_priority=commute.
+  For any other destination, say commute times are only available for NUS and set nothing.
+- Ranking always weighs MRT walking distance, and rent when there is a budget; a named priority
+  gets 70% of the weight. A listing without MRT data or near a station that is not open yet
+  counts as a 10-minute walk.
+- 空间大一点, 宽敞, a larger room/home or spacious sets ranking_priority=space. This is enough
+  to search immediately; do not invent a minimum area, bedroom count or whole-unit preference.
+  Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
+  Space ranks sizes within the same rental_scope and area_scope. Always state which area is
+  advertised; floor_reported on a room listing is the whole home's size, not the room's size.
 - Present listings in the order and numbering the tools give. Saved preference changes,
-  shortlist changes, exclusions and relaxation suggestions are shown to the user automatically,
-  so do not repeat them.
+  shortlist changes, exclusions, relaxation suggestions and the rental_scope_mix note (whether
+  the shown listings are rooms or whole units) are shown to the user automatically, so do not
+  repeat them; you may ask whether the user wants a whole unit or a room.
 """
+_SYSTEM_PROMPT += PREFERENCE_GUIDANCE
 
 _MOVE_IN_NOTE = (
     "入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
@@ -196,7 +231,11 @@ class SearchArgs(BaseModel):
 
     set: SearchPreferences = Field(
         default_factory=SearchPreferences,
-        description="Only the preference fields to change; null clears a field.",
+        description="Only the preference fields that change to a new value; leave every other field out. Null or default values here change nothing.",
+    )
+    clear: list[Literal[tuple(SearchPreferences.model_fields)]] = Field(
+        default_factory=list,
+        description="Saved preference fields to drop back to 'any', for example district_code when the user no longer minds the district.",
     )
     budget: Budget | None = Field(None, description="A budget stated in a currency other than SGD.")
     preview: bool = Field(False, description="True only for hypothetical what-if questions; saved preferences stay unchanged.")
@@ -286,25 +325,51 @@ def build_agent(
     def one_listing(listing_id: str):
         listings = get_listings_by_ids(connection, _clean_ids([listing_id]))
         if not listings:
-            raise ToolError(f"Listing {listing_id} was not found.")
+            raise ToolError(
+                f"Listing {listing_id} was not found. Use a listing_id from shown_listings_in_display_order "
+                "or the shortlist in the conversation state, or ask the user which listing they mean."
+            )
         return listings[0]
 
     def search(work, args: SearchArgs):
         current = work["preferences"]
+        defaults = SearchPreferences()
+        # Defaults in `set` are ignored: models often echo every field, which would wipe saved
+        # criteria. Dropping a criterion goes through `clear`.
         changes = {
             field: value
             for field, value in args.set.model_dump(exclude_unset=True).items()
-            if getattr(current, field) != value
+            if value != getattr(defaults, field) and getattr(current, field) != value
         }
+        changes.update(
+            {
+                field: getattr(defaults, field)
+                for field in args.clear
+                if getattr(current, field) != getattr(defaults, field)
+            }
+        )
         conversion = None
         if args.budget:
             amount = args.budget.amount
             if args.budget.currency != "SGD":
                 try:
                     conversion = convert_to_sgd(amount, args.budget.currency)
+                except UnknownCurrencyError as error:
+                    raise ToolError(
+                        f"{error}: it is not a currency code the service knows. If the user named a "
+                        "currency, call again with its ISO 4217 code (for example CNY for RMB or 人民币); "
+                        "if the currency is unclear, ask the user. Do not search with the unconverted amount."
+                    ) from error
                 except (CurrencyConversionError, ValueError) as error:
-                    raise ToolError(f"{error}. Do not search with the unconverted amount.") from error
+                    raise ToolError(
+                        f"{error}. The budget cannot be converted right now: tell the user and ask for the "
+                        "budget in SGD. Do not search with the unconverted amount."
+                    ) from error
                 amount = conversion["amount_sgd"]
+                work["trace"].append(
+                    f"[fx] {conversion['original_amount']} {conversion['original_currency']} -> "
+                    f"S${amount} (rate {conversion['rate_to_sgd']}, {conversion['rate_date']})"
+                )
             if amount != current.max_price_sgd:
                 changes["max_price_sgd"] = amount
         # With nothing saved yet there is nothing to preview against, so the first search is saved.
@@ -314,7 +379,12 @@ def build_agent(
                 "Saving preference changes needs user_quote copied from the latest user message. "
                 "Use preview=true to only look."
             )
-        preferences = current.model_copy(update=changes)
+        preferences = SearchPreferences.model_validate({**current.model_dump(), **changes})
+        try:
+            preferences = resolve_search_location(preferences)
+        except OneMapError as error:
+            raise ToolError(f"Cannot resolve the requested place: {error}. Ask for a more precise address/postcode or user-supplied coordinates; do not invent them.") from error
+        changes = {field: getattr(preferences, field) for field in changes}
         if not _has_search_criteria(preferences):
             raise ToolError("There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time.")
 
@@ -335,6 +405,7 @@ def build_agent(
         pending_shown = checked(work, pending_check) if pending_check else []
         context = diagnose_conditions(connection, preferences, excluded)
         language = work["response_language"]
+        scope_mix = rental_scope_mix(preferences, strict, [item["listing"] for item in shown])
 
         relaxations = []
         if not preview:
@@ -345,7 +416,12 @@ def build_agent(
             if not shown:
                 relaxations = analyze_relaxations(connection, preferences, excluded, listing_checker)
             work["relaxations"] = relaxations
-            work["footers"] = [] if shown else [_render_relaxations(relaxations, language)]
+            # Without matches to show, say what to relax; with them, whether they are rooms or whole units.
+            work["footers"] = (
+                [_render_relaxations(relaxations, language)] if not shown
+                else [render_rental_scope_mix(scope_mix, language)] if scope_mix
+                else []
+            )
             work["last_search"] = {
                 "strict_database_count": len(strict),
                 "needs_confirmation_database_count": len(pending),
@@ -371,7 +447,8 @@ def build_agent(
                 check_summary=pending_check and pending_check["summary"],
             )
         )
-        missing = _open_preferences(preferences)
+        # The rental scope note already asks whole unit or room.
+        missing = [field for field in _open_preferences(preferences) if not (scope_mix and field == "rental_scope")]
         if not shown:
             parts.append(render_decision_context(context, language))
         elif missing:
@@ -384,22 +461,23 @@ def build_agent(
         return {
             "preview": preview,
             "preferences": preferences.model_dump(mode="json", exclude_defaults=True),
-            "saved_changes": {} if preview else changes,
+            "saved_changes": {} if preview else {field: preferences.model_dump(mode="json")[field] for field in changes},
             "budget_conversion": conversion,
             "strict_matches": {
                 "database_count": len(strict),
                 "check_summary": strict_check["summary"],
-                "listings": [_facts(item, language, position) for position, item in enumerate(shown, 1)],
+                "listings": [_facts(item, language, position, preferences) for position, item in enumerate(shown, 1)],
             },
             "needs_confirmation": {
                 "database_count": len(pending),
                 "check_summary": pending_check and pending_check["summary"],
                 "listings": [
-                    _facts(item, language, position)
+                    _facts(item, language, position, preferences)
                     for position, item in enumerate(pending_shown, len(shown) + 1)
                 ],
             },
             "decision_context": context,
+            "rental_scope_mix": scope_mix,
             "relaxation_suggestions": relaxations,
             "missing_refinements": missing,
             "move_in_date_cannot_be_verified": preferences.move_in_date is not None,
@@ -411,7 +489,7 @@ def build_agent(
         levels = {budget for budget in args.budgets if budget > 0}
         levels = levels or set(default_budget_levels(saved) if saved else [])
         if not levels:
-            raise ToolError("There is no saved budget to start from. Ask for a budget or pass budgets.")
+            raise ToolError("There is no saved budget to start from. Pass budgets to compare, or ask the user for a budget.")
         rows = budget_ladder(
             connection,
             preferences,
@@ -467,7 +545,11 @@ def build_agent(
         listings = get_listings_by_ids(connection, _clean_ids(args.listing_ids) or work["shortlisted_listing_ids"])
         ranked = checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings)))
         if len(ranked) < 2:
-            raise ToolError("At least two existing listings with working links are needed; the shortlist may have fewer.")
+            raise ToolError(
+                "At least two existing listings with working links are needed; the shortlist may have fewer. "
+                "Pass two or more listing_ids from shown_listings_in_display_order, or tell the user the "
+                "shortlist has fewer than two listings."
+            )
         rents = {item["listing"]["listing_id"]: whole(item["listing"]["rent_monthly_sgd"]) for item in ranked}
         minutes = {
             item["listing"]["listing_id"]: mrt_minutes(item["listing"])
@@ -655,12 +737,14 @@ def build_agent(
             work["trace"].append(f"[tool] {call['name']}({json.dumps(call['args'], ensure_ascii=False, default=str)})")
             try:
                 if handler is None:
-                    raise ToolError(f"Unknown tool: {call['name']}")
+                    raise ToolError(f"Unknown tool: {call['name']}. Use one of: {', '.join(tools)}.")
                 observation = handler(work, schema.model_validate(call["args"]))
-            except (ToolError, ValidationError) as error:
+            except ToolError as error:
                 observation = {"error": str(error)[:600]}
+            except ValidationError as error:
+                observation = {"error": f"The arguments do not match the {call['name']} schema; fix them and call again. {error}"[:600]}
             if "error" in observation:
-                work["trace"][line] += " -> error"
+                work["trace"][line] += f" -> error: {observation['error'][:200]}"
             content = json.dumps(observation, ensure_ascii=False, default=str)
             work["observations"].append(content)
             messages.append(ToolMessage(content=content, tool_call_id=call["id"], name=call["name"]))
@@ -744,7 +828,7 @@ def _tool_spec(name: str, schema: type[BaseModel]) -> dict:
     return spec
 
 
-def _facts(item: dict, language: ResponseLanguage, position: int | None = None) -> dict:
+def _facts(item: dict, language: ResponseLanguage, position: int | None = None, preferences: SearchPreferences | None = None) -> dict:
     listing = item["listing"]
     facts = {
         "position": position,
@@ -754,10 +838,15 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None) 
         "room_type": listing.get("room_type"),
         "rental_scope": listing.get("rental_scope"),
         "property_type": listing.get("property_type"),
+        "area_sqm": listing.get("area_sqm"),
+        "area_scope": listing.get("area_scope"),
         "district_code": listing.get("district_code"),
         "mrt_station": listing.get("mrt_station"),
+        "mrt_station_not_open_yet": listing.get("mrt_operation_status") == "under_construction" or None,
         "mrt_minutes": mrt_minutes(listing),
+        "mrt_distance_m": whole(mrt_distance_m(listing)),
         "mrt_from_onemap": listing.get("mrt_walk_minutes") is not None,
+        "commute_nus_minutes": whole(listing.get("commute_nus_minutes")),
         "availability_note": _availability_text(listing, language),
         "nearby_1km": {
             key: listing[field]
@@ -774,6 +863,17 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None) 
         "warnings": item.get("warnings"),
         "rank_value": item.get("rank_value"),
     }
+    facts.update({field: listing.get(field) for field in (
+        "bathrooms", "private_bathroom", "pets_policy", "rent_price_type", "address", "street_name", "postcode",
+        "latitude", "longitude", "coord_source", "coord_error_m", "listed_date", "gender_preference",
+        "pg_school_count", "pg_school_nearest_walk_m", "pg_school_nearest_walk_min", "pg_mrt_count", "pg_mrt_nearest_walk_m",
+    )})
+    facts["nearby_facility_counts"] = {field: listing.get(field) for field in (
+        "poi_fnb_1km", "poi_hawker_1km", "poi_library_1km", "poi_sport_1km", "poi_healthcare_1km", "poi_community_1km",
+    ) if listing.get(field) is not None}
+    if preferences and preferences.nearby_location:
+        distance = location_distance_m(listing, preferences.nearby_location)
+        facts["distance_to_reference_m"] = round(distance, 1) if distance is not None else None
     return {key: value for key, value in facts.items() if value not in (None, [], {})}
 
 

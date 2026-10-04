@@ -110,11 +110,13 @@ _HAN = re.compile(r"[\u4e00-\u9fff]")
 _REFINEMENT_LABELS = {
     "zh": {
         "max_price_sgd": "每月最高预算",
+        "rental_scope": "想整租还是合租（租一个房间）",
         "room_type": "房型（例如 Common Room、Master Room 或 Shared Room）",
         "move_in_date": "计划入住时间",
     },
     "en": {
         "max_price_sgd": "your maximum monthly budget",
+        "rental_scope": "whether you want a whole unit or a room in a shared home",
         "room_type": "a room type such as Common Room, Master Room, or Shared Room",
         "move_in_date": "your planned move-in date",
     },
@@ -1034,7 +1036,10 @@ def _open_preferences(preferences: SearchPreferences) -> list[str]:
     missing = []
     if preferences.max_price_sgd is None:
         missing.append("max_price_sgd")
-    if preferences.room_type is None and not preferences.room_type_flexible:
+    # Whole unit or room first: the data states it for almost every listing, room type for about a third.
+    if preferences.rental_scope is None and preferences.room_type is None:
+        missing.append("rental_scope")
+    elif preferences.rental_scope == "room" and preferences.room_type is None and not preferences.room_type_flexible:
         missing.append("room_type")
     if preferences.move_in_date is None and not preferences.move_in_flexible:
         missing.append("move_in_date")
@@ -1043,19 +1048,9 @@ def _open_preferences(preferences: SearchPreferences) -> list[str]:
 
 def _has_search_criteria(preferences: SearchPreferences) -> bool:
     return any(
-        (
-            preferences.max_price_sgd is not None,
-            preferences.room_type is not None,
-            preferences.rental_scope is not None,
-            bool(preferences.property_types),
-            preferences.district_code is not None,
-            preferences.max_mrt_minutes is not None,
-            preferences.min_bedrooms is not None,
-            preferences.occupant_count is not None,
-            preferences.move_in_date is not None,
-            preferences.cooking_required,
-            preferences.ranking_priority != "balanced",
-        )
+        value != SearchPreferences.model_fields[field].default
+        for field, value in preferences.model_dump().items()
+        if field not in {"room_type_flexible", "move_in_flexible"}
     )
 
 

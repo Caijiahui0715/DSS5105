@@ -1,12 +1,15 @@
 import json
 import re
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+from math import asin, cos, isfinite, radians, sin, sqrt
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from models import (
+    AMENITY_FIELDS,
     Listing,
     ListingCheckSummary,
     ListingValidationResult,
@@ -15,37 +18,171 @@ from models import (
     RestrictionSummary,
     SearchPreferences,
 )
-from onemap import OneMapNotFound, calculate_mrt_walk, load_token
+from onemap import OneMapNotFound, calculate_mrt_walk, geocode_location, load_token
 
 
-_PRIORITY_BOOST = 7 / 3
+# A named ranking priority gets 70% of the weight; the other factors share the rest.
+_PRIORITY_WEIGHT = 0.7
 _SOFT_MRT_REFERENCE_MINUTES = 10
+# Listing cards convert walking distance to minutes at about 85 m per minute.
+_METRES_PER_MINUTE = 85
+_SOFT_COMMUTE_REFERENCE_MINUTES = 45
+# Tenant gender each household can rent under; "mixed" is a male-female group such as a couple.
+TENANT_GENDER_ACCEPTS = {
+    "female": ("female_only", "no_restriction"),
+    "male": ("male_only", "no_restriction"),
+    "mixed": ("no_restriction",),
+}
+FURNISHED = ("fully_furnished", "partially_furnished", "furnished_unspecified")
 _LARGE_AREA_REVIEW_THRESHOLD_SQM = 10_000 * 0.09290304
 _IGNORED_REVIEW_FLAGS = {
     "same_address_different_ids",
     "tenant_count_scope_unconfirmed",
 }
 
-# Nearby food is a position among candidates, so it is read from the loaded rank.
 _FOOD_RANK = "food_rank"
 
+# Ranking factors, in tie-break order for factors of equal weight: each returns a ratio
+# where lower is better, or None when the listing lacks the data.
 _RANKING_CRITERIA = {
-    "price": (
-        1.0,
-        lambda listing, preferences: _ratio(
-            listing.get("rent_monthly_sgd"), preferences.max_price_sgd
-        ),
-    ),
-    "mrt": (
-        1.0,
-        lambda listing, preferences: _ratio(
-            listing.get("mrt_walk_minutes")
-            if listing.get("mrt_walk_minutes") is not None
-            else listing.get("mrt_minutes_reported"),
-            _mrt_reference(preferences),
-        ),
-    ),
+    "mrt": lambda listing, preferences: _ratio(mrt_distance_m(listing), _mrt_reference_m(preferences)),
+    "commute": lambda listing, preferences: _ratio(listing.get("commute_nus_minutes"), _commute_reference(preferences)),
+    "food": lambda listing, preferences: listing.get(_FOOD_RANK),
+    "space": lambda listing, preferences: listing.get("space_rank"),
+    "price": lambda listing, preferences: _ratio(listing.get("rent_monthly_sgd"), preferences.max_price_sgd),
 }
+# Missing data scores as the reference (a 10-minute walk, the commute limit) or the middle
+# food position, so a listing neither gains nor loses on a factor it does not state.
+_NEUTRAL_RATIO = {"mrt": 1.0, "commute": 1.0, "food": 0.5, "space": 0.5}
+_RANKING_CRITERIA.update({
+    name: lambda listing, preferences, name=name: listing.get(f"{name}_rank")
+    for name in AMENITY_FIELDS
+})
+_RANKING_CRITERIA["school_distance"] = lambda listing, preferences: _ratio(
+    listing.get("pg_school_nearest_walk_min"), max(preferences.max_school_walk_minutes if preferences.max_school_walk_minutes is not None else 10, 1)
+)
+_NEUTRAL_RATIO.update({name: 0.5 for name in AMENITY_FIELDS})
+_NEUTRAL_RATIO["school_distance"] = 1.0
+
+# Each new condition is evaluated once here, shared by strict search and three-state diagnostics.
+EXTRA_CONDITION_LABELS = {
+    "min_bathrooms": ("最少卫生间数", "minimum bathrooms"),
+    "private_bathroom_required": ("独立卫浴", "private bathroom"),
+    "pets_allowed_required": ("允许宠物", "pets allowed"),
+    "rent_price_types": ("报价性质", "price types"),
+    "title_keyword": ("小区/项目名称", "development/title"),
+    "address_keyword": ("地址关键词", "address text"),
+    "street_name": ("街道", "street"),
+    "postcode": ("邮编", "postcode"),
+    "nearby_location": ("指定地点直线范围", "straight-line radius from a place"),
+    "mrt_station": ("最近运营 MRT 站", "nearest operating MRT station"),
+    "min_mrt_stations": ("周边 MRT 站数", "reported nearby MRT count"),
+    "max_mrt_distance_m": ("MRT 步行上限（米）", "MRT walking limit (metres)"),
+    "min_food_places": ("1 公里内最少餐饮数", "minimum F&B within 1 km"),
+    "min_hawker_centres": ("1 公里内最少小贩中心数", "minimum hawker centres within 1 km"),
+    "min_libraries": ("1 公里内最少图书馆数", "minimum libraries within 1 km"),
+    "min_sports_facilities": ("1 公里内最少体育设施数", "minimum sports facilities within 1 km"),
+    "min_healthcare_places": ("1 公里内最少医疗设施数", "minimum healthcare places within 1 km"),
+    "min_community_centres": ("1 公里内最少民众俱乐部数", "minimum community clubs within 1 km"),
+    "min_schools": ("周边最少学校数", "minimum nearby schools"),
+    "max_school_walk_m": ("最近学校步行上限（米）", "nearest-school walking limit (metres)"),
+    "max_school_walk_minutes": ("最近学校步行上限（分钟）", "nearest-school walking limit (minutes)"),
+    "listed_after": ("最早挂牌日期", "posted on or after"),
+    "furnishing_types": ("家具程度", "furnishing levels"),
+    "cooking_level": ("烹饪强度", "cooking level"),
+    "gender_preference": ("房东明确偏好的租客性别", "advertised preferred tenant gender"),
+}
+_MINIMUM_COLUMNS = {
+    "min_bathrooms": "bathrooms", "min_mrt_stations": "pg_mrt_count",
+    "min_food_places": "poi_fnb_1km", "min_hawker_centres": "poi_hawker_1km",
+    "min_libraries": "poi_library_1km", "min_sports_facilities": "poi_sport_1km",
+    "min_healthcare_places": "poi_healthcare_1km", "min_community_centres": "poi_community_1km",
+    "min_schools": "pg_school_count",
+}
+_MAXIMUM_COLUMNS = {"max_school_walk_m": "pg_school_nearest_walk_m", "max_school_walk_minutes": "pg_school_nearest_walk_min"}
+
+
+def extra_condition_status(field: str, listing: Listing, preferences: SearchPreferences) -> str:
+    wanted = getattr(preferences, field)
+    if field in _MINIMUM_COLUMNS:
+        value = listing.get(_MINIMUM_COLUMNS[field])
+        matches = value is not None and value >= wanted
+    elif field in _MAXIMUM_COLUMNS or field == "max_mrt_distance_m":
+        value = mrt_distance_m(listing) if field == "max_mrt_distance_m" else listing.get(_MAXIMUM_COLUMNS[field])
+        matches = value is not None and value <= wanted
+    elif field == "nearby_location":
+        distance = location_distance_m(listing, wanted)
+        if distance is None:
+            return "unknown"
+        error = coordinate_error_m(listing)
+        if error is None:
+            return "unknown"
+        if distance + error <= wanted.radius_m:
+            return "pass"
+        return "fail" if distance - error > wanted.radius_m else "unknown"
+    elif field == "listed_after":
+        try:
+            value = date.fromisoformat(str(listing.get("listed_date"))[:10])
+        except ValueError:
+            value = None
+        matches = value is not None and value >= wanted
+    elif field in {"title_keyword", "address_keyword", "street_name", "postcode", "mrt_station"}:
+        column = {"title_keyword": "title", "address_keyword": "address"}.get(field, field)
+        value = _stated_value(listing.get(column))
+        if field == "mrt_station" and listing.get("mrt_operation_status") == "under_construction":
+            value = None
+        matches = value is not None and (value == wanted if field == "postcode" else wanted.casefold() in value.casefold())
+    else:
+        column = {"private_bathroom_required": "private_bathroom", "pets_allowed_required": "pets_policy", "rent_price_types": "rent_price_type", "furnishing_types": "furnishing", "cooking_level": "cooking_policy"}.get(field, field)
+        value = _stated_value(listing.get(column))
+        accepted = {
+            "private_bathroom_required": ("yes",), "pets_allowed_required": ("allowed", "pets_allowed"),
+            "rent_price_types": wanted, "furnishing_types": wanted,
+            "cooking_level": {"light": ("light_only", "allowed"), "full": ("allowed",), "none": ("not_allowed",)}.get(wanted) if field == "cooking_level" else (),
+            "gender_preference": (wanted,),
+        }[field]
+        if field == "furnishing_types" and value == "furnished_unspecified" and value not in accepted:
+            return "unknown" if {"fully_furnished", "partially_furnished"} & set(accepted) else "fail"
+        matches = value is not None and value in accepted
+    return "unknown" if value is None else "pass" if matches else "fail"
+
+
+def _stated_value(value):
+    return None if value in (None, "", "unknown") else value
+
+
+@lru_cache(maxsize=128)
+def _location_coordinates(query: str) -> tuple[float, float]:
+    return geocode_location(query)
+
+
+def resolve_search_location(preferences: SearchPreferences) -> SearchPreferences:
+    location = preferences.nearby_location
+    if location is not None and location.latitude is None:
+        latitude, longitude = _location_coordinates(location.query)
+        location = type(location).model_validate({**location.model_dump(), "latitude": latitude, "longitude": longitude})
+        return preferences.model_copy(update={"nearby_location": location})
+    return preferences
+
+
+def location_distance_m(listing: Listing, location) -> float | None:
+    latitude, longitude = listing.get("latitude"), listing.get("longitude")
+    if latitude is None or longitude is None or location.latitude is None:
+        return None
+    start, end = radians(location.latitude), radians(latitude)
+    haversine = sin((end - start) / 2) ** 2 + cos(start) * cos(end) * sin(radians(longitude - location.longitude) / 2) ** 2
+    return 6_371_008.8 * 2 * asin(sqrt(min(1, max(0, haversine))))
+
+
+def coordinate_error_m(listing: Listing) -> float | None:
+    value = listing.get("coord_error_m")
+    if value is None:
+        return 0 if listing.get("coord_source") in {None, "onemap_postcode"} else None
+    try:
+        error = float(str(value).lstrip("~≈"))
+    except ValueError:
+        return None
+    return error if isfinite(error) and error >= 0 else None
 
 
 def load_listings(connection: sqlite3.Connection) -> list[Listing]:
@@ -79,6 +216,7 @@ def search_listings(
     excluded_listing_ids: list[str] | None = None,
 ) -> list[Listing]:
     """Return non-inactive listings satisfying every supported hard constraint."""
+    preferences = resolve_search_location(preferences)
     clauses = [
         "(live_status <> 'inactive' OR live_checked_at IS NULL "
         "OR julianday(live_checked_at) < julianday('now', '-24 hours'))",
@@ -91,10 +229,13 @@ def search_listings(
         ("rental_scope = ?", preferences.rental_scope),
         ("district_code = ? COLLATE NOCASE", _clean(preferences.district_code)),
         (
-            "COALESCE(mrt_walk_minutes, mrt_minutes_reported) <= ?",
+            "COALESCE(mrt_walk_minutes, mrt_minutes_reported) <= ? "
+            "AND mrt_operation_status <> 'under_construction'",
             preferences.max_mrt_minutes,
         ),
+        ("commute_nus_minutes <= ?", preferences.max_commute_minutes),
         ("bedrooms >= ? AND rental_scope <> 'room'", preferences.min_bedrooms),
+        ("area_sqm >= ? AND space_rank IS NOT NULL", preferences.min_area_sqm),
         ("tenant_count_reported >= ?", preferences.occupant_count),
     )
     for clause, value in filters:
@@ -113,14 +254,38 @@ def search_listings(
         clauses.append(f"property_type IN ({placeholders})")
         params.extend(preferences.property_types)
 
-    if preferences.cooking_required:
-        clauses.append("cooking_policy IN ('allowed', 'light_only')")
+    accepted = (
+        ("gender_restriction", TENANT_GENDER_ACCEPTS.get(preferences.tenant_gender)),
+        ("cooking_policy", ("allowed", "light_only") if preferences.cooking_required else None),
+        ("landlord_lives_in", ("no",) if preferences.landlord_not_living_in else None),
+        ("furnishing", FURNISHED if preferences.furnished_required else None),
+        ("air_conditioning", ("yes",) if preferences.air_conditioning_required else None),
+    )
+    for column, values in accepted:
+        if values:
+            clauses.append(f"{column} IN ({', '.join('?' for _ in values)})")
+            params.extend(values)
+    # A named ranking priority needs its data, as in decision.search_with_unknowns().
+    priority_data = {
+        "mrt": "COALESCE(mrt_walk_distance_m, mrt_distance_m) IS NOT NULL "
+        "AND mrt_operation_status <> 'under_construction'",
+        "amenities": f"{_FOOD_RANK} IS NOT NULL",
+        "commute": "commute_nus_minutes IS NOT NULL",
+        "space": "space_rank IS NOT NULL",
+        **{name: f"{name}_rank IS NOT NULL" for name in AMENITY_FIELDS},
+        "school_distance": "pg_school_nearest_walk_min IS NOT NULL",
+    }.get(preferences.ranking_priority)
+    if priority_data:
+        clauses.append(priority_data)
 
-    return _query(
+    candidates = _query(
         connection,
         f"SELECT * FROM agent_listings WHERE {' AND '.join(clauses)}",
         params,
     )
+    active = [field for field in EXTRA_CONDITION_LABELS if getattr(preferences, field) != SearchPreferences.model_fields[field].default]
+    # ponytail: Python filtering is sufficient for this 519-row prototype; use SQL at larger scale.
+    return [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
 
 
 def refresh_mrt_walk_data(
@@ -241,6 +406,10 @@ def extract_restrictions(listing: Listing) -> RestrictionSummary:
         "cooking": listing.get("cooking_policy") or "unknown",
         "owner_staying": listing.get("landlord_lives_in") or "unknown",
         "tenant_gender": tenant_gender,
+        "furnishing": listing.get("furnishing") or "unknown",
+        "air_conditioning": listing.get("air_conditioning") or "unknown",
+        "private_bathroom": listing.get("private_bathroom") or "unknown",
+        "pets": listing.get("pets_policy") or "unknown",
         "visitors": "unknown",
         "smoking": "unknown",
     }
@@ -250,44 +419,57 @@ def rank_listings(
     listings: list[Listing],
     preferences: SearchPreferences,
 ) -> list[RankingResult]:
-    """Rank matches by normalized use of the user's stated limits."""
+    """Rank matches by normalized use of the user's stated limits.
+
+    Rent and MRT walking distance are always weighed; nearby food and the NUS commute
+    only when the user asks for them. A named priority gets 70% of the weight.
+    """
+    names = _ranking_factors(preferences)
+    weights = _factor_weights(names, preferences.ranking_priority)
     ranked: list[RankingResult] = []
     for listing in listings:
-        components = []
-        for name, (base_weight, scorer) in _RANKING_CRITERIA.items():
-            ratio = scorer(listing, preferences)
-            if ratio is not None:
-                boost = _PRIORITY_BOOST if preferences.ranking_priority == name else 1.0
-                components.append((name, ratio, base_weight * boost))
-        # Only scored when the user asks for it; the data states it for every listing or none.
-        if preferences.ranking_priority == "amenities" and listing.get(_FOOD_RANK) is not None:
-            components.append(("food", listing[_FOOD_RANK], _PRIORITY_BOOST))
-
-        total_weight = sum(weight for _, _, weight in components)
+        factors = {}
+        for name in names:
+            ratio = _RANKING_CRITERIA[name](listing, preferences)
+            if ratio is None and name in _NEUTRAL_RATIO:
+                factors[name] = {"ratio": _NEUTRAL_RATIO[name], "no_data": True}
+            elif ratio is not None:
+                factors[name] = {"ratio": ratio}
+        total_weight = sum(weights[name] for name in factors)
         rank_value = (
-            round(
-                sum(ratio * weight for _, ratio, weight in components) / total_weight,
-                3,
-            )
+            round(sum(factor["ratio"] * weights[name] for name, factor in factors.items()) / total_weight, 3)
             if total_weight
             else None
         )
+        for name, factor in factors.items():
+            factor["ratio"] = round(factor["ratio"], 3)
+            factor["weight"] = round(weights[name] / total_weight, 2)
         ranked.append(
             {
                 "listing": listing,
                 "rank_value": rank_value,
-                "factors": {
-                    name: {
-                        "ratio": round(ratio, 3),
-                        "weight": round(weight / total_weight, 2),
-                    }
-                    for name, ratio, weight in components
-                },
+                "factors": factors,
                 "warnings": list(listing.get("review_flags", [])),
             }
         )
     ranked.sort(key=_rank_key)
     return ranked
+
+
+def mrt_distance_m(listing: Listing) -> float | None:
+    """Walking metres to an operating MRT station: a OneMap route first, then the listing card."""
+    if listing.get("mrt_operation_status") == "under_construction":
+        return None
+    walked = listing.get("mrt_walk_distance_m")
+    return walked if walked is not None else listing.get("mrt_distance_m") if listing.get("mrt_distance_m") is not None else listing.get("pg_mrt_nearest_walk_m")
+
+
+def mrt_minutes(listing: Listing) -> int | float | None:
+    """Walking minutes to an operating MRT station: a OneMap route first, then the listing card."""
+    if listing.get("mrt_operation_status") == "under_construction":
+        return None
+    walked = listing.get("mrt_walk_minutes")
+    return walked if walked is not None else listing.get("mrt_minutes_reported")
 
 
 def check_listing_url(
@@ -519,20 +701,58 @@ def _ratio(value: object, limit: int | None) -> float | None:
     return value / limit
 
 
-def _mrt_reference(preferences: SearchPreferences) -> int | None:
-    if preferences.max_mrt_minutes is not None:
-        return preferences.max_mrt_minutes
-    if preferences.ranking_priority == "mrt":
-        return _SOFT_MRT_REFERENCE_MINUTES
-    return None
+def rental_area_sqm(listing: Listing) -> float | None:
+    """A room's advertised whole-home area does not establish the room's size."""
+    area = listing.get("area_sqm")
+    scope = {"entire_unit": "floor_reported", "room": "room_reported"}.get(listing.get("rental_scope"))
+    return area if scope and listing.get("area_scope") == scope and isinstance(area, (int, float)) and area > 0 else None
+
+
+def _ranking_factors(preferences: SearchPreferences) -> list[str]:
+    asked = {
+        "mrt": True,
+        "commute": preferences.max_commute_minutes is not None or preferences.ranking_priority == "commute",
+        "food": preferences.ranking_priority == "amenities",
+        "space": preferences.ranking_priority == "space",
+        "price": preferences.max_price_sgd is not None,
+    }
+    asked.update({name: preferences.ranking_priority == name for name in (*AMENITY_FIELDS, "school_distance")})
+    return [name for name in _RANKING_CRITERIA if asked[name]]
+
+
+def _factor_weights(names: list[str], priority: str) -> dict[str, float]:
+    priority = {"amenities": "food"}.get(priority, priority)
+    if priority not in names or len(names) == 1:
+        return {name: 1.0 for name in names}
+    rest = (1 - _PRIORITY_WEIGHT) / (len(names) - 1)
+    return {name: _PRIORITY_WEIGHT if name == priority else rest for name in names}
+
+
+def _mrt_reference_m(preferences: SearchPreferences) -> float:
+    minutes = preferences.max_mrt_minutes
+    reference = max(minutes if minutes is not None else _SOFT_MRT_REFERENCE_MINUTES, 1) * _METRES_PER_MINUTE
+    if preferences.max_mrt_distance_m is not None:
+        reference = min(reference, preferences.max_mrt_distance_m) if minutes is not None else preferences.max_mrt_distance_m
+    return max(reference, 1)
+
+
+def _commute_reference(preferences: SearchPreferences) -> int:
+    return max(preferences.max_commute_minutes or _SOFT_COMMUTE_REFERENCE_MINUTES, 1)
 
 
 def _rank_key(result: RankingResult) -> tuple:
+    """Lower scores first; ties go to the heavier factor, then the next, then rent."""
     listing = result["listing"]
     value = result["rank_value"]
+    order = list(_RANKING_CRITERIA)
+    factors = sorted(
+        result["factors"].items(),
+        key=lambda item: (-item[1]["weight"], order.index(item[0])),
+    )
     return (
         value is None,
         value if value is not None else 0,
+        tuple(factor["ratio"] for _, factor in factors),
         listing.get("rent_monthly_sgd") is None,
         listing.get("rent_monthly_sgd") or 0,
         listing["listing_id"],

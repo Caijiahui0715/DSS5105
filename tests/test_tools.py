@@ -1,6 +1,8 @@
+import tempfile
 import unittest
 from contextlib import closing
 from datetime import date
+from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
@@ -12,6 +14,7 @@ from tools import (
     check_listing_url,
     extract_restrictions,
     load_listings,
+    mrt_minutes,
     rank_listings,
     refresh_mrt_walk_data,
     search_listings,
@@ -27,7 +30,8 @@ class ToolsTest(unittest.TestCase):
         by_id = {listing["listing_id"]: listing for listing in listings}
 
         self.assertEqual(len(listings), 519)
-        self.assertEqual(len(main_fields), 51)
+        # 50 V2 columns plus the derived food_rank and the optional NUS commute.
+        self.assertEqual(len(main_fields), 52)
         self.assertIn("availability_status", listings[0])
         self.assertEqual(listings[0]["live_status"], "unknown")
         self.assertTrue(all(listing["district"] for listing in listings))
@@ -55,7 +59,8 @@ class ToolsTest(unittest.TestCase):
             balanced = rank_listings(listings, preferences.model_copy(update={"ranking_priority": "balanced"}))
 
         self.assertEqual(ranked[0]["factors"]["food"]["weight"], 0.7)
-        self.assertEqual(ranked[0]["factors"]["price"]["weight"], 0.3)
+        self.assertEqual(ranked[0]["factors"]["price"]["weight"], 0.15)
+        self.assertEqual(ranked[0]["factors"]["mrt"]["weight"], 0.15)
         # The top three all sit in the busiest tenth for nearby food.
         self.assertTrue(all(item["listing"]["food_rank"] <= 0.1 for item in ranked[:3]))
         self.assertNotEqual(
@@ -63,6 +68,65 @@ class ToolsTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in balanced[:3]],
         )
         self.assertNotIn("food", balanced[0]["factors"])
+
+    def test_balanced_ranking_weighs_mrt_walking_distance(self):
+        preferences = SearchPreferences(max_price_sgd=1_100)
+        with closing(create_mock_database()) as connection:
+            ranked = rank_listings(search_listings(connection, preferences), preferences)
+
+        # S002 (S$1,050, 430 m) beats the cheaper S004 (S$850, 940 m).
+        self.assertEqual([item["listing"]["listing_id"] for item in ranked], ["S002", "S004"])
+        self.assertEqual(ranked[0]["factors"]["mrt"], {"ratio": 0.506, "weight": 0.5})
+
+    def test_missing_or_unopened_mrt_counts_as_a_ten_minute_walk(self):
+        preferences = SearchPreferences(max_price_sgd=2_000)
+        listings = [
+            {"listing_id": "near", "rent_monthly_sgd": 1_000, "mrt_distance_m": 425, "mrt_operation_status": "operational"},
+            {"listing_id": "none", "rent_monthly_sgd": 1_000, "mrt_distance_m": None, "mrt_operation_status": "unknown"},
+            {"listing_id": "uc", "rent_monthly_sgd": 1_000, "mrt_distance_m": 100, "mrt_minutes_reported": 1, "mrt_operation_status": "under_construction"},
+        ]
+        by_id = {item["listing"]["listing_id"]: item for item in rank_listings(listings, preferences)}
+
+        self.assertEqual(by_id["near"]["factors"]["mrt"], {"ratio": 0.5, "weight": 0.5})
+        for listing_id in ("none", "uc"):
+            self.assertEqual(by_id[listing_id]["factors"]["mrt"], {"ratio": 1.0, "no_data": True, "weight": 0.5})
+        self.assertIsNone(mrt_minutes(listings[2]))
+
+    def test_ties_go_to_mrt_before_rent(self):
+        preferences = SearchPreferences(max_price_sgd=2_000)
+        listings = [
+            {"listing_id": "cheap", "rent_monthly_sgd": 400, "mrt_distance_m": 680, "mrt_operation_status": "operational"},
+            {"listing_id": "near", "rent_monthly_sgd": 1_600, "mrt_distance_m": 170, "mrt_operation_status": "operational"},
+        ]
+        ranked = rank_listings(listings, preferences)
+
+        self.assertEqual([item["rank_value"] for item in ranked], [0.5, 0.5])
+        self.assertEqual([item["listing"]["listing_id"] for item in ranked], ["near", "cheap"])
+
+    def test_new_conditions_filter_in_sql(self):
+        with closing(create_database()) as connection:
+            def values(column, **preferences):
+                return {listing[column] for listing in search_listings(connection, SearchPreferences(**preferences))}
+
+            self.assertEqual(values("gender_restriction", tenant_gender="female"), {"female_only", "no_restriction"})
+            self.assertEqual(values("gender_restriction", tenant_gender="male"), {"male_only", "no_restriction"})
+            self.assertEqual(values("gender_restriction", tenant_gender="mixed"), {"no_restriction"})
+            self.assertEqual(values("landlord_lives_in", landlord_not_living_in=True), {"no"})
+            self.assertNotIn("unfurnished", values("furnishing", furnished_required=True))
+            self.assertEqual(values("air_conditioning", air_conditioning_required=True), {"yes"})
+
+    def test_nus_commute_minutes_load_from_an_optional_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "commute_nus.csv"
+            path.write_text("listing_id,commute_nus_minutes\n24842419,38\n500253628,\n", encoding="utf-8")
+            with closing(create_database(commute_path=path)) as connection:
+                loaded = {listing["listing_id"]: listing["commute_nus_minutes"] for listing in load_listings(connection)}
+            with closing(create_database(commute_path=Path(folder) / "missing.csv")) as connection:
+                missing = {listing["commute_nus_minutes"] for listing in load_listings(connection)}
+
+        self.assertEqual(loaded["24842419"], 38)
+        self.assertIsNone(loaded["500253628"])
+        self.assertEqual(missing, {None})
 
     def test_url_checks_compare_the_final_listing_id(self):
         class Response:
@@ -149,12 +213,13 @@ class ToolsTest(unittest.TestCase):
                 "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
             )
 
+            # The top-ranked S010 has an unverified link and must keep first place.
             def checker(listing_id, url):
                 return {
-                    "status": "unknown" if listing_id == "S001" else "active",
-                    "final_url": None if listing_id == "S001" else url,
-                    "http_status": None if listing_id == "S001" else 200,
-                    "error_reason": "network_error" if listing_id == "S001" else None,
+                    "status": "unknown" if listing_id == "S010" else "active",
+                    "final_url": None if listing_id == "S010" else url,
+                    "http_status": None if listing_id == "S010" else 200,
+                    "error_reason": "network_error" if listing_id == "S010" else None,
                 }
 
             validation = validate_ranked_listings(connection, ranked, checker)
@@ -163,7 +228,7 @@ class ToolsTest(unittest.TestCase):
 
         self.assertEqual(
             [item["listing"]["listing_id"] for item in validated],
-            ["S001", "S010"],
+            ["S010", "S001"],
         )
         self.assertEqual(
             validated[0]["listing"]["live_error_reason"],
@@ -301,7 +366,7 @@ class ToolsTest(unittest.TestCase):
             ["area_outside_review_range"],
         )
 
-    def test_uses_ten_minutes_for_a_soft_mrt_preference(self):
+    def test_uses_850_metres_for_a_soft_mrt_preference(self):
         preferences = SearchPreferences(
             max_price_sgd=1_500,
             ranking_priority="mrt",
@@ -318,8 +383,9 @@ class ToolsTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in ranking],
             ["S010", "S001"],
         )
-        self.assertEqual([item["rank_value"] for item in ranking], [0.536, 0.73])
-        self.assertEqual(ranking[0]["factors"]["mrt"]["ratio"], 0.4)
+        # S010 walks 310 m: 310 / 850 = 0.365.
+        self.assertEqual([item["rank_value"] for item in ranking], [0.511, 0.701])
+        self.assertEqual(ranking[0]["factors"]["mrt"]["ratio"], 0.365)
         self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.7)
 
     def test_sqlite_search_and_restriction_extraction(self):
@@ -340,7 +406,8 @@ class ToolsTest(unittest.TestCase):
                 [item["listing"]["listing_id"] for item in ranking],
                 ["S010", "S001"],
             )
-            self.assertEqual([item["rank_value"] for item in ranking], [0.692, 0.812])
+            # A 10-minute limit is an 850 m reference: S010 (310 m) and S001 (560 m).
+            self.assertEqual([item["rank_value"] for item in ranking], [0.675, 0.791])
             self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.5)
             self.assertEqual(
                 [
@@ -369,7 +436,8 @@ class ToolsTest(unittest.TestCase):
                 [],
             )
 
-            matches[0]["mrt_walk_minutes"] = 1
+            # A OneMap walking route replaces the card distance.
+            matches[0]["mrt_walk_distance_m"] = 85
             recalculated = rank_listings(matches, preferences)
             by_listing_id = {
                 item["listing"]["listing_id"]: item for item in recalculated
@@ -383,6 +451,10 @@ class ToolsTest(unittest.TestCase):
                     "cooking": "not_allowed",
                     "owner_staying": "yes",
                     "tenant_gender": "unknown",
+                    "furnishing": "unknown",
+                    "air_conditioning": "unknown",
+                "private_bathroom": "unknown",
+                "pets": "unknown",
                     "visitors": "unknown",
                     "smoking": "unknown",
                 },

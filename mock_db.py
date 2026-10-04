@@ -6,12 +6,17 @@ from bisect import bisect_left
 from datetime import datetime, timezone
 from pathlib import Path
 
+from models import AMENITY_FIELDS
+
 
 ROOT = Path(__file__).parent
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
 DEFAULT_FINAL_DATA = ROOT / "output-final-delivery" / "rental_data_v2.csv"
 # V2 only replaces the listings table; availability, review flags and districts stay in V1.
 V1_DATA = ROOT / "output-final-delivery" / "rental_data_v1.json"
+# Optional: public-transport minutes to NUS by listing_id (columns listing_id, commute_nus_minutes),
+# computed offline with OneMap. Without the file every listing's commute is unknown.
+COMMUTE_DATA = ROOT / "output-final-delivery" / "commute_nus.csv"
 _SQM_PER_SQFT = 0.09290304
 # Nearby food is ranked on these V2 counts; see _food_ranks().
 _FOOD_FIELDS = ("poi_fnb_1km", "poi_hawker_1km")
@@ -78,12 +83,17 @@ LISTING_FIELDS = (
     "coord_error_m",
     "poi_fnb_1km",
 )
-# Derived at load time, not a V2 column: see _food_ranks().
+# Not V2 columns: food_rank is derived at load time (see _food_ranks()), the commute comes from COMMUTE_DATA.
 FOOD_RANK_FIELD = "food_rank"
-_COLUMNS = (*LISTING_FIELDS, FOOD_RANK_FIELD)
+COMMUTE_FIELD = "commute_nus_minutes"
+_AMENITY_RANKS = tuple(f"{name}_rank" for name in AMENITY_FIELDS)
+_COLUMNS = (*LISTING_FIELDS, FOOD_RANK_FIELD, COMMUTE_FIELD)
 
 
-def create_database(path: Path = DEFAULT_FINAL_DATA) -> sqlite3.Connection:
+def create_database(
+    path: Path = DEFAULT_FINAL_DATA,
+    commute_path: Path = COMMUTE_DATA,
+) -> sqlite3.Connection:
     """Load the V2 listings CSV, with V1 metadata and districts, into in-memory SQLite."""
     with path.open(encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
@@ -99,8 +109,10 @@ def create_database(path: Path = DEFAULT_FINAL_DATA) -> sqlite3.Connection:
         for field, labels in _V1_LABELS.items():
             listing[field] = labels.get(listing[field], listing[field])
     ranks = _food_ranks(listings)
+    commutes = _commutes(commute_path)
     for listing in listings:
         listing[FOOD_RANK_FIELD] = ranks.get(listing["listing_id"])
+        listing[COMMUTE_FIELD] = commutes.get(listing["listing_id"])
     v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
     metadata = {row["listing_id"]: row for row in v1["listing_metadata"]}
     return _create_database(
@@ -140,6 +152,12 @@ def create_mock_database(path: Path = DEFAULT_FIXTURE) -> sqlite3.Connection:
 
 
 def _create_database(payload: dict) -> sqlite3.Connection:
+    # Scores are based on the full dataset, so search, comparison and explanation agree.
+    for name, field in AMENITY_FIELDS.items():
+        values = sorted(float(row[field]) for row in payload["listings"] if row.get(field) is not None)
+        for row in payload["listings"]:
+            value = row.get(field)
+            row[f"{name}_rank"] = 1 - bisect_left(values, float(value)) / len(values) if value is not None else None
     connection = sqlite3.connect(":memory:")
     connection.execute("PRAGMA foreign_keys = ON")
     view_columns = ", ".join(
@@ -198,7 +216,13 @@ def _create_database(payload: dict) -> sqlite3.Connection:
             coord_source TEXT,
             coord_error_m REAL,
             poi_fnb_1km INTEGER,
-            food_rank REAL
+            food_rank REAL,
+            commute_nus_minutes REAL
+        );
+
+        CREATE TABLE listing_amenity_ranks (
+            listing_id TEXT PRIMARY KEY REFERENCES listings(listing_id),
+            {', '.join(f'{field} REAL' for field in _AMENITY_RANKS)}
         );
 
         CREATE TABLE listing_metadata (
@@ -232,6 +256,8 @@ def _create_database(payload: dict) -> sqlite3.Connection:
         CREATE VIEW agent_listings AS
         SELECT
             {view_columns},
+            a.space_rank,
+            {', '.join(f'q.{field}' for field in _AMENITY_RANKS)},
             -- The agent uses the rechecked rent when V2 has one; the card rent stays for evidence.
             COALESCE(l.rent_monthly_sgd_now, l.rent_monthly_sgd) AS rent_monthly_sgd,
             l.rent_monthly_sgd AS rent_monthly_sgd_card,
@@ -247,6 +273,18 @@ def _create_database(payload: dict) -> sqlite3.Connection:
             r.mrt_walk_seconds,
             r.mrt_walk_minutes
         FROM listings l
+        -- Compute area ranks separately so the view keeps its existing listing order.
+        LEFT JOIN (
+            SELECT listing_id, PERCENT_RANK() OVER (
+                PARTITION BY rental_scope, area_scope ORDER BY area_sqm DESC
+            ) AS space_rank
+            FROM listings
+            WHERE area_sqm > 0 AND (
+                (rental_scope = 'entire_unit' AND area_scope = 'floor_reported') OR
+                (rental_scope = 'room' AND area_scope = 'room_reported')
+            )
+        ) a USING (listing_id)
+        LEFT JOIN listing_amenity_ranks q USING (listing_id)
         LEFT JOIN listing_metadata m USING (listing_id)
         LEFT JOIN district_lookup d USING (district_code)
         LEFT JOIN listing_health h USING (listing_id)
@@ -258,6 +296,10 @@ def _create_database(payload: dict) -> sqlite3.Connection:
         connection.executemany(
             f"INSERT INTO listings ({', '.join(_COLUMNS)}) VALUES ({placeholders})",
             [[row.get(field) for field in _COLUMNS] for row in payload["listings"]],
+        )
+        connection.executemany(
+            f"INSERT INTO listing_amenity_ranks VALUES ({', '.join('?' for _ in range(1 + len(_AMENITY_RANKS)))})",
+            [[row["listing_id"], *(row[field] for field in _AMENITY_RANKS)] for row in payload["listings"]],
         )
         connection.executemany(
             "INSERT INTO listing_metadata VALUES (?, ?, ?)",
@@ -298,6 +340,14 @@ def _food_ranks(listings: list[dict]) -> dict[str, float]:
         listing_id: round(sum(shares) / len(shares), 3)
         for listing_id, shares in positions.items()
     }
+
+
+def _commutes(path: Path) -> dict[str, str]:
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as file:
+            return {row["listing_id"]: row["commute_nus_minutes"] or None for row in csv.DictReader(file)}
+    except FileNotFoundError:
+        return {}
 
 
 def _v2_metadata(listing: dict, metadata: dict | None) -> dict:
@@ -368,6 +418,8 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 "rent_monthly_sgd_now": None,
                 "scrape_status": None,
                 "enriched_at": None,
+                # Made-up commute minutes for tests until the OneMap data exists.
+                "commute_nus_minutes": row.get("commute_nus_minutes"),
             }
         )
         metadata.append(

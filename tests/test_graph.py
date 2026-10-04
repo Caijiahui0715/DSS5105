@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-from graph import _listing_ids_in, _response_language, build_graph
+from graph import _has_search_criteria, _listing_ids_in, _open_preferences, _response_language, build_graph
 from mock_db import create_mock_database
 from models import ParsedTurn, SearchPreferences
 from tools import search_listings
@@ -15,7 +15,7 @@ from tools import search_listings
 def _memory() -> MemorySaver:
     return MemorySaver(
         serde=JsonPlusSerializer(
-            allowed_msgpack_modules=[("models", "SearchPreferences")]
+            allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")]
         )
     )
 
@@ -117,7 +117,7 @@ class GraphTest(unittest.TestCase):
             ).invoke({"message": "预算1300，D05 common room"})
 
         relax.assert_not_called()
-        self.assertEqual(result["shown_listing_ids"], ["S001", "S010"])
+        self.assertEqual(result["shown_listing_ids"], ["S010", "S001"])
         self.assertEqual(result["listing_check_summary"]["unknown_count"], 2)
         self.assertEqual(result["preferences"], preferences)
         self.assertIn("HTTP 403", result["response_draft"])
@@ -278,6 +278,18 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(third["preferences"], flexible_room)
         self.assertNotIn("room_type", third["missing_preferences"])
 
+    def test_refinements_ask_whole_unit_or_room_before_room_type(self):
+        self.assertEqual(_open_preferences(SearchPreferences(max_price_sgd=1_000)), ["rental_scope", "move_in_date"])
+        self.assertEqual(
+            _open_preferences(SearchPreferences(rental_scope="room")),
+            ["max_price_sgd", "room_type", "move_in_date"],
+        )
+        self.assertEqual(_open_preferences(SearchPreferences(rental_scope="entire_unit")), ["max_price_sgd", "move_in_date"])
+        # A named room type already says it is a room.
+        self.assertEqual(_open_preferences(SearchPreferences(room_type="common_room")), ["max_price_sgd", "move_in_date"])
+        self.assertTrue(_has_search_criteria(SearchPreferences(tenant_gender="female")))
+        self.assertTrue(_has_search_criteria(SearchPreferences(max_commute_minutes=40)))
+
     def test_clarifies_only_when_no_search_criteria_exist(self):
         preferences = SearchPreferences()
         structured_model = Mock()
@@ -387,11 +399,11 @@ class GraphTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in ranking],
             ["S010", "S001"],
         )
-        self.assertEqual([item["rank_value"] for item in ranking], [0.575, 0.767])
+        self.assertEqual([item["rank_value"] for item in ranking], [0.551, 0.738])
         self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.7)
         self.assertIn("找到 2 套符合条件的房源", result["response"])
         self.assertLess(result["response"].index("S010"), result["response"].index("S001"))
-        self.assertIn("排名权重：价格 30%，MRT 70%", result["response"])
+        self.assertIn("排名权重：MRT 70%，价格 30%", result["response"])
         self.assertIn("不允许做饭", result["response"])
 
     def test_no_results_returns_only_working_relaxations(self):
@@ -824,10 +836,10 @@ class GraphTest(unittest.TestCase):
                 config=config,
             )
 
-        self.assertEqual(first["shown_listing_ids"], ["S004", "S002"])
-        self.assertEqual(shortlisted["shortlisted_listing_ids"], ["S004"])
-        self.assertEqual(result["excluded_listing_ids"], ["S002"])
-        self.assertEqual(result["shortlisted_listing_ids"], ["S004"])
+        self.assertEqual(first["shown_listing_ids"], ["S002", "S004"])
+        self.assertEqual(shortlisted["shortlisted_listing_ids"], ["S002"])
+        self.assertEqual(result["excluded_listing_ids"], ["S004"])
+        self.assertEqual(result["shortlisted_listing_ids"], ["S002"])
         self.assertEqual(result["listings"], [])
         self.assertEqual(result["ranked_listings"], [])
         self.assertEqual(result["relaxations"][0]["field"], "max_price_sgd")
@@ -875,12 +887,13 @@ class GraphTest(unittest.TestCase):
 
         self.assertEqual(structured_model.invoke.call_count, 5)
         self.assertEqual(result["intent"], "show_shortlist")
-        self.assertEqual(result["shortlisted_listing_ids"], ["S004", "S001"])
-        self.assertEqual(result["shown_listing_ids"], ["S004", "S001"])
-        self.assertIn("S004", result["response"])
-        self.assertIn("S001", result["response"])
-        self.assertNotIn("S009", result["response"])
-        self.assertNotIn("S010", result["response"])
+        self.assertEqual(result["shortlisted_listing_ids"], ["S002", "S010"])
+        self.assertEqual(result["shown_listing_ids"], ["S002", "S010"])
+        self.assertIn("S002", result["response"])
+        self.assertIn("S010", result["response"])
+        # Current results at S$1,400 that were not shortlisted stay out.
+        self.assertNotIn("S006", result["response"])
+        self.assertNotIn("S001", result["response"])
 
     def test_shortlists_multiple_explicit_ids_without_search_results(self):
         preferences = SearchPreferences()
@@ -924,9 +937,9 @@ class GraphTest(unittest.TestCase):
                 config=config,
             )
 
-        self.assertEqual(first["shown_listing_ids"][:2], ["S004", "S002"])
-        self.assertEqual(result["shortlisted_listing_ids"], ["S004", "S002"])
-        self.assertIn("S004、S002", result["response"])
+        self.assertEqual(first["shown_listing_ids"][:2], ["S010", "S006"])
+        self.assertEqual(result["shortlisted_listing_ids"], ["S010", "S006"])
+        self.assertIn("S010、S006", result["response"])
 
     def test_compares_all_shortlisted_listings(self):
         preferences = SearchPreferences(max_price_sgd=5_000)
@@ -936,7 +949,7 @@ class GraphTest(unittest.TestCase):
             ParsedTurn(
                 intent="shortlist_listing",
                 preferences=preferences,
-                shortlist_listing_numbers=[1, 2],
+                shortlist_listing_numbers=[1, 3],
             ),
         ]
         model = Mock()
@@ -946,14 +959,14 @@ class GraphTest(unittest.TestCase):
             graph = build_graph(connection, model, _memory())
             config = {"configurable": {"thread_id": "compare-shortlist"}}
             graph.invoke({"message": "预算5000"}, config=config)
-            graph.invoke({"message": "收藏前两套"}, config=config)
+            graph.invoke({"message": "收藏第一套和第三套"}, config=config)
             result = graph.invoke({"message": "比较我的候选房源"}, config=config)
 
         self.assertEqual(structured_model.invoke.call_count, 2)
         self.assertEqual(result["intent"], "compare_shortlist")
-        self.assertIn("最低月租：S004", result["response_draft"])
-        self.assertIn("MRT 最近：S002", result["response_draft"])
-        self.assertEqual(result["shown_listing_ids"], ["S004", "S002"])
+        self.assertIn("最低月租：S002", result["response_draft"])
+        self.assertIn("MRT 最近：S010", result["response_draft"])
+        self.assertEqual(result["shown_listing_ids"], ["S010", "S002"])
 
     def test_compares_explicit_ids_without_a_shortlist(self):
         model = Mock()
@@ -1005,9 +1018,9 @@ class GraphTest(unittest.TestCase):
             graph.invoke({"message": "预算1100"}, config=config)
             result = graph.invoke({"message": "看看第二套的详情"}, config=config)
 
-        self.assertEqual(result["shown_listing_ids"], ["S002"])
-        self.assertIn("Synthetic Queenstown Budget Room", result["response_draft"])
-        self.assertIn("房东同住", result["response_draft"])
+        self.assertEqual(result["shown_listing_ids"], ["S004"])
+        self.assertIn("Synthetic Pasir Panjang Shared Room", result["response_draft"])
+        self.assertIn("允许做饭", result["response_draft"])
 
     def test_resolves_this_listing_when_only_one_is_shown(self):
         preferences = SearchPreferences(district_code="D22")

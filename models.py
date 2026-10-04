@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 Listing = dict[str, Any]
@@ -56,6 +56,34 @@ UserIntent = Literal[
 ]
 
 
+AMENITY_FIELDS = {
+    "food_places": "poi_fnb_1km",
+    "hawker": "poi_hawker_1km",
+    "libraries": "poi_library_1km",
+    "sports": "poi_sport_1km",
+    "healthcare": "poi_healthcare_1km",
+    "community": "poi_community_1km",
+    "schools": "pg_school_count",
+}
+
+
+class NearbyLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    query: str | None = Field(None, min_length=1, description="User-named Singapore place/address/postcode to geocode; never invent coordinates.")
+    latitude: float | None = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    radius_m: float = Field(gt=0, allow_inf_nan=False, description="Maximum straight-line distance in metres, not walking or commute distance.")
+
+    @model_validator(mode="after")
+    def _anchor(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Supply both latitude and longitude, or only query to resolve the place.")
+        if self.latitude is None and not (self.query and self.query.strip()):
+            raise ValueError("A nearby location needs a place query or coordinates.")
+        return self
+
+
 class SearchPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -94,6 +122,11 @@ class SearchPreferences(BaseModel):
         ge=0,
         description="Minimum number of advertised bedrooms; null when absent.",
     )
+    min_area_sqm: float | None = Field(
+        default=None,
+        gt=0,
+        description="Explicit minimum rental area in square metres; convert sqft with 0.09290304. For '空间大一点/宽敞/spacious', use ranking_priority=space and leave this null.",
+    )
     occupant_count: int | None = Field(
         default=None,
         gt=0,
@@ -111,18 +144,88 @@ class SearchPreferences(BaseModel):
         default=False,
         description="True only when the listing must allow at least limited cooking.",
     )
-    ranking_priority: Literal["balanced", "price", "mrt", "amenities"] = Field(
+    tenant_gender: Literal["female", "male", "mixed"] | None = Field(
+        default=None,
+        description=(
+            "Gender of the people who will live there, only when the user states it: female, "
+            "male, or mixed for a male-female couple or group; null otherwise."
+        ),
+    )
+    landlord_not_living_in: bool = Field(
+        default=False,
+        description="True when the user does not want the owner or landlord living in the home.",
+    )
+    furnished_required: bool = Field(
+        default=False,
+        description="True when the home must come fully or partly furnished.",
+    )
+    air_conditioning_required: bool = Field(
+        default=False,
+        description="True when the home must have air conditioning.",
+    )
+    max_commute_minutes: int | None = Field(
+        default=None,
+        gt=0,
+        description="Maximum public-transport minutes to NUS (Kent Ridge campus); null when absent.",
+    )
+    min_bathrooms: int | None = Field(None, ge=0, description="Minimum advertised bathrooms; this does not imply a private bathroom.")
+    private_bathroom_required: bool = Field(False, description="True only when an explicitly private bathroom is required; never infer it from master_room.")
+    pets_allowed_required: bool = Field(False, description="True when the user needs to bring pets; unknown policy does not mean pets are allowed.")
+    rent_price_types: tuple[Literal["asking", "negotiable", "starting_from", "guide_price"], ...] | None = Field(None, description="Acceptable advertised price types; negotiable for 可议价; exclude starting_from when the user rejects starting prices.")
+    title_keyword: str | None = Field(None, min_length=1, description="User-named development/project to match in listing title, case-insensitive substring.")
+    address_keyword: str | None = Field(None, min_length=1, description="Text that must appear in the advertised address; null when absent.")
+    street_name: str | None = Field(None, min_length=1, description="Required street name, case-insensitive substring.")
+    postcode: str | None = Field(None, pattern=r"^\d{6}$", description="Exact six-digit Singapore postcode, preserving leading zeros.")
+    nearby_location: NearbyLocation | None = Field(None, description="Within an explicit radius of a user-named place; query is resolved by the system. Ask for a radius for vague proximity, never guess one.")
+    mrt_station: str | None = Field(None, min_length=1, description="Required advertised nearest operating MRT station, e.g. Clementi. Other nearby stations are not identified by this dataset.")
+    min_mrt_stations: int | None = Field(None, ge=0, description="Minimum PropertyGuru-reported nearby MRT count; the count does not establish every station is open.")
+    max_mrt_distance_m: float | None = Field(None, ge=0, allow_inf_nan=False, description="Maximum walking metres to the advertised nearest operating MRT station.")
+    min_food_places: int | None = Field(None, ge=0, description="Minimum F&B places within a straight-line 1 km radius.")
+    min_hawker_centres: int | None = Field(None, ge=0, description="Minimum hawker centres within 1 km.")
+    min_libraries: int | None = Field(None, ge=0, description="Minimum libraries within 1 km; 附近有图书馆 means 1.")
+    min_sports_facilities: int | None = Field(None, ge=0, description="Minimum sports facilities within 1 km.")
+    min_healthcare_places: int | None = Field(None, ge=0, description="Minimum hospitals/pharmacies within 1 km; this does not distinguish hospitals from pharmacies.")
+    min_community_centres: int | None = Field(None, ge=0, description="Minimum community clubs within 1 km.")
+    min_schools: int | None = Field(None, ge=0, description="Minimum PropertyGuru-reported nearby school count, not specifically NUS.")
+    max_school_walk_m: float | None = Field(None, ge=0, allow_inf_nan=False, description="Maximum walking metres to the nearest reported school, not a named school or NUS.")
+    max_school_walk_minutes: int | None = Field(None, ge=0, description="Maximum reported walking minutes to the nearest school.")
+    listed_after: date | None = Field(None, description="Only listings posted on or after this date. Resolve 最近一周 from the supplied current date; this is not move-in availability.")
+    furnishing_types: tuple[Literal["fully_furnished", "partially_furnished", "unfurnished", "furnished_unspecified"], ...] | None = Field(None, description="Accepted furnishing levels, e.g. fully_furnished only for 必须全家具; clear incompatible furnished_required when switching to unfurnished.")
+    cooking_level: Literal["light", "full", "none"] | None = Field(None, description="light accepts light/full cooking, full requires unrestricted cooking (煎炒), none requires cooking to be prohibited; clear incompatible cooking_required when selecting none.")
+    gender_preference: Literal["female", "male"] | None = Field(None, description="Explicitly requested landlord-advertised preferred tenant gender; distinct from occupants' gender and a hard gender restriction. Data is very sparse.")
+    ranking_priority: Literal[
+        "balanced", "price", "mrt", "amenities", "commute", "space",
+        "food_places", "hawker", "libraries", "sports", "healthcare", "community", "schools", "school_distance",
+    ] = Field(
         default="balanced",
         description=(
-            "Explicit soft preference: balanced, lower price, nearer MRT, or amenities "
-            "for more places to eat nearby (吃饭方便、周边餐饮多)."
+            "Explicit soft preference: balanced, lower price, nearer MRT, amenities "
+            "for more places to eat nearby (吃饭方便、周边餐饮多), or commute for a shorter "
+            "public-transport trip to NUS, space for more rental area, food_places/hawker/libraries/"
+            "sports/healthcare/community/schools for more of that facility, or school_distance "
+            "for a shorter walk to the nearest reported school (not specifically NUS)."
         ),
     )
 
-    @field_validator("property_types", mode="before")
+    @field_validator("property_types", "rent_price_types", "furnishing_types", mode="before")
     @classmethod
     def _no_empty_property_types(cls, value):
         return value or None
+
+    @field_validator("title_keyword", "address_keyword", "street_name", "mrt_station")
+    @classmethod
+    def _strip_search_text(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("Search text cannot be empty.")
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def _compatible_policies(self):
+        if self.cooking_required and self.cooking_level == "none":
+            raise ValueError("Clear cooking_required before requiring cooking to be prohibited.")
+        if self.furnished_required and self.furnishing_types and not any(value != "unfurnished" for value in self.furnishing_types):
+            raise ValueError("Clear furnished_required before requiring an unfurnished home.")
+        return self
 
 
 class ParsedTurn(BaseModel):

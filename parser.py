@@ -3,6 +3,41 @@ from datetime import date
 from typing import Any
 
 from models import ParsedTurn, RelaxationSuggestion, SearchPreferences
+from tools import resolve_search_location
+
+
+PREFERENCE_GUIDANCE = """
+Additional preferences
+- 至少两个卫生间 sets min_bathrooms=2; 独立卫浴 sets private_bathroom_required=true;
+  带宠物 sets pets_allowed_required=true. Do not infer these from room type or other rules.
+- 必须全家具 sets furnishing_types to only fully_furnished; 无家具 to only unfurnished,
+  clearing furnished_required if previously set. 煎炒/不限做饭 sets cooking_level=full;
+  轻炊 sets light; 不允许做饭 sets none and clears cooking_required if previously set.
+- 可议价 sets rent_price_types to only negotiable; 不要起价 excludes starting_from from the
+  four advertised types. A price type does not guarantee the final agreed rent.
+- A named development goes in title_keyword; an address in address_keyword, a street in
+  street_name, an exact six-digit postal code in postcode. Use English source names where
+  unambiguous; ask when a Chinese place name cannot be reliably resolved.
+- A user-named place with an explicit radius goes in nearby_location.query and radius_m
+  (kilometres times 1000). The system resolves the place; leave coordinates null unless the
+  user supplied them or the tool resolved them. Never invent a centre or radius. These are
+  straight-line distances; inferred listing coordinates can make a boundary uncertain.
+- 指定 MRT 站 sets mrt_station; it matches the advertised nearest operating station only.
+  At most 500 metres walking sets max_mrt_distance_m=500; at least two reported nearby MRT
+  stations sets min_mrt_stations=2. Do not promise every reported station is open.
+- 附近有图书馆/体育设施/医疗设施/民众俱乐部 sets the corresponding min_libraries,
+  min_sports_facilities, min_healthcare_places or min_community_centres to 1. Explicit count
+  requirements use these fields, min_food_places, min_hawker_centres and min_schools.
+  图书馆多/运动方便/医疗设施多/民众俱乐部多/学校多 sets ranking_priority to libraries/
+  sports/healthcare/community/schools. Specifically 餐馆多 or 小贩中心多 uses food_places or
+  hawker; general 吃饭方便 uses amenities. Do not invent a count threshold for a soft preference.
+- Generic 靠近学校 uses ranking_priority=school_distance; explicit nearest-school walking
+  limits use max_school_walk_minutes or max_school_walk_m. These fields do not identify a
+  named school or NUS: for a named school with a radius, use nearby_location instead.
+- 最近一周新挂牌 sets listed_after from today's date minus 7 days; it is not a move-in date
+  and does not prove availability. gender_preference is only for a user explicitly requiring
+  a landlord-advertised gender preference; tenant_gender still describes the actual occupants.
+"""
 
 
 _SYSTEM_PROMPT = """Classify the user's rental-search intent and return complete preferences.
@@ -64,11 +99,21 @@ Set min_bedrooms when the user gives a minimum bedroom count. Set occupant_count
 number of people who need to stay; tenant_count_reported is the advertised maximum allowed
 occupancy. The dataset has no reliable platform-verification field, so never invent or
 preserve a verified-only preference.
-Interpret MTR as MRT. Set ranking_priority to price, mrt or amenities only when the user
-explicitly prefers one; a numeric limit alone does not imply priority. Use amenities when the
-user wants more places to eat nearby. Otherwise use balanced.
+Set tenant_gender only when the user states who will live there: female, male, or mixed for
+a male-female couple or group; never infer it from a name or wording. Set
+landlord_not_living_in when the user does not want a live-in owner, furnished_required for a
+furnished home and air_conditioning_required for air conditioning. max_commute_minutes is
+public-transport minutes to NUS only; leave it null for any other destination.
+Set ranking_priority=space for 空间大一点, 宽敞 or spacious; this alone is a search criterion.
+Set min_area_sqm only for an explicit minimum size; convert sqft with 0.09290304. Never invent
+a minimum size, bedroom count or rental scope from a request for more space.
+Interpret MTR as MRT. Set ranking_priority to price, mrt, amenities, commute or space only when the
+user explicitly prefers one; a numeric limit alone does not imply priority. Use amenities when
+the user wants more places to eat nearby and commute for a shorter trip to NUS. Otherwise use
+balanced.
 When current preferences are supplied, preserve them unless the user explicitly changes them.
 """
+_SYSTEM_PROMPT += PREFERENCE_GUIDANCE
 
 
 def parse_turn(
@@ -99,4 +144,6 @@ def parse_turn(
         f"User message: {text}"
     )
     parser = model.with_structured_output(ParsedTurn)
-    return parser.invoke([("system", _SYSTEM_PROMPT), ("human", message)])
+    turn = parser.invoke([("system", _SYSTEM_PROMPT), ("human", message)])
+    preferences = resolve_search_location(turn.preferences)
+    return turn.model_copy(update={"preferences": preferences}) if preferences != turn.preferences else turn

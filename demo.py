@@ -40,7 +40,7 @@ def main() -> None:
         )
         memory = MemorySaver(
             serde=JsonPlusSerializer(
-                allowed_msgpack_modules=[("models", "SearchPreferences")]
+                allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")]
             )
         )
         graph = (build_graph if "--workflow" in flags else build_agent)(connection, model, memory)

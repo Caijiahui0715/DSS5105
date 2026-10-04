@@ -6,10 +6,16 @@ from urllib.request import Request, urlopen
 
 
 _BASE_URL = "https://api.frankfurter.dev/v2/rate"
+# Everyday names that are not ISO 4217 codes; the rate service only knows the ISO code.
+_ALIASES = {"RMB": "CNY"}
 
 
 class CurrencyConversionError(RuntimeError):
     pass
+
+
+class UnknownCurrencyError(CurrencyConversionError):
+    """The rate service answered but does not know this currency code."""
 
 
 def convert_to_sgd(
@@ -20,6 +26,7 @@ def convert_to_sgd(
 ) -> dict[str, int | str]:
     """Convert one positive ISO-4217 budget to a whole-SGD search limit."""
     code = currency.strip().upper()
+    code = _ALIASES.get(code, code)
     if amount <= 0 or not re.fullmatch(r"[A-Z]{3}", code):
         raise ValueError("amount must be positive and currency must be a 3-letter code")
 
@@ -34,7 +41,9 @@ def convert_to_sgd(
         with opener(request, timeout=10) as response:
             payload = json.load(response, parse_float=Decimal)
     except HTTPError as error:
-        raise CurrencyConversionError(
+        # 4xx other than rate limiting means the code itself was refused; 429 and 5xx are outages.
+        refused = 400 <= error.code < 500 and error.code != 429
+        raise (UnknownCurrencyError if refused else CurrencyConversionError)(
             f"Exchange-rate service rejected {code} (HTTP {error.code})"
         ) from error
     except (URLError, TimeoutError, OSError, json.JSONDecodeError) as error:

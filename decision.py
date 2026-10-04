@@ -14,7 +14,21 @@ from functools import cache
 from pathlib import Path
 
 from models import Listing, SearchPreferences
-from tools import _SOFT_MRT_REFERENCE_MINUTES, _enum, rank_listings, search_listings
+from tools import (
+    EXTRA_CONDITION_LABELS,
+    AMENITY_FIELDS,
+    _SOFT_MRT_REFERENCE_MINUTES,
+    FURNISHED,
+    TENANT_GENDER_ACCEPTS,
+    _enum,
+    extra_condition_status,
+    mrt_distance_m,
+    mrt_minutes,
+    rank_listings,
+    rental_area_sqm,
+    resolve_search_location,
+    search_listings,
+)
 
 
 EVIDENCE_PATH = Path(__file__).parent / "output-final-delivery" / "source_evidence_v1.json"
@@ -28,13 +42,41 @@ _NEUTRAL = {
     "property_types": None,
     "max_mrt_minutes": None,
     "min_bedrooms": None,
+    "min_area_sqm": None,
     "occupant_count": None,
     "cooking_required": False,
+    "tenant_gender": None,
+    "landlord_not_living_in": False,
+    "furnished_required": False,
+    "air_conditioning_required": False,
+    "max_commute_minutes": None,
 }
 # Rent and district are required V1 fields; these conditions can be unstated.
-_SPARSE = ("room_type", "rental_scope", "max_mrt_minutes", "min_bedrooms", "occupant_count", "cooking_required")
+_SPARSE = (
+    "room_type",
+    "rental_scope",
+    "max_mrt_minutes",
+    "min_bedrooms",
+    "min_area_sqm",
+    "occupant_count",
+    "cooking_required",
+    "tenant_gender",
+    "landlord_not_living_in",
+    "furnished_required",
+    "air_conditioning_required",
+    "max_commute_minutes",
+)
 # A stated ranking priority also needs data; without it a listing cannot be ranked on it.
-_PRIORITY_DATA = {"amenities": ("nearby_food", "food_rank")}
+_PRIORITY_DATA = {
+    "amenities": ("nearby_food", lambda listing: listing.get("food_rank")),
+    "mrt": ("max_mrt_minutes", mrt_distance_m),
+    "commute": ("max_commute_minutes", lambda listing: listing.get("commute_nus_minutes")),
+    "space": ("min_area_sqm", rental_area_sqm),
+}
+_NEUTRAL.update({field: SearchPreferences.model_fields[field].default for field in EXTRA_CONDITION_LABELS})
+_SPARSE += tuple(EXTRA_CONDITION_LABELS)
+_PRIORITY_DATA.update({name: (name, lambda listing, name=name: listing.get(f"{name}_rank")) for name in AMENITY_FIELDS})
+_PRIORITY_DATA["school_distance"] = ("max_school_walk_minutes", lambda listing: listing.get("pg_school_nearest_walk_min"))
 _EVIDENCE_FIELDS = (
     "headline",
     "card_text",
@@ -60,6 +102,8 @@ def condition_status(
 ) -> str:
     """Return pass, fail or unknown; pass uses the same rule as the SQL filter."""
     wanted = getattr(preferences, field)
+    if field in EXTRA_CONDITION_LABELS:
+        return extra_condition_status(field, listing, preferences)
     if field == "max_price_sgd":
         return _check(listing.get("rent_monthly_sgd"), lambda rent: rent <= wanted)
     if field == "district_code":
@@ -89,12 +133,20 @@ def condition_status(
         return _check(listing.get("bedrooms"), lambda bedrooms: bedrooms >= wanted)
     if field == "occupant_count":
         return _check(listing.get("tenant_count_reported"), lambda count: count >= wanted)
+    if field == "min_area_sqm":
+        return _check(rental_area_sqm(listing), lambda area: area >= wanted)
     if field == "cooking_required":
-        policy = listing.get("cooking_policy")
-        return _check(
-            None if policy == "unknown" else policy,
-            lambda value: value in {"allowed", "light_only"},
-        )
+        return _stated(listing.get("cooking_policy"), lambda value: value in {"allowed", "light_only"})
+    if field == "tenant_gender":
+        return _stated(listing.get("gender_restriction"), lambda value: value in TENANT_GENDER_ACCEPTS[wanted])
+    if field == "landlord_not_living_in":
+        return _stated(listing.get("landlord_lives_in"), lambda value: value == "no")
+    if field == "furnished_required":
+        return _stated(listing.get("furnishing"), lambda value: value in FURNISHED)
+    if field == "air_conditioning_required":
+        return _stated(listing.get("air_conditioning"), lambda value: value == "yes")
+    if field == "max_commute_minutes":
+        return _check(listing.get("commute_nus_minutes"), lambda minutes: minutes <= wanted)
     raise ValueError(f"unsupported condition: {field}")
 
 
@@ -104,7 +156,12 @@ def search_with_unknowns(
     excluded_listing_ids: list[str] | None = None,
 ) -> tuple[list[Listing], list[Listing]]:
     """Split candidates into strict matches and listings blocked only by unstated data."""
-    base = preferences.model_copy(update={field: _NEUTRAL[field] for field in _SPARSE})
+    preferences = resolve_search_location(preferences)
+    # SQL keeps only listings stating every sparse condition and the priority's data; drop those
+    # filters here and sort listings by each condition's status instead.
+    base = preferences.model_copy(
+        update={**{field: _NEUTRAL[field] for field in _SPARSE}, "ranking_priority": "balanced"}
+    )
     active = [field for field in active_conditions(preferences) if field in _SPARSE]
     strict, needs_confirmation = [], []
     for listing in search_listings(connection, base, excluded_listing_ids):
@@ -112,7 +169,7 @@ def search_with_unknowns(
         if "fail" in statuses.values():
             continue
         unknown = [field for field, status in statuses.items() if status == "unknown"]
-        unknown += _unranked_priority(listing, preferences)
+        unknown += [label for label in _unranked_priority(listing, preferences) if label not in unknown]
         if unknown:
             needs_confirmation.append({**listing, "unknown_conditions": unknown})
         else:
@@ -122,8 +179,8 @@ def search_with_unknowns(
 
 def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
     """Name the stated ranking priority this listing has no data for."""
-    label, field = _PRIORITY_DATA.get(preferences.ranking_priority, (None, None))
-    return [label] if label and listing.get(field) is None else []
+    label, data = _PRIORITY_DATA.get(preferences.ranking_priority, (None, None))
+    return [label] if label and data(listing) is None else []
 
 
 def diagnose_conditions(
@@ -136,6 +193,7 @@ def diagnose_conditions(
     Counts are database matches before URL checks. known_fail and unknown split
     the listings that meet every other condition by their status on this one.
     """
+    preferences = resolve_search_location(preferences)
     rows = []
     for field in active_conditions(preferences):
         others = preferences.model_copy(update={field: _NEUTRAL[field]})
@@ -156,6 +214,30 @@ def diagnose_conditions(
             row["smallest_limit_with_a_match"] = whole(min(values)) if values else None
         rows.append(row)
     return rows
+
+
+def rental_scope_mix(
+    preferences: SearchPreferences,
+    strict: list[Listing],
+    shown: list[Listing],
+) -> dict | None:
+    """When the user has not chosen a whole unit or a room and strict matches include both,
+    say which kind is shown and what the other kind offers (database counts)."""
+    if preferences.rental_scope or preferences.room_type or not shown:
+        return None
+    groups = {
+        scope: [listing["rent_monthly_sgd"] for listing in strict if listing.get("rental_scope") == scope]
+        for scope in ("entire_unit", "room")
+    }
+    if not all(groups.values()):
+        return None
+    return {
+        "shown_scopes": sorted({listing.get("rental_scope") for listing in shown} & set(groups)),
+        **{
+            scope: {"database_count": len(rents), "cheapest_sgd": whole(min(rents))}
+            for scope, rents in groups.items()
+        },
+    }
 
 
 def default_budget_levels(budget: int) -> list[int]:
@@ -202,8 +284,12 @@ def explain_listing(
         "factors": ranked["factors"],
         "factor_formulas": {
             "price": "rent_monthly_sgd / max_price_sgd",
-            "mrt": "MRT walking minutes / max_mrt_minutes (10 minutes when only MRT priority is stated)",
+            "mrt": "walking metres to an operating MRT station / max_mrt_distance_m or max_mrt_minutes x 85 m (the smaller if both, 850 m without either); no data or an unopened station counts as 1",
+            "commute": "public-transport minutes to NUS / max_commute_minutes (45 without a limit); no data counts as 1",
             "food": "position among all listings on nearby F&B and hawker centres within 1 km (0 is the most choice)",
+            "space": "descending area percentile within the same rental_scope and area_scope (0 is largest); unstated rental area counts as 0.5",
+            **{name: f"descending position among all listings with {field} data (lower means more choice)" for name, field in AMENITY_FIELDS.items()},
+            "school_distance": "nearest-school walking minutes / max_school_walk_minutes (10 without a limit)",
         },
         "conditions": {
             field: condition_status(field, listing, preferences)
@@ -211,12 +297,16 @@ def explain_listing(
         },
         "rent_monthly_sgd": whole(listing.get("rent_monthly_sgd")),
         "rent_monthly_sgd_card": whole(listing.get("rent_monthly_sgd_card")),
+        "area_sqm": listing.get("area_sqm"),
+        "area_scope": listing.get("area_scope"),
         "nearby_1km": {
             key: listing[field]
-            for key, field in (("fnb", "poi_fnb_1km"), ("hawker_centres", "poi_hawker_1km"))
+            for key, field in (("fnb", "poi_fnb_1km"), ("hawker_centres", "poi_hawker_1km"), ("libraries", "poi_library_1km"), ("sports", "poi_sport_1km"), ("healthcare", "poi_healthcare_1km"), ("community", "poi_community_1km"))
             if listing.get(field) is not None
         },
         "mrt_minutes": mrt_minutes(listing),
+        "mrt_distance_m": whole(mrt_distance_m(listing)),
+        "commute_nus_minutes": whole(listing.get("commute_nus_minutes")),
         "sources": {
             "rent_monthly_sgd": (
                 "rechecked_listing"
@@ -224,11 +314,14 @@ def explain_listing(
                 else "listing_card"
             ),
             "mrt_minutes": (
-                "onemap_walking_route"
+                None
+                if mrt_minutes(listing) is None
+                else "onemap_walking_route"
                 if walk_minutes is not None
                 else "listing_card"
-                if listing.get("mrt_minutes_reported") is not None
-                else None
+            ),
+            "commute_nus_minutes": (
+                "onemap_public_transport_route" if listing.get("commute_nus_minutes") is not None else None
             ),
         },
         "collected_at": listing.get("collected_at"),
@@ -250,11 +343,6 @@ def load_source_evidence(path: Path = EVIDENCE_PATH) -> dict[str, dict]:
         }
         for record in records
     }
-
-
-def mrt_minutes(listing: Listing) -> int | float | None:
-    walked = listing.get("mrt_walk_minutes")
-    return walked if walked is not None else listing.get("mrt_minutes_reported")
 
 
 def whole(value):
@@ -282,3 +370,8 @@ def _profile(listings: list[Listing]) -> dict:
 
 def _check(value, test) -> str:
     return "unknown" if value is None else "pass" if test(value) else "fail"
+
+
+def _stated(value, test) -> str:
+    """Like _check for text labels, where "unknown" also means the data does not say."""
+    return _check(None if value == "unknown" else value, test)

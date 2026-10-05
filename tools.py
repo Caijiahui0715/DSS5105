@@ -21,8 +21,10 @@ from models import (
 from onemap import OneMapNotFound, calculate_mrt_walk, geocode_location, load_token
 
 
-# A named ranking priority gets 70% of the weight; the other factors share the rest.
+# Named ranking priorities share 70% of the weight equally; the other factors share the rest.
 _PRIORITY_WEIGHT = 0.7
+# The ranking factor behind a priority name, where the two differ.
+_PRIORITY_FACTOR = {"amenities": "food"}
 _SOFT_MRT_REFERENCE_MINUTES = 10
 # Listing cards convert walking distance to minutes at about 85 m per minute.
 _METRES_PER_MINUTE = 85
@@ -185,6 +187,14 @@ def coordinate_error_m(listing: Listing) -> float | None:
     return error if isfinite(error) and error >= 0 else None
 
 
+def rent_percentile_sgd(connection: sqlite3.Connection, share: float) -> float | None:
+    """The monthly rent that this share of listings stays at or below."""
+    rents = [row[0] for row in connection.execute(
+        "SELECT rent_monthly_sgd FROM agent_listings WHERE rent_monthly_sgd IS NOT NULL ORDER BY rent_monthly_sgd"
+    )]
+    return rents[min(int(len(rents) * share), len(rents) - 1)] if rents else None
+
+
 def load_listings(connection: sqlite3.Connection) -> list[Listing]:
     """Load the joined Agent view using the frozen V1 field names."""
     return _query(connection, "SELECT * FROM agent_listings")
@@ -265,7 +275,7 @@ def search_listings(
         if values:
             clauses.append(f"{column} IN ({', '.join('?' for _ in values)})")
             params.extend(values)
-    # A named ranking priority needs its data, as in decision.search_with_unknowns().
+    # Each named ranking priority needs its data, as in decision.search_with_unknowns().
     priority_data = {
         "mrt": "COALESCE(mrt_walk_distance_m, mrt_distance_m) IS NOT NULL "
         "AND mrt_operation_status <> 'under_construction'",
@@ -274,9 +284,8 @@ def search_listings(
         "space": "space_rank IS NOT NULL",
         **{name: f"{name}_rank IS NOT NULL" for name in AMENITY_FIELDS},
         "school_distance": "pg_school_nearest_walk_min IS NOT NULL",
-    }.get(preferences.ranking_priority)
-    if priority_data:
-        clauses.append(priority_data)
+    }
+    clauses.extend(priority_data[name] for name in preferences.ranking_priority if name in priority_data)
 
     candidates = _query(
         connection,
@@ -422,7 +431,7 @@ def rank_listings(
     """Rank matches by normalized use of the user's stated limits.
 
     Rent and MRT walking distance are always weighed; nearby food and the NUS commute
-    only when the user asks for them. A named priority gets 70% of the weight.
+    only when the user asks for them. Named priorities share 70% of the weight.
     """
     names = _ranking_factors(preferences)
     weights = _factor_weights(names, preferences.ranking_priority)
@@ -709,23 +718,27 @@ def rental_area_sqm(listing: Listing) -> float | None:
 
 
 def _ranking_factors(preferences: SearchPreferences) -> list[str]:
+    priorities = preferences.ranking_priority
     asked = {
         "mrt": True,
-        "commute": preferences.max_commute_minutes is not None or preferences.ranking_priority == "commute",
-        "food": preferences.ranking_priority == "amenities",
-        "space": preferences.ranking_priority == "space",
+        "commute": preferences.max_commute_minutes is not None or "commute" in priorities,
+        "food": "amenities" in priorities,
+        "space": "space" in priorities,
         "price": preferences.max_price_sgd is not None,
     }
-    asked.update({name: preferences.ranking_priority == name for name in (*AMENITY_FIELDS, "school_distance")})
+    asked.update({name: name in priorities for name in (*AMENITY_FIELDS, "school_distance")})
     return [name for name in _RANKING_CRITERIA if asked[name]]
 
 
-def _factor_weights(names: list[str], priority: str) -> dict[str, float]:
-    priority = {"amenities": "food"}.get(priority, priority)
-    if priority not in names or len(names) == 1:
+def _factor_weights(names: list[str], priorities: tuple[str, ...]) -> dict[str, float]:
+    named = {_PRIORITY_FACTOR.get(priority, priority) for priority in priorities} & set(names)
+    if not named or len(named) == len(names):
         return {name: 1.0 for name in names}
-    rest = (1 - _PRIORITY_WEIGHT) / (len(names) - 1)
-    return {name: _PRIORITY_WEIGHT if name == priority else rest for name in names}
+    each = _PRIORITY_WEIGHT / len(named)
+    # The rest share 30% but never outweigh a named priority, e.g. three named and one other.
+    # rank_listings() rescales the weights to sum to 1.
+    rest = min((1 - _PRIORITY_WEIGHT) / (len(names) - len(named)), each)
+    return {name: each if name in named else rest for name in names}
 
 
 def _mrt_reference_m(preferences: SearchPreferences) -> float:

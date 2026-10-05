@@ -157,10 +157,10 @@ def search_with_unknowns(
 ) -> tuple[list[Listing], list[Listing]]:
     """Split candidates into strict matches and listings blocked only by unstated data."""
     preferences = resolve_search_location(preferences)
-    # SQL keeps only listings stating every sparse condition and the priority's data; drop those
+    # SQL keeps only listings stating every sparse condition and each priority's data; drop those
     # filters here and sort listings by each condition's status instead.
     base = preferences.model_copy(
-        update={**{field: _NEUTRAL[field] for field in _SPARSE}, "ranking_priority": "balanced"}
+        update={**{field: _NEUTRAL[field] for field in _SPARSE}, "ranking_priority": ()}
     )
     active = [field for field in active_conditions(preferences) if field in _SPARSE]
     strict, needs_confirmation = [], []
@@ -178,9 +178,9 @@ def search_with_unknowns(
 
 
 def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
-    """Name the stated ranking priority this listing has no data for."""
-    label, data = _PRIORITY_DATA.get(preferences.ranking_priority, (None, None))
-    return [label] if label and data(listing) is None else []
+    """Name each stated ranking priority this listing has no data for."""
+    checks = [_PRIORITY_DATA[name] for name in preferences.ranking_priority if name in _PRIORITY_DATA]
+    return [label for label, data in checks if data(listing) is None]
 
 
 def diagnose_conditions(

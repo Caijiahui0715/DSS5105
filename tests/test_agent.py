@@ -289,6 +289,22 @@ class AgentTest(unittest.TestCase):
                 else:
                     self.assertTrue(all(item["area_sqm"] >= 80 for item in shown))
 
+    def test_a_second_priority_is_added_to_the_saved_one(self):
+        first, second = "我想要空间大一点的房子", "也想要周边餐厅多一点"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"ranking_priority": ["space"]}, "user_quote": first})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"set": {"ranking_priority": ["space", "food_places"]}, "user_quote": second})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            _, result = run_agent(connection, model, first, second)
+
+        self.assertEqual(result["preferences"].ranking_priority, ("space", "food_places"))
+        self.assertIn("排序偏好 空间大优先 → 空间大优先、餐饮点优先", result["response"])
+        # Without a budget: space and food share 70%, MRT keeps 30%.
+        self.assertIn("MRT 30%，空间大小 35%，餐饮点 35%", result["response"])
+
     def test_a_fixable_tool_error_is_explained_traced_and_retried(self):
         def retry_with_iso_code(messages):
             if "call again with its ISO 4217 code" not in messages[-1].content:
@@ -488,6 +504,73 @@ class AgentTest(unittest.TestCase):
         convert.assert_called_once_with(5_000, "CNY")
         self.assertEqual(result["preferences"].max_price_sgd, 900)
         self.assertIn("预算换算：5,000 CNY × 0.18 = S$900", result["response"])
+
+    def test_a_yearly_budget_becomes_a_monthly_limit(self):
+        request = "我一年的预算是30万人民币，想要整租"
+        conversion = {
+            "original_amount": 300_000,
+            "original_currency": "CNY",
+            "rate_to_sgd": "0.19094",
+            "rate_date": "2026-10-05",
+            "amount_sgd": 57_282,
+        }
+        model = ScriptedModel(
+            tool_calls(
+                (
+                    "search_listings",
+                    {
+                        "set": {"rental_scope": "entire_unit"},
+                        "budget": {"amount": 300000, "currency": "CNY", "months": 12},
+                        "user_quote": request,
+                    },
+                )
+            ),
+            AIMessage(content=""),
+        )
+        with patch("agent.convert_to_sgd", return_value=conversion) as convert, closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        convert.assert_called_once_with(300_000, "CNY")
+        # 300,000 CNY is S$57,282 a year, not a month.
+        self.assertEqual(result["preferences"].max_price_sgd, 4_773)
+        self.assertIn(
+            "预算换算：12 个月共 300,000 CNY × 0.19094 = S$57,282（汇率日期 2026-10-05），÷ 12 = 每月 S$4,773。",
+            result["response"],
+        )
+        self.assertIn("[budget] S$57282 for 12 months -> S$4773 a month", result["trace"])
+        self.assertIsNone(json.loads(result["observations"][0])["budget_check"])
+
+    def test_a_yearly_sgd_budget_is_divided_without_conversion(self):
+        request = "每年预算6万新币"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 60000, "currency": "SGD", "months": 12}, "user_quote": request})),
+            AIMessage(content=""),
+        )
+        with patch("agent.convert_to_sgd") as convert, closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        convert.assert_not_called()
+        self.assertEqual(result["preferences"].max_price_sgd, 5_000)
+        self.assertIn("预算换算：12 个月共 S$60,000，÷ 12 = 每月 S$5,000。搜索使用 S$5,000 作为月租上限。", result["response"])
+
+    def test_a_monthly_limit_above_most_rents_asks_about_the_period(self):
+        # The model kept a yearly-sized amount as monthly; the system asks instead of trusting it.
+        first, second = "预算30000新币", "改成1300"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 30000}, "user_quote": first})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": second})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            high, low = run_agent(connection, model, first, second)
+
+        self.assertEqual(
+            json.loads(high["observations"][0])["budget_check"],
+            {"monthly_limit_sgd": 30000, "rent_90th_percentile_sgd": 3800},
+        )
+        self.assertIn("提醒：每月 S$30,000 的上限高于数据中 90% 房源的月租（S$3,800）", high["response"])
+        self.assertNotIn("提醒：每月", low["response"])
 
     def test_earlier_tool_traffic_is_not_resent_to_the_model(self):
         model = ScriptedModel(

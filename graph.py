@@ -17,6 +17,7 @@ from models import (
 )
 from parser import parse_turn
 from response import (
+    render_budget_conversion,
     render_comparison,
     render_intent_response,
     render_listing_details,
@@ -39,6 +40,7 @@ class AgentState(TypedDict, total=False):
     response_language: ResponseLanguage
     budget_amount: int | None
     budget_currency: str | None
+    budget_months: int | None
     budget_conversion: dict[str, int | str] | None
     budget_conversion_error: str | None
     intent: UserIntent
@@ -239,6 +241,7 @@ def build_graph(
             "detail_listing_number": turn.detail_listing_number,
             "budget_amount": turn.budget_amount,
             "budget_currency": turn.budget_currency,
+            "budget_months": turn.budget_months,
             "shortlisted_listing_number": turn.shortlisted_listing_number,
             "last_excluded_listing_ids": [],
             "preferences": turn.preferences,
@@ -620,18 +623,28 @@ def build_graph(
                     "The budget currency symbol is ambiguous. Please use a three-letter code such as SGD, USD, or CNY, or name the currency.",
                 ),
             }
+        # The saved budget is a monthly rent limit, so a yearly or whole-lease budget is spread out.
+        months = state.get("budget_months") or 1
         if currency == "SGD":
+            conversion = (
+                {"original_amount": amount, "original_currency": "SGD", "amount_sgd": amount, "months": months, "monthly_sgd": amount // months}
+                if months > 1
+                else None
+            )
             return {
                 "preferences": state["preferences"].model_copy(
-                    update={"max_price_sgd": amount}
+                    update={"max_price_sgd": amount // months}
                 ),
                 "budget_amount": None,
                 "budget_currency": None,
-                "budget_conversion": None,
+                "budget_months": None,
+                "budget_conversion": conversion,
                 "budget_conversion_error": None,
             }
         try:
             conversion = convert_to_sgd(amount, currency)
+            if months > 1:
+                conversion = {**conversion, "months": months, "monthly_sgd": conversion["amount_sgd"] // months}
         except (CurrencyConversionError, ValueError):
             return {
                 "budget_conversion_error": "conversion_failed",
@@ -643,10 +656,11 @@ def build_graph(
             }
         return {
             "preferences": state["preferences"].model_copy(
-                update={"max_price_sgd": conversion["amount_sgd"]}
+                update={"max_price_sgd": conversion.get("monthly_sgd", conversion["amount_sgd"])}
             ),
             "budget_amount": None,
             "budget_currency": None,
+            "budget_months": None,
             "budget_conversion": conversion,
             "budget_conversion_error": None,
         }
@@ -785,11 +799,7 @@ def build_graph(
         )
         conversion = state.get("budget_conversion")
         if conversion:
-            response = _text(
-                state,
-                f"预算换算：{conversion['original_amount']:,} {conversion['original_currency']} × {conversion['rate_to_sgd']} = S${conversion['amount_sgd']:,}（汇率日期 {conversion['rate_date']}）。搜索使用 S${conversion['amount_sgd']:,} 作为月租上限。\n\n{response}",
-                f"Budget conversion: {conversion['original_amount']:,} {conversion['original_currency']} × {conversion['rate_to_sgd']} = S${conversion['amount_sgd']:,} (rate date {conversion['rate_date']}). The search used S${conversion['amount_sgd']:,} as the monthly rent limit.\n\n{response}",
-            )
+            response = f"{render_budget_conversion(conversion, _language(state))}\n\n{response}"
         excluded = state.get("last_excluded_listing_ids", [])
         if excluded:
             response = _text(

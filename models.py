@@ -65,6 +65,12 @@ AMENITY_FIELDS = {
     "community": "poi_community_1km",
     "schools": "pg_school_count",
 }
+RankingPriority = Literal[
+    "price", "mrt", "amenities", "commute", "space",
+    "food_places", "hawker", "libraries", "sports", "healthcare", "community", "schools", "school_distance",
+]
+# Named priorities share 70% of the ranking weight, so more than three would leave each very little.
+MAX_RANKING_PRIORITIES = 3
 
 
 class NearbyLocation(BaseModel):
@@ -193,17 +199,15 @@ class SearchPreferences(BaseModel):
     furnishing_types: tuple[Literal["fully_furnished", "partially_furnished", "unfurnished", "furnished_unspecified"], ...] | None = Field(None, description="Accepted furnishing levels, e.g. fully_furnished only for 必须全家具; clear incompatible furnished_required when switching to unfurnished.")
     cooking_level: Literal["light", "full", "none"] | None = Field(None, description="light accepts light/full cooking, full requires unrestricted cooking (煎炒), none requires cooking to be prohibited; clear incompatible cooking_required when selecting none.")
     gender_preference: Literal["female", "male"] | None = Field(None, description="Explicitly requested landlord-advertised preferred tenant gender; distinct from occupants' gender and a hard gender restriction. Data is very sparse.")
-    ranking_priority: Literal[
-        "balanced", "price", "mrt", "amenities", "commute", "space",
-        "food_places", "hawker", "libraries", "sports", "healthcare", "community", "schools", "school_distance",
-    ] = Field(
-        default="balanced",
+    ranking_priority: tuple[RankingPriority, ...] = Field(
+        default=(),
         description=(
-            "Explicit soft preference: balanced, lower price, nearer MRT, amenities "
-            "for more places to eat nearby (吃饭方便、周边餐饮多), or commute for a shorter "
-            "public-transport trip to NUS, space for more rental area, food_places/hawker/libraries/"
-            "sports/healthcare/community/schools for more of that facility, or school_distance "
-            "for a shorter walk to the nearest reported school (not specifically NUS)."
+            "Up to three soft preferences the user explicitly asked for, in the order stated; empty "
+            "means balanced. price for lower rent, mrt for nearer MRT, amenities for more places to "
+            "eat nearby (吃饭方便), commute for a shorter public-transport trip to NUS, space for more "
+            "rental area, food_places/hawker/libraries/sports/healthcare/community/schools for more of "
+            "that facility, school_distance for a shorter walk to the nearest reported school (not "
+            "specifically NUS). The named priorities share 70% of the ranking weight equally."
         ),
     )
 
@@ -211,6 +215,18 @@ class SearchPreferences(BaseModel):
     @classmethod
     def _no_empty_property_types(cls, value):
         return value or None
+
+    @field_validator("ranking_priority", mode="before")
+    @classmethod
+    def _priority_list(cls, value):
+        # A single name or "balanced" is still accepted; balanced means no named priority.
+        names = [value] if value is None or isinstance(value, str) else value
+        names = tuple(dict.fromkeys(name for name in names if name not in (None, "balanced")))
+        if len(names) > MAX_RANKING_PRIORITIES:
+            raise ValueError(
+                f"At most {MAX_RANKING_PRIORITIES} ranking priorities can be saved; ask the user which matter most."
+            )
+        return names
 
     @field_validator("title_keyword", "address_keyword", "street_name", "mrt_station")
     @classmethod
@@ -242,6 +258,12 @@ class ParsedTurn(BaseModel):
         default=None,
         pattern=r"^[A-Z]{3}$",
         description="ISO 4217 currency code for budget_amount; null when a symbol is ambiguous.",
+    )
+    budget_months: int = Field(
+        default=1,
+        ge=1,
+        le=36,
+        description="Months budget_amount covers: 12 for a yearly budget (一年, 每年, 年预算, per year), the lease length for a whole-lease total, otherwise 1.",
     )
     relaxation_number: int | None = Field(
         default=None,

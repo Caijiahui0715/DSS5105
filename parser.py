@@ -28,10 +28,15 @@ Additional preferences
 - 附近有图书馆/体育设施/医疗设施/民众俱乐部 sets the corresponding min_libraries,
   min_sports_facilities, min_healthcare_places or min_community_centres to 1. Explicit count
   requirements use these fields, min_food_places, min_hawker_centres and min_schools.
-  图书馆多/运动方便/医疗设施多/民众俱乐部多/学校多 sets ranking_priority to libraries/
-  sports/healthcare/community/schools. Specifically 餐馆多 or 小贩中心多 uses food_places or
-  hawker; general 吃饭方便 uses amenities. Do not invent a count threshold for a soft preference.
-- Generic 靠近学校 uses ranking_priority=school_distance; explicit nearest-school walking
+  图书馆多/运动方便/医疗设施多/民众俱乐部多/学校多 adds libraries/sports/healthcare/
+  community/schools to ranking_priority. Specifically 餐馆多 or 小贩中心多 adds food_places or
+  hawker; general 吃饭方便 adds amenities. Do not invent a count threshold for a soft preference.
+- ranking_priority lists up to three soft priorities, and the named ones share 70% of the
+  ranking weight. When the user adds one (还, 也, 另外, 再, also, as well), keep the saved
+  priorities and add it. When the user switches (算了, 改成, 不在意…了, 只要, instead, only),
+  replace or drop the saved ones. If unclear, add it: the saved change is shown to the user,
+  who can correct it. With more than three, ask which three matter most.
+- Generic 靠近学校 adds school_distance to ranking_priority; explicit nearest-school walking
   limits use max_school_walk_minutes or max_school_walk_m. These fields do not identify a
   named school or NUS: for a named school with a radius, use nearby_location instead.
 - 最近一周新挂牌 sets listed_after from today's date minus 7 days; it is not a move-in date
@@ -76,10 +81,12 @@ For every budget explicitly stated in this turn, set budget_amount to the number
 budget_currency to an uppercase ISO 4217 code. When no currency is stated, including
 the generic Chinese word "元", default to SGD. Normalize 新币/新加坡元 to SGD and
 人民币/RMB to CNY. A bare "$" or "¥" is ambiguous: set budget_currency null and do
-not guess. For SGD budgets, also set preferences.max_price_sgd to budget_amount. For
-foreign or ambiguous budgets, do not put the unconverted amount into max_price_sgd;
-the graph will convert it. Leave budget_amount and budget_currency null when the user
-does not state a new budget in this turn.
+not guess. max_price_sgd is a monthly rent limit: set budget_months to 12 for a yearly
+budget (一年, 每年, 年预算, per year), to the lease length for a whole-lease total, and
+otherwise 1. For SGD budgets, also set preferences.max_price_sgd to budget_amount divided
+by budget_months. For foreign or ambiguous budgets, do not put the unconverted amount into
+max_price_sgd; the graph will convert it. Leave budget_amount and budget_currency null when
+the user does not state a new budget in this turn.
 Listing IDs may be synthetic IDs such as S010 or real PropertyGuru IDs containing 8-9
 digits. Never treat a budget, date, or MRT duration as a listing ID.
 Normalize Singapore district codes to uppercase and room types to snake_case values such
@@ -104,13 +111,13 @@ a male-female couple or group; never infer it from a name or wording. Set
 landlord_not_living_in when the user does not want a live-in owner, furnished_required for a
 furnished home and air_conditioning_required for air conditioning. max_commute_minutes is
 public-transport minutes to NUS only; leave it null for any other destination.
-Set ranking_priority=space for 空间大一点, 宽敞 or spacious; this alone is a search criterion.
+Add space to ranking_priority for 空间大一点, 宽敞 or spacious; this alone is a search criterion.
 Set min_area_sqm only for an explicit minimum size; convert sqft with 0.09290304. Never invent
 a minimum size, bedroom count or rental scope from a request for more space.
-Interpret MTR as MRT. Set ranking_priority to price, mrt, amenities, commute or space only when the
-user explicitly prefers one; a numeric limit alone does not imply priority. Use amenities when
-the user wants more places to eat nearby and commute for a shorter trip to NUS. Otherwise use
-balanced.
+Interpret MTR as MRT. Add price, mrt, amenities, commute or space to ranking_priority only when
+the user explicitly prefers it; a numeric limit alone does not imply priority. Use amenities when
+the user wants more places to eat nearby and commute for a shorter trip to NUS. With no stated
+priority, leave ranking_priority empty (balanced).
 When current preferences are supplied, preserve them unless the user explicitly changes them.
 """
 _SYSTEM_PROMPT += PREFERENCE_GUIDANCE

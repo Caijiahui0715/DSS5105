@@ -184,6 +184,40 @@ class GraphTest(unittest.TestCase):
         self.assertIn("5,000 CNY", result["response_draft"])
         self.assertIn("S$900", result["response_draft"])
 
+    def test_a_yearly_budget_is_spread_over_twelve_months(self):
+        conversion = {
+            "original_amount": 300_000,
+            "original_currency": "CNY",
+            "rate_to_sgd": "0.19094",
+            "rate_date": "2026-10-05",
+            "amount_sgd": 57_282,
+        }
+        cases = (
+            ("一年的预算是30万人民币", 300_000, "CNY", {**conversion, "months": 12, "monthly_sgd": 4_773}, 4_773),
+            ("每年预算6万新币", 60_000, "SGD", {"original_amount": 60_000, "original_currency": "SGD", "amount_sgd": 60_000, "months": 12, "monthly_sgd": 5_000}, 5_000),
+        )
+        for message, amount, currency, expected, monthly in cases:
+            structured_model = Mock()
+            structured_model.invoke.return_value = ParsedTurn(
+                intent="search",
+                preferences=SearchPreferences(),
+                budget_amount=amount,
+                budget_currency=currency,
+                budget_months=12,
+            )
+            model = Mock()
+            model.with_structured_output.return_value = structured_model
+            with (
+                self.subTest(message=message),
+                closing(create_mock_database()) as connection,
+                patch("graph.convert_to_sgd", return_value=conversion),
+            ):
+                result = build_graph(connection, model).invoke({"message": message})
+
+                self.assertEqual(result["preferences"].max_price_sgd, monthly)
+                self.assertEqual(result["budget_conversion"], expected)
+                self.assertIn(f"÷ 12 = 每月 S${monthly:,}", result["response_draft"])
+
     def test_does_not_search_with_an_ambiguous_currency_symbol(self):
         structured_model = Mock()
         structured_model.invoke.return_value = ParsedTurn(

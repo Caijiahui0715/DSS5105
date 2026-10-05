@@ -646,6 +646,37 @@ def render_budget_ladder(
     return "\n".join(lines)
 
 
+def render_budget_conversion(conversion: dict, language: ResponseLanguage = "zh") -> str:
+    """How the stated budget became the monthly rent limit the search used."""
+    amount, currency, sgd = conversion["original_amount"], conversion["original_currency"], conversion["amount_sgd"]
+    months, monthly = conversion.get("months", 1), conversion.get("monthly_sgd", sgd)
+    if conversion.get("rate_to_sgd"):
+        zh = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = S${sgd:,}（汇率日期 {conversion['rate_date']}）"
+        en = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = S${sgd:,} (rate date {conversion['rate_date']})"
+    else:
+        zh = en = f"S${sgd:,}"
+    if months > 1:
+        zh = f"{months} 个月共 {zh}，÷ {months} = 每月 S${monthly:,}"
+        en = f"{en} for {months} months, ÷ {months} = S${monthly:,} a month"
+    return _text(
+        language,
+        f"预算换算：{zh}。搜索使用 S${monthly:,} 作为月租上限。",
+        f"Budget conversion: {en}. The search used S${monthly:,} as the monthly rent limit.",
+    )
+
+
+def render_budget_check(check: dict, language: ResponseLanguage = "zh") -> str:
+    """A monthly limit above almost every rent may be a yearly or whole-lease budget."""
+    limit, high = check["monthly_limit_sgd"], check["rent_90th_percentile_sgd"]
+    return _text(
+        language,
+        f"提醒：每月 S${limit:,} 的上限高于数据中 90% 房源的月租（S${high:,}），基本起不到筛选作用。"
+        "如果你说的是一年或整个租期的总预算，请告诉我，我会按月重新计算。",
+        f"Note: a monthly limit of S${limit:,} is above the rent of 90% of listings (S${high:,}), so it barely "
+        "narrows the results. If you meant a yearly or whole-lease budget, tell me and I will recalculate it per month.",
+    )
+
+
 def render_preference_changes(
     before: SearchPreferences,
     changes: dict,
@@ -695,6 +726,9 @@ def _preference_value(value: object, language: ResponseLanguage) -> str:
     if isinstance(value, bool):
         return _text(language, "是" if value else "否", "yes" if value else "no")
     if isinstance(value, (list, tuple)):
+        # Only ranking_priority can be empty (other lists are None when unset): no named priority.
+        if not value:
+            return _text(language, "均衡", "balanced")
         return ("、" if language == "zh" else ", ").join(_preference_value(item, language) for item in value)
     if value in _AMENITY_LABELS:
         label = _AMENITY_LABELS[value]

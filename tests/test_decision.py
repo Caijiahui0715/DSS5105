@@ -199,6 +199,18 @@ class DecisionTest(unittest.TestCase):
         self.assertTrue(pending)
         self.assertTrue(all(listing["unknown_conditions"] == ["nearby_food"] for listing in pending))
 
+    def test_each_stated_priority_without_data_is_named(self):
+        preferences = SearchPreferences(max_price_sgd=1500, ranking_priority=["amenities", "commute"])
+        with closing(create_mock_database()) as connection:
+            strict, pending = search_with_unknowns(connection, preferences)
+            self.assertEqual(strict, search_listings(connection, preferences))
+
+        # No fixture listing has nearby counts; S009 has no NUS commute minutes either.
+        self.assertEqual(strict, [])
+        conditions = {listing["listing_id"]: listing["unknown_conditions"] for listing in pending}
+        self.assertEqual(conditions["S009"], ["nearby_food", "max_commute_minutes"])
+        self.assertEqual(conditions["S006"], ["nearby_food"])
+
     def test_new_conditions_match_the_sql_search(self):
         grid = product(
             (None, "female", "male", "mixed"),

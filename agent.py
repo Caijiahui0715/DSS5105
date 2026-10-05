@@ -57,6 +57,8 @@ from response import (
     _check_summary_text,
     _link_status_text,
     _render_relaxations,
+    render_budget_check,
+    render_budget_conversion,
     render_budget_ladder,
     render_comparison,
     render_decision_context,
@@ -77,6 +79,7 @@ from tools import (
     mrt_distance_m,
     rank_listings,
     location_distance_m,
+    rent_percentile_sgd,
     resolve_search_location,
     validate_ranked_listings,
 )
@@ -138,6 +141,10 @@ Using tools
 - Budgets without a currency, including the generic 元, are SGD; 新币 and 新加坡元 are SGD;
   人民币 and RMB are CNY. A bare $ or ¥ is ambiguous, so ask. Pass non-SGD amounts as budget
   with the ISO 4217 code, for example CNY.
+- The saved budget is a monthly rent limit. A budget for a year (一年, 每年, 年预算, per year)
+  or a whole lease goes in budget with months set to 12 or the lease length, in any currency
+  including SGD; never put such an amount in max_price_sgd. 一年的预算是30万人民币 is
+  budget {{"amount": 300000, "currency": "CNY", "months": 12}}.
 - 整租 or a whole unit is rental_scope=entire_unit; 合租, 单间 or a room is rental_scope=room.
   Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
   or studio; district codes look like D05.
@@ -148,27 +155,30 @@ Using tools
   required. When the user accepts any room type, clear room_type and set room_type_flexible.
 - In search_listings, put only the fields that change in set; never echo saved or empty fields.
   To drop a saved condition (any district, cooking no longer needed, back to balanced ranking),
-  name it in clear.
+  name it in clear. A ranking_priority in set replaces the saved list, so include the saved
+  priorities the user keeps, for example ["space", "food_places"] when 也想要餐厅多 follows a
+  saved space priority.
 - Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
   female means female, 我是男生 means male, a male-female couple or group means mixed. Never infer
   gender from a name or writing style.
 - 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
   furnished_required; 要空调 or aircon sets air_conditioning_required.
 - Commute times exist only for public transport to NUS (Kent Ridge campus). 到 NUS 40 分钟以内
-  sets max_commute_minutes=40; a short commute to NUS sets ranking_priority=commute.
+  sets max_commute_minutes=40; a short commute to NUS adds commute to ranking_priority.
   For any other destination, say commute times are only available for NUS and set nothing.
-- Ranking always weighs MRT walking distance, and rent when there is a budget; a named priority
-  gets 70% of the weight. A listing without MRT data or near a station that is not open yet
-  counts as a 10-minute walk.
-- 空间大一点, 宽敞, a larger room/home or spacious sets ranking_priority=space. This is enough
+- Ranking always weighs MRT walking distance, and rent when there is a budget; the named
+  priorities share 70% of the weight. A listing without MRT data or near a station that is not
+  open yet counts as a 10-minute walk.
+- 空间大一点, 宽敞, a larger room/home or spacious adds space to ranking_priority. This is enough
   to search immediately; do not invent a minimum area, bedroom count or whole-unit preference.
   Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
   Space ranks sizes within the same rental_scope and area_scope. Always state which area is
   advertised; floor_reported on a room listing is the whole home's size, not the room's size.
 - Present listings in the order and numbering the tools give. Saved preference changes,
-  shortlist changes, exclusions, relaxation suggestions and the rental_scope_mix note (whether
-  the shown listings are rooms or whole units) are shown to the user automatically, so do not
-  repeat them; you may ask whether the user wants a whole unit or a room.
+  budget conversions and budget_check notes, shortlist changes, exclusions, relaxation
+  suggestions and the rental_scope_mix note (whether the shown listings are rooms or whole
+  units) are shown to the user automatically, so do not repeat them; you may ask whether the
+  user wants a whole unit or a room.
 """
 _SYSTEM_PROMPT += PREFERENCE_GUIDANCE
 
@@ -224,6 +234,12 @@ class AgentState(TypedDict, total=False):
 class Budget(BaseModel):
     amount: int = Field(gt=0)
     currency: str = Field(pattern=r"^[A-Z]{3}$", description="ISO 4217 code such as SGD, CNY or USD.")
+    months: int = Field(
+        1,
+        ge=1,
+        le=36,
+        description="Months the amount covers: 12 for a yearly budget (一年, 每年, 年预算, per year), the lease length for a whole-lease total, otherwise 1.",
+    )
 
 
 class SearchArgs(BaseModel):
@@ -237,7 +253,7 @@ class SearchArgs(BaseModel):
         default_factory=list,
         description="Saved preference fields to drop back to 'any', for example district_code when the user no longer minds the district.",
     )
-    budget: Budget | None = Field(None, description="A budget stated in a currency other than SGD.")
+    budget: Budget | None = Field(None, description="A budget in a currency other than SGD, or one covering more than a month in any currency.")
     preview: bool = Field(False, description="True only for hypothetical what-if questions; saved preferences stay unchanged.")
     user_quote: str = Field("", description="The user's words from the latest message that ask for the saved change.")
 
@@ -292,6 +308,9 @@ def build_agent(
     listing_checker=check_listing_url,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
 ):
+    # Monthly limits above this barely filter and may be yearly budgets; see search().
+    high_rent = rent_percentile_sgd(connection, 0.9)
+
     def validate(ranked, **limits):
         return validate_ranked_listings(connection, ranked, listing_checker, **limits)
 
@@ -370,6 +389,17 @@ def build_agent(
                     f"[fx] {conversion['original_amount']} {conversion['original_currency']} -> "
                     f"S${amount} (rate {conversion['rate_to_sgd']}, {conversion['rate_date']})"
                 )
+            months = args.budget.months
+            if months > 1:
+                # The saved budget is a monthly rent limit, so a yearly or whole-lease budget is spread out.
+                monthly = amount // months
+                conversion = {
+                    **(conversion or {"original_amount": amount, "original_currency": "SGD", "amount_sgd": amount}),
+                    "months": months,
+                    "monthly_sgd": monthly,
+                }
+                work["trace"].append(f"[budget] S${amount} for {months} months -> S${monthly} a month")
+                amount = monthly
             if amount != current.max_price_sgd:
                 changes["max_price_sgd"] = amount
         # With nothing saved yet there is nothing to preview against, so the first search is saved.
@@ -428,7 +458,13 @@ def build_agent(
                 "decision_context": context,
             }
         if conversion:
-            (work["drafts"] if preview else work["notes"]).append(_conversion_text(work, conversion))
+            (work["drafts"] if preview else work["notes"]).append(render_budget_conversion(conversion, language))
+        # A new monthly limit above almost every rent is more likely a yearly or whole-lease budget.
+        budget_check = None
+        limit = preferences.max_price_sgd
+        if "max_price_sgd" in changes and limit and high_rent and limit > high_rent:
+            budget_check = {"monthly_limit_sgd": limit, "rent_90th_percentile_sgd": whole(high_rent)}
+            (work["drafts"] if preview else work["notes"]).append(render_budget_check(budget_check, language))
         work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in [*shown, *pending_shown]]
 
         parts = [_text(work, "预览（尚未修改你的搜索条件）：", "Preview (your saved criteria have not changed):")] if preview else []
@@ -463,6 +499,7 @@ def build_agent(
             "preferences": preferences.model_dump(mode="json", exclude_defaults=True),
             "saved_changes": {} if preview else {field: preferences.model_dump(mode="json")[field] for field in changes},
             "budget_conversion": conversion,
+            "budget_check": budget_check,
             "strict_matches": {
                 "database_count": len(strict),
                 "check_summary": strict_check["summary"],
@@ -884,16 +921,6 @@ def _clean_ids(listing_ids: list[str]) -> list[str]:
 def _quotes(quote: str, message: str) -> bool:
     quote, message = (re.sub(r"\W+", "", text.casefold()) for text in (quote, message))
     return bool(quote) and quote in message
-
-
-def _conversion_text(state, conversion: dict) -> str:
-    amount, currency = conversion["original_amount"], conversion["original_currency"]
-    rate, sgd, rate_date = conversion["rate_to_sgd"], conversion["amount_sgd"], conversion["rate_date"]
-    return _text(
-        state,
-        f"预算换算：{amount:,} {currency} × {rate} = S${sgd:,}（汇率日期 {rate_date}）。搜索使用 S${sgd:,} 作为月租上限。",
-        f"Budget conversion: {amount:,} {currency} × {rate} = S${sgd:,} (rate date {rate_date}). The search used S${sgd:,} as the monthly rent limit.",
-    )
 
 
 def _turn_start(messages: list[AnyMessage]) -> int:

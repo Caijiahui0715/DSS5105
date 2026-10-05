@@ -6,9 +6,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
+from pydantic import ValidationError
+
 from mock_db import create_database, create_mock_database
 from models import SearchPreferences
-from response import render_response
+from response import render_budget_check, render_budget_conversion, render_preference_changes, render_response
 from tools import (
     analyze_relaxations,
     check_listing_url,
@@ -17,6 +19,7 @@ from tools import (
     mrt_minutes,
     rank_listings,
     refresh_mrt_walk_data,
+    rent_percentile_sgd,
     search_listings,
     validate_ranked_listings,
 )
@@ -68,6 +71,88 @@ class ToolsTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in balanced[:3]],
         )
         self.assertNotIn("food", balanced[0]["factors"])
+
+    def test_ranking_priority_keeps_up_to_three_names(self):
+        self.assertEqual(SearchPreferences().ranking_priority, ())
+        self.assertEqual(SearchPreferences(ranking_priority="balanced").ranking_priority, ())
+        self.assertEqual(SearchPreferences(ranking_priority="space").ranking_priority, ("space",))
+        self.assertEqual(
+            SearchPreferences(ranking_priority=["space", "food_places", "space"]).ranking_priority,
+            ("space", "food_places"),
+        )
+        with self.assertRaisesRegex(ValidationError, "ask the user which matter most"):
+            SearchPreferences(ranking_priority=["space", "food_places", "mrt", "price"])
+
+    def test_named_priorities_share_seventy_percent(self):
+        listing = {
+            "listing_id": "a", "rent_monthly_sgd": 1_000, "mrt_distance_m": 425,
+            "mrt_operation_status": "operational", "space_rank": 0.2, "food_places_rank": 0.1,
+        }
+        cases = (
+            ({"max_price_sgd": 2_000, "ranking_priority": "space"}, {"mrt": 0.15, "space": 0.7, "price": 0.15}),
+            ({"ranking_priority": ["space", "food_places"]}, {"mrt": 0.3, "space": 0.35, "food_places": 0.35}),
+            # The one other factor would get 30% against 23% for each named one, so all are equal.
+            (
+                {"max_price_sgd": 2_000, "ranking_priority": ["space", "food_places", "mrt"]},
+                {"mrt": 0.25, "space": 0.25, "price": 0.25, "food_places": 0.25},
+            ),
+        )
+        for preferences, weights in cases:
+            with self.subTest(preferences=preferences):
+                factors = rank_listings([listing], SearchPreferences(**preferences))[0]["factors"]
+                self.assertEqual({name: factor["weight"] for name, factor in factors.items()}, weights)
+
+    def test_an_added_priority_keeps_the_earlier_one_in_the_ranking(self):
+        # 空间大 followed by 也想要餐厅多: space stays in the ranking instead of being replaced.
+        preferences = SearchPreferences(max_price_sgd=3_000, ranking_priority=["space", "food_places"])
+        with closing(create_database()) as connection:
+            listings = search_listings(connection, preferences)
+
+        def top_three(priorities, rank):
+            ranked = rank_listings(listings, preferences.model_copy(update={"ranking_priority": priorities}))
+            return sum(item["listing"][rank] for item in ranked[:3]) / 3
+
+        # Search keeps only listings with data for every named priority.
+        self.assertTrue(all(row["space_rank"] is not None and row["food_places_rank"] is not None for row in listings))
+        # Ranks are 0 for the largest or busiest; both priorities beat ranking on either one alone.
+        self.assertLess(top_three(("space", "food_places"), "space_rank"), top_three(("food_places",), "space_rank"))
+        self.assertLess(top_three(("space", "food_places"), "food_places_rank"), top_three(("space",), "food_places_rank"))
+
+    def test_priority_changes_show_what_is_kept(self):
+        self.assertEqual(
+            render_preference_changes(SearchPreferences(ranking_priority="space"), {"ranking_priority": ("space", "food_places")}),
+            "已保存条件变更：排序偏好 空间大优先 → 空间大优先、餐饮点优先",
+        )
+        self.assertEqual(
+            render_preference_changes(SearchPreferences(ranking_priority="space"), {"ranking_priority": ()}, "en"),
+            "Saved preference changes: ranking priority more space → balanced",
+        )
+
+    def test_budget_conversion_shows_how_the_monthly_limit_was_reached(self):
+        cny = {"original_amount": 300_000, "original_currency": "CNY", "rate_to_sgd": "0.19094", "rate_date": "2026-10-05", "amount_sgd": 57_282}
+        # A monthly budget keeps the existing wording.
+        self.assertEqual(
+            render_budget_conversion({**cny, "original_amount": 5_000, "amount_sgd": 954}),
+            "预算换算：5,000 CNY × 0.19094 = S$954（汇率日期 2026-10-05）。搜索使用 S$954 作为月租上限。",
+        )
+        self.assertEqual(
+            render_budget_conversion({**cny, "months": 12, "monthly_sgd": 4_773}),
+            "预算换算：12 个月共 300,000 CNY × 0.19094 = S$57,282（汇率日期 2026-10-05），÷ 12 = 每月 S$4,773。"
+            "搜索使用 S$4,773 作为月租上限。",
+        )
+        sgd_year = {"original_amount": 60_000, "original_currency": "SGD", "amount_sgd": 60_000, "months": 12, "monthly_sgd": 5_000}
+        self.assertEqual(
+            render_budget_conversion(sgd_year, "en"),
+            "Budget conversion: S$60,000 for 12 months, ÷ 12 = S$5,000 a month. The search used S$5,000 as the monthly rent limit.",
+        )
+
+    def test_a_monthly_limit_above_most_rents_is_flagged(self):
+        with closing(create_mock_database()) as connection:
+            # Eleven of the twelve fixture rents are at most S$3,800; the other is S$32,000.
+            self.assertEqual(rent_percentile_sgd(connection, 0.9), 3_800)
+        text = render_budget_check({"monthly_limit_sgd": 57_282, "rent_90th_percentile_sgd": 18_000})
+        self.assertIn("每月 S$57,282 的上限高于数据中 90% 房源的月租（S$18,000）", text)
+        self.assertIn("一年或整个租期的总预算", text)
 
     def test_balanced_ranking_weighs_mrt_walking_distance(self):
         preferences = SearchPreferences(max_price_sgd=1_100)

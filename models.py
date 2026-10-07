@@ -2,6 +2,7 @@ from datetime import date
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 
 Listing = dict[str, Any]
@@ -172,7 +173,7 @@ class SearchPreferences(BaseModel):
     max_commute_minutes: int | None = Field(
         default=None,
         gt=0,
-        description="Maximum public-transport minutes to NUS (Kent Ridge campus); null when absent.",
+        description="Maximum public-transport minutes to the user's NUS faculty; null when absent.",
     )
     min_bathrooms: int | None = Field(None, ge=0, description="Minimum advertised bathrooms; this does not imply a private bathroom.")
     private_bathroom_required: bool = Field(False, description="True only when an explicitly private bathroom is required; never infer it from master_room.")
@@ -204,12 +205,15 @@ class SearchPreferences(BaseModel):
         description=(
             "Up to three soft preferences the user explicitly asked for, in the order stated; empty "
             "means balanced. price for lower rent, mrt for nearer MRT, amenities for more places to "
-            "eat nearby (吃饭方便), commute for a shorter public-transport trip to NUS, space for more "
+            "eat nearby (吃饭方便), commute for a shorter public-transport trip to the user's NUS faculty, space for more "
             "rental area, food_places/hawker/libraries/sports/healthcare/community/schools for more of "
             "that facility, school_distance for a shorter walk to the nearest reported school (not "
             "specifically NUS). The named priorities share 70% of the ranking weight equally."
         ),
     )
+    # The faculty the commute fields refer to. The system copies it from the user's account each
+    # turn: it is never offered to the model, saved with the criteria or kept in long-term memory.
+    faculty: SkipJsonSchema[str | None] = Field(None, exclude=True)
 
     @field_validator("property_types", "rent_price_types", "furnishing_types", mode="before")
     @classmethod

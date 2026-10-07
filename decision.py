@@ -21,6 +21,8 @@ from tools import (
     FURNISHED,
     TENANT_GENDER_ACCEPTS,
     _enum,
+    commute,
+    commute_minutes,
     extra_condition_status,
     mrt_distance_m,
     mrt_minutes,
@@ -68,15 +70,15 @@ _SPARSE = (
 )
 # A stated ranking priority also needs data; without it a listing cannot be ranked on it.
 _PRIORITY_DATA = {
-    "amenities": ("nearby_food", lambda listing: listing.get("food_rank")),
-    "mrt": ("max_mrt_minutes", mrt_distance_m),
-    "commute": ("max_commute_minutes", lambda listing: listing.get("commute_nus_minutes")),
-    "space": ("min_area_sqm", rental_area_sqm),
+    "amenities": ("nearby_food", lambda listing, preferences: listing.get("food_rank")),
+    "mrt": ("max_mrt_minutes", lambda listing, preferences: mrt_distance_m(listing)),
+    "commute": ("max_commute_minutes", commute_minutes),
+    "space": ("min_area_sqm", lambda listing, preferences: rental_area_sqm(listing)),
 }
 _NEUTRAL.update({field: SearchPreferences.model_fields[field].default for field in EXTRA_CONDITION_LABELS})
 _SPARSE += tuple(EXTRA_CONDITION_LABELS)
-_PRIORITY_DATA.update({name: (name, lambda listing, name=name: listing.get(f"{name}_rank")) for name in AMENITY_FIELDS})
-_PRIORITY_DATA["school_distance"] = ("max_school_walk_minutes", lambda listing: listing.get("pg_school_nearest_walk_min"))
+_PRIORITY_DATA.update({name: (name, lambda listing, preferences, name=name: listing.get(f"{name}_rank")) for name in AMENITY_FIELDS})
+_PRIORITY_DATA["school_distance"] = ("max_school_walk_minutes", lambda listing, preferences: listing.get("pg_school_nearest_walk_min"))
 _EVIDENCE_FIELDS = (
     "headline",
     "card_text",
@@ -146,7 +148,7 @@ def condition_status(
     if field == "air_conditioning_required":
         return _stated(listing.get("air_conditioning"), lambda value: value == "yes")
     if field == "max_commute_minutes":
-        return _check(listing.get("commute_nus_minutes"), lambda minutes: minutes <= wanted)
+        return _check(commute_minutes(listing, preferences), lambda minutes: minutes <= wanted)
     raise ValueError(f"unsupported condition: {field}")
 
 
@@ -180,7 +182,7 @@ def search_with_unknowns(
 def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
     """Name each stated ranking priority this listing has no data for."""
     checks = [_PRIORITY_DATA[name] for name in preferences.ranking_priority if name in _PRIORITY_DATA]
-    return [label for label, data in checks if data(listing) is None]
+    return [label for label, data in checks if data(listing, preferences) is None]
 
 
 def diagnose_conditions(
@@ -285,7 +287,7 @@ def explain_listing(
         "factor_formulas": {
             "price": "rent_monthly_sgd / max_price_sgd",
             "mrt": "walking metres to an operating MRT station / max_mrt_distance_m or max_mrt_minutes x 85 m (the smaller if both, 850 m without either); no data or an unopened station counts as 1",
-            "commute": "public-transport minutes to NUS / max_commute_minutes (45 without a limit); no data counts as 1",
+            "commute": "minutes to the user's faculty (public transport leaving 08:30 on a weekday, or walking within 1.5 km when faster) / max_commute_minutes (45 without a limit); no data counts as 1",
             "food": "position among all listings on nearby F&B and hawker centres within 1 km (0 is the most choice)",
             "space": "descending area percentile within the same rental_scope and area_scope (0 is largest); unstated rental area counts as 0.5",
             **{name: f"descending position among all listings with {field} data (lower means more choice)" for name, field in AMENITY_FIELDS.items()},
@@ -306,7 +308,9 @@ def explain_listing(
         },
         "mrt_minutes": mrt_minutes(listing),
         "mrt_distance_m": whole(mrt_distance_m(listing)),
-        "commute_nus_minutes": whole(listing.get("commute_nus_minutes")),
+        "faculty": preferences.faculty,
+        "commute_minutes": whole(commute_minutes(listing, preferences)),
+        "commute_mode": (commute(listing, preferences.faculty) or {}).get("mode"),
         "sources": {
             "rent_monthly_sgd": (
                 "rechecked_listing"
@@ -320,9 +324,11 @@ def explain_listing(
                 if walk_minutes is not None
                 else "listing_card"
             ),
-            "commute_nus_minutes": (
-                "onemap_public_transport_route" if listing.get("commute_nus_minutes") is not None else None
-            ),
+            "commute_minutes": {
+                "transit": "onemap_public_transport_route",
+                "walk": "onemap_walking_route",
+                "transit_google": "google_public_transport_route",
+            }.get((commute(listing, preferences.faculty) or {}).get("mode")),
         },
         "collected_at": listing.get("collected_at"),
         "listing_url": listing.get("listing_url"),

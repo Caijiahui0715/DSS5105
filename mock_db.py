@@ -14,9 +14,10 @@ DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
 DEFAULT_FINAL_DATA = ROOT / "output-final-delivery" / "rental_data_v2.csv"
 # V2 only replaces the listings table; availability, review flags and districts stay in V1.
 V1_DATA = ROOT / "output-final-delivery" / "rental_data_v1.json"
-# Optional: public-transport minutes to NUS by listing_id (columns listing_id, commute_nus_minutes),
-# computed offline with OneMap. Without the file every listing's commute is unknown.
-COMMUTE_DATA = ROOT / "output-final-delivery" / "commute_nus.csv"
+# Optional: minutes from each listing to each NUS faculty by public transport, or on foot when
+# that is faster (columns listing_id, faculty, minutes, mode, departure), made by
+# build_commutes.py with OneMap. Without the file every commute is unknown.
+COMMUTE_DATA = ROOT / "commute_faculty.csv"
 _SQM_PER_SQFT = 0.09290304
 # Nearby food is ranked on these V2 counts; see _food_ranks().
 _FOOD_FIELDS = ("poi_fnb_1km", "poi_hawker_1km")
@@ -85,7 +86,9 @@ LISTING_FIELDS = (
 )
 # Not V2 columns: food_rank is derived at load time (see _food_ranks()), the commute comes from COMMUTE_DATA.
 FOOD_RANK_FIELD = "food_rank"
-COMMUTE_FIELD = "commute_nus_minutes"
+# Trips to each faculty as JSON, {"School of Computing": {"minutes": 23, "mode": "transit"}, ...};
+# see tools.commute().
+COMMUTE_FIELD = "commutes"
 _AMENITY_RANKS = tuple(f"{name}_rank" for name in AMENITY_FIELDS)
 _COLUMNS = (*LISTING_FIELDS, FOOD_RANK_FIELD, COMMUTE_FIELD)
 
@@ -112,7 +115,7 @@ def create_database(
     commutes = _commutes(commute_path)
     for listing in listings:
         listing[FOOD_RANK_FIELD] = ranks.get(listing["listing_id"])
-        listing[COMMUTE_FIELD] = commutes.get(listing["listing_id"])
+        listing[COMMUTE_FIELD] = json.dumps(commutes.get(listing["listing_id"], {}), ensure_ascii=False)
     v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
     metadata = {row["listing_id"]: row for row in v1["listing_metadata"]}
     return _create_database(
@@ -158,7 +161,8 @@ def _create_database(payload: dict) -> sqlite3.Connection:
         for row in payload["listings"]:
             value = row.get(field)
             row[f"{name}_rank"] = 1 - bisect_left(values, float(value)) / len(values) if value is not None else None
-    connection = sqlite3.connect(":memory:")
+    # The web server shares this read-mostly database across its request threads.
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
     connection.execute("PRAGMA foreign_keys = ON")
     view_columns = ", ".join(
         f"l.{field}" for field in _COLUMNS if field != "rent_monthly_sgd"
@@ -217,7 +221,7 @@ def _create_database(payload: dict) -> sqlite3.Connection:
             coord_error_m REAL,
             poi_fnb_1km INTEGER,
             food_rank REAL,
-            commute_nus_minutes REAL
+            commutes TEXT
         );
 
         CREATE TABLE listing_amenity_ranks (
@@ -342,12 +346,18 @@ def _food_ranks(listings: list[dict]) -> dict[str, float]:
     }
 
 
-def _commutes(path: Path) -> dict[str, str]:
+def _commutes(path: Path) -> dict[str, dict[str, dict]]:
+    commutes: dict[str, dict[str, dict]] = {}
     try:
         with path.open(encoding="utf-8-sig", newline="") as file:
-            return {row["listing_id"]: row["commute_nus_minutes"] or None for row in csv.DictReader(file)}
+            for row in csv.DictReader(file):
+                if row["minutes"]:
+                    # Files from before walking checks have no mode: every time is by public transport.
+                    trip = {"minutes": float(row["minutes"]), "mode": row.get("mode") or "transit"}
+                    commutes.setdefault(row["listing_id"], {})[row["faculty"]] = trip
     except FileNotFoundError:
-        return {}
+        pass
+    return commutes
 
 
 def _v2_metadata(listing: dict, metadata: dict | None) -> dict:
@@ -418,8 +428,8 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 "rent_monthly_sgd_now": None,
                 "scrape_status": None,
                 "enriched_at": None,
-                # Made-up commute minutes for tests until the OneMap data exists.
-                "commute_nus_minutes": row.get("commute_nus_minutes"),
+                # Made-up commute minutes for tests.
+                "commutes": json.dumps(row.get("commutes") or {}, ensure_ascii=False),
             }
         )
         metadata.append(

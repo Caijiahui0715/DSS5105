@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新加坡租房助手</title>
+<style>
+  :root {
+    --ground: #F4F7F6;
+    --panel: #FFFFFF;
+    --ink: #1E2A2F;
+    --muted: #5D6B70;
+    --hairline: #D5DEDC;
+    --line: #00924A;
+    --line-soft: #E2F1E8;
+    --danger: #C8331B;
+    --sign: "Bahnschrift", "DIN Alternate", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --body: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #141B1E;
+      --panel: #1B2428;
+      --ink: #E4ECEA;
+      --muted: #9AA8AC;
+      --hairline: #2E3B40;
+      --line: #2DBE72;
+      --line-soft: #1D3A2B;
+      --danger: #F06A52;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font: 15px/1.6 var(--body);
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--line); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  /* Sign-in */
+  .gate {
+    min-height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+  }
+  .gate form {
+    width: min(380px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 28px;
+  }
+  .brand {
+    font-family: var(--sign);
+    font-weight: 600;
+    font-size: 26px;
+    line-height: 1.2;
+    margin: 0 0 6px;
+    letter-spacing: 0.01em;
+  }
+  .brand::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 10px;
+    border: 3px solid var(--line);
+    border-radius: 50%;
+    vertical-align: 2px;
+  }
+  .gate p { margin: 0 0 22px; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--hairline); }
+  .tabs button {
+    border: 0;
+    background: none;
+    padding: 6px 2px 8px;
+    margin-right: 16px;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--line); font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .field {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: var(--ground);
+  }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .primary {
+    margin-top: 20px;
+    width: 100%;
+    border: 0;
+    border-radius: 6px;
+    padding: 10px;
+    background: var(--line);
+    color: #fff;
+    font-weight: 600;
+  }
+  .primary:disabled { opacity: 0.6; cursor: default; }
+  .error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 1.2em; }
+
+  /* App */
+  .app { display: grid; grid-template-columns: 280px 1fr; height: 100%; }
+  aside {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--hairline);
+    background: var(--panel);
+    min-height: 0;
+  }
+  aside .top { padding: 18px 16px 12px; }
+  aside .brand { font-size: 19px; margin-bottom: 14px; }
+  .new {
+    width: 100%;
+    border: 1px solid var(--line);
+    color: var(--line);
+    background: none;
+    border-radius: 6px;
+    padding: 8px;
+    font-weight: 600;
+  }
+  .threads { list-style: none; margin: 0; padding: 4px 8px; overflow-y: auto; flex: 1; }
+  .threads li { display: flex; align-items: center; border-radius: 6px; }
+  .threads li.active { background: var(--line-soft); }
+  .threads .open {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    border: 0;
+    background: none;
+    padding: 8px 10px;
+  }
+  .threads .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .threads .when { display: block; font-size: 12px; color: var(--muted); }
+  .threads .remove {
+    border: 0;
+    background: none;
+    color: var(--muted);
+    padding: 6px 10px;
+    font-size: 13px;
+    visibility: hidden;
+  }
+  .threads li:hover .remove, .threads li.active .remove, .threads .remove:focus-visible { visibility: visible; }
+  .threads .remove:hover { color: var(--danger); }
+  .empty-list { color: var(--muted); font-size: 13px; padding: 8px 10px; }
+  .account { border-top: 1px solid var(--hairline); padding: 12px 16px 16px; font-size: 13px; }
+  .account .who { font-weight: 600; margin-bottom: 8px; }
+  .account button { display: block; border: 0; background: none; padding: 3px 0; color: var(--muted); }
+  .account button:hover { color: var(--ink); }
+  .account .wipe { color: var(--danger); }
+  .account label { margin: 0 0 4px; }
+  .account select { padding: 6px 8px; margin-bottom: 4px; }
+  .account .saved { min-height: 1.4em; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+
+  main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--hairline);
+    min-height: 56px;
+  }
+  .bar h2 { margin: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .menu { display: none; border: 1px solid var(--hairline); background: none; border-radius: 6px; padding: 4px 10px; }
+  .log { flex: 1; overflow-y: auto; padding: 24px; }
+  .turn { max-width: 760px; margin: 0 auto 22px; }
+  .user { display: flex; justify-content: flex-end; }
+  .user .bubble {
+    background: var(--line-soft);
+    border-radius: 12px 12px 2px 12px;
+    padding: 9px 14px;
+    max-width: 80%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .reply { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 70ch; }
+  .reply.failed { color: var(--danger); }
+  .welcome { max-width: 520px; margin: 12vh auto 0; color: var(--muted); }
+  .welcome h3 { font-family: var(--sign); font-weight: 600; color: var(--ink); font-size: 20px; margin: 0 0 8px; }
+
+  /* The rail line: progress while working, stations for the saved steps. */
+  .working { max-width: 760px; margin: 0 auto 22px; }
+  .working .now { font-size: 13px; color: var(--muted); margin-top: 2px; min-height: 1.3em; }
+  .track { position: relative; width: 140px; height: 3px; background: var(--hairline); border-radius: 2px; margin: 10px 0 6px; }
+  .track::after {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 0;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 3px solid var(--line);
+    animation: run 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes run { from { left: 0; } to { left: calc(100% - 11px); } }
+  @media (prefers-reduced-motion: reduce) { .track::after { animation: none; left: calc(50% - 6px); } }
+  details.steps { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  details.steps summary { cursor: pointer; width: fit-content; }
+  details.steps ol { list-style: none; margin: 10px 0 0; padding: 0 0 0 4px; }
+  details.steps li { position: relative; padding: 0 0 10px 22px; font-family: var(--sign); }
+  details.steps li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 7px;
+    height: 7px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    background: var(--panel);
+  }
+  details.steps li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 16px;
+    bottom: -2px;
+    width: 1px;
+    background: var(--line);
+  }
+
+  .composer { border-top: 1px solid var(--hairline); padding: 14px 24px 18px; background: var(--panel); }
+  .composer form { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+  .composer textarea {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+    max-height: 160px;
+    padding: 10px 12px;
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    background: var(--ground);
+  }
+  .composer .primary { width: auto; margin: 0; padding: 10px 20px; }
+  .composer .note { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: fixed; inset: 0 25% 0 0; z-index: 2; transform: translateX(-100%); transition: transform 0.2s; }
+    aside.open { transform: none; }
+    .menu { display: inline-block; }
+    .bar, .log, .composer { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate" hidden>
+  <form id="gate-form" novalidate>
+    <h1 class="brand">新加坡租房助手</h1>
+    <p>登录后，你的每段对话都会分开保存，下次回来还能接着聊。</p>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-login" aria-selected="true">登录</button>
+      <button type="button" role="tab" id="tab-register" aria-selected="false">注册</button>
+    </div>
+    <label for="username">用户名</label>
+    <input class="field" id="username" autocomplete="username" required>
+    <div class="hint" id="username-hint" hidden>3–20 个字母、数字或下划线</div>
+    <label for="password">密码</label>
+    <input class="field" id="password" type="password" autocomplete="current-password" required>
+    <div class="hint" id="password-hint" hidden>至少 8 位</div>
+    <div id="faculty-field" hidden>
+      <label for="signup-faculty">我的学院（可选）</label>
+      <select class="field" id="signup-faculty"></select>
+      <div class="hint">用来计算每套房源到学院的通勤时间，之后可以在左侧修改</div>
+    </div>
+    <button class="primary" id="gate-submit" type="submit">登录</button>
+    <div class="error" id="gate-error" role="alert"></div>
+  </form>
+</div>
+
+<div class="app" id="app" hidden>
+  <aside id="sidebar">
+    <div class="top">
+      <div class="brand">新加坡租房助手</div>
+      <button class="new" id="new-thread" type="button">新建对话</button>
+    </div>
+    <ul class="threads" id="threads" aria-label="我的对话"></ul>
+    <div class="account">
+      <div class="who" id="who"></div>
+      <label for="my-faculty">我的学院（用于计算通勤时间）</label>
+      <select class="field" id="my-faculty"></select>
+      <div class="saved" id="faculty-saved" aria-live="polite"></div>
+      <button type="button" id="logout">退出登录</button>
+      <button type="button" class="wipe" id="wipe">删除我的所有数据</button>
+    </div>
+  </aside>
+  <main>
+    <div class="bar">
+      <button class="menu" id="menu" type="button" aria-controls="sidebar">对话</button>
+      <h2 id="thread-title">新对话</h2>
+    </div>
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="composer">
+      <form id="composer">
+        <textarea id="message" rows="1" placeholder="说说你的租房需求" aria-label="消息"></textarea>
+        <button class="primary" id="send" type="submit">发送</button>
+      </form>
+      <div class="note">Enter 发送，Shift + Enter 换行。房源信息来自采集时的数据，是否仍可租需要向发布方确认。</div>
+    </div>
+  </main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let mode = "login";
+let faculties = [];
+let me = null;
+let threads = [];
+let active = null;
+const pending = new Set();
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: options.body ? { "Content-Type": "application/json" } : {},
+    credentials: "same-origin",
+  });
+  if (response.status === 401 && !path.startsWith("/api/login") && !path.startsWith("/api/register")) {
+    showGate();
+    throw new Error("请先登录。");
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || `请求失败（${response.status}）`);
+  }
+  return response;
+}
+
+function escapeHtml(text) {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function formatReply(text) {
+  return escapeHtml(text).replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+}
+const isChinese = (text) => /[㐀-鿿]/.test(text);
+
+function setMode(next) {
+  mode = next;
+  $("tab-login").setAttribute("aria-selected", String(mode === "login"));
+  $("tab-register").setAttribute("aria-selected", String(mode === "register"));
+  $("gate-submit").textContent = mode === "login" ? "登录" : "注册并登录";
+  $("username-hint").hidden = $("password-hint").hidden = $("faculty-field").hidden = mode === "login";
+  $("password").autocomplete = mode === "login" ? "current-password" : "new-password";
+  $("gate-error").textContent = "";
+}
+
+function showGate() {
+  $("app").hidden = true;
+  $("gate").hidden = false;
+  $("username").focus();
+}
+
+function facultyOptions(select, empty) {
+  select.innerHTML = "";
+  select.append(new Option(empty, ""));
+  for (const faculty of faculties) {
+    select.append(new Option(faculty.zh === faculty.name ? faculty.name : `${faculty.zh} ${faculty.name}`, faculty.name));
+  }
+}
+
+async function loadFaculties() {
+  faculties = await (await fetch("/api/faculties")).json();
+  facultyOptions($("signup-faculty"), "暂不选择");
+  facultyOptions($("my-faculty"), "未设置");
+}
+
+async function refreshAccount() {
+  // The agent can change the faculty in a conversation once the user agrees.
+  const account = await (await api("/api/me")).json();
+  $("my-faculty").value = account.faculty || "";
+}
+
+async function showApp(account) {
+  me = account.username;
+  $("who").textContent = account.username;
+  $("my-faculty").value = account.faculty || "";
+  $("faculty-saved").textContent = "";
+  $("gate").hidden = true;
+  $("app").hidden = false;
+  await loadThreads();
+  if (threads.length) await openThread(threads[0].id);
+  else await newThread();
+}
+
+async function loadThreads() {
+  threads = await (await api("/api/conversations")).json();
+  renderThreads();
+}
+
+function when(iso) {
+  const date = new Date(iso);
+  const today = new Date();
+  return date.toDateString() === today.toDateString()
+    ? date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function renderThreads() {
+  const list = $("threads");
+  list.innerHTML = "";
+  if (!threads.length) {
+    list.innerHTML = '<li class="empty-list">还没有对话</li>';
+    return;
+  }
+  for (const thread of threads) {
+    const item = document.createElement("li");
+    item.classList.toggle("active", thread.id === active);
+    const open = document.createElement("button");
+    open.className = "open";
+    open.type = "button";
+    open.innerHTML = `<span class="title">${escapeHtml(thread.title || "新对话")}</span><span class="when">${when(thread.updated_at)}</span>`;
+    open.onclick = () => openThread(thread.id);
+    const remove = document.createElement("button");
+    remove.className = "remove";
+    remove.type = "button";
+    remove.textContent = "删除";
+    remove.setAttribute("aria-label", `删除对话：${thread.title || "新对话"}`);
+    remove.onclick = () => deleteThread(thread);
+    item.append(open, remove);
+    list.append(item);
+  }
+}
+
+async function openThread(id) {
+  active = id;
+  const thread = threads.find((t) => t.id === id);
+  $("thread-title").textContent = (thread && thread.title) || "新对话";
+  renderThreads();
+  $("sidebar").classList.remove("open");
+  const log = $("log");
+  log.innerHTML = "";
+  const items = await (await api(`/api/conversations/${encodeURIComponent(id)}/messages`)).json();
+  if (active !== id) return;
+  if (!items.length) {
+    log.innerHTML = `<div class="welcome"><h3>想租什么样的房子？</h3>可以直接说预算、整租还是合租、想离哪里近。条件越具体，推荐越准；不确定的地方我会标出来让你向发布方确认。</div>`;
+  }
+  for (const item of items) {
+    if (item.role === "user") addUser(item.text);
+    else addReply(item.text, item.steps);
+  }
+  if (pending.has(id)) addWorking(isChinese(items.at(-1)?.text || "中"));
+  syncComposer();
+  log.scrollTop = log.scrollHeight;
+  $("message").focus();
+}
+
+async function newThread() {
+  // A conversation with no message yet is reused instead of piling up empty ones.
+  const blank = threads.find((t) => !t.title);
+  if (blank) return openThread(blank.id);
+  const thread = await (await api("/api/conversations", { method: "POST" })).json();
+  threads.unshift({ ...thread, updated_at: new Date().toISOString() });
+  await openThread(thread.id);
+}
+
+async function deleteThread(thread) {
+  if (!confirm(`删除对话「${thread.title || "新对话"}」？删除后无法恢复。`)) return;
+  await api(`/api/conversations/${encodeURIComponent(thread.id)}`, { method: "DELETE" });
+  threads = threads.filter((t) => t.id !== thread.id);
+  if (active === thread.id) {
+    if (threads.length) await openThread(threads[0].id);
+    else await newThread();
+  } else renderThreads();
+}
+
+function addUser(text) {
+  const turn = document.createElement("div");
+  turn.className = "turn user";
+  turn.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+  $("log").querySelector(".welcome")?.remove();
+  $("log").append(turn);
+}
+
+function addReply(text, steps, failed = false) {
+  const turn = document.createElement("div");
+  turn.className = "turn";
+  turn.innerHTML = `<div class="reply${failed ? " failed" : ""}">${formatReply(text)}</div>`;
+  if (steps && steps.length) {
+    const details = document.createElement("details");
+    details.className = "steps";
+    details.innerHTML = `<summary>查看处理过程（${steps.length} 步）</summary><ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>`;
+    turn.append(details);
+  }
+  $("log").append(turn);
+}
+
+function addWorking(chinese) {
+  const box = document.createElement("div");
+  box.className = "working";
+  box.id = "working";
+  box.innerHTML = `<div>${chinese ? "思考中……" : "Thinking…"}</div><div class="track" aria-hidden="true"></div><div class="now" id="now"></div>`;
+  $("log").append(box);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function syncComposer() {
+  const busy = pending.has(active);
+  $("send").disabled = busy;
+  $("send").textContent = busy ? "处理中" : "发送";
+}
+
+async function send(text) {
+  const thread = active;
+  const chinese = isChinese(text);
+  pending.add(thread);
+  const entry = threads.find((t) => t.id === thread);
+  if (entry && !entry.title) {
+    entry.title = text.split(/\s+/).join(" ").slice(0, 20);
+    $("thread-title").textContent = entry.title;
+    renderThreads();
+  }
+  addUser(text);
+  addWorking(chinese);
+  syncComposer();
+  let reply = null;
+  try {
+    const response = await api(`/api/conversations/${encodeURIComponent(thread)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: text }),
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let cut;
+      while ((cut = buffer.indexOf("\n\n")) >= 0) {
+        const block = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        const name = (block.match(/^event: (.*)$/m) || [])[1];
+        const data = JSON.parse((block.match(/^data: (.*)$/m) || [])[1] || "{}");
+        if (name === "progress" && active === thread && $("now")) $("now").textContent = chinese ? data.zh : data.en;
+        else if (name === "reply" || name === "error") reply = { name, data };
+      }
+    }
+  } catch (error) {
+    reply = { name: "error", data: { message: error.message } };
+  }
+  pending.delete(thread);
+  if (active === thread) {
+    $("working")?.remove();
+    if (reply && reply.name === "reply") addReply(reply.data.text, reply.data.steps);
+    else addReply((reply && reply.data.message) || "连接中断了。刷新页面可以看到这条消息是否已处理完。", null, true);
+    $("log").scrollTop = $("log").scrollHeight;
+    syncComposer();
+  }
+  await loadThreads();
+  if (active === thread) $("thread-title").textContent = threads.find((t) => t.id === thread)?.title || "新对话";
+  await refreshAccount();
+}
+
+$("tab-login").onclick = () => setMode("login");
+$("tab-register").onclick = () => setMode("register");
+$("gate-form").onsubmit = async (event) => {
+  event.preventDefault();
+  $("gate-submit").disabled = true;
+  $("gate-error").textContent = "";
+  try {
+    const response = await api(mode === "login" ? "/api/login" : "/api/register", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("username").value,
+        password: $("password").value,
+        faculty: mode === "register" ? $("signup-faculty").value || null : undefined,
+      }),
+    });
+    $("password").value = "";
+    await showApp(await response.json());
+  } catch (error) {
+    $("gate-error").textContent = error.message;
+  } finally {
+    $("gate-submit").disabled = false;
+  }
+};
+$("composer").onsubmit = (event) => {
+  event.preventDefault();
+  const text = $("message").value.trim();
+  if (!text || pending.has(active)) return;
+  $("message").value = "";
+  $("message").style.height = "";
+  send(text);
+};
+$("message").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    $("composer").requestSubmit();
+  }
+});
+$("message").addEventListener("input", (event) => {
+  event.target.style.height = "";
+  event.target.style.height = `${event.target.scrollHeight}px`;
+});
+$("new-thread").onclick = () => newThread();
+$("menu").onclick = (event) => {
+  event.stopPropagation();
+  $("sidebar").classList.toggle("open");
+};
+document.querySelector("main").addEventListener("click", () => $("sidebar").classList.remove("open"));
+$("my-faculty").onchange = async () => {
+  const saved = $("faculty-saved");
+  try {
+    await api("/api/me/faculty", { method: "PUT", body: JSON.stringify({ faculty: $("my-faculty").value || null }) });
+    saved.textContent = $("my-faculty").value ? "已保存，之后的消息按这个学院计算通勤时间" : "已清除";
+  } catch (error) {
+    saved.textContent = error.message;
+  }
+};
+$("logout").onclick = async () => {
+  await api("/api/logout", { method: "POST" });
+  showGate();
+};
+$("wipe").onclick = async () => {
+  if (!confirm("删除你的所有对话、为你保存的条件和学院设置？账号会保留，删除后需要重新登录。此操作无法撤销。")) return;
+  await api("/api/me/data", { method: "DELETE" });
+  showGate();
+};
+
+(async () => {
+  try {
+    const response = await fetch("/api/me", { credentials: "same-origin" });
+    await loadFaculties();
+    if (response.ok) await showApp(await response.json());
+    else showGate();
+  } catch {
+    showGate();
+  }
+})();
+</script>
+</body>
+</html>

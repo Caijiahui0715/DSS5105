@@ -219,6 +219,10 @@ __marimo__/
 
 # Generated data and documents
 *.csv
+# The commute minutes from build_commutes.py are shared with the group through Git;
+# its half-written saves (.partial, .tmp) are not.
+!commute_faculty.csv
+commute_faculty.csv.*
 *.pdf
 *.xlsx
 docs/*.visual-check.*
@@ -229,3 +233,6 @@ docs/*.visual-check.*
 .uv-cache/
 .env
 __pycache__/
+
+# Saved agent conversations from demo.py; they hold what users told the agent.
+sessions.sqlite*

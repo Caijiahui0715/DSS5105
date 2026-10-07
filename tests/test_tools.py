@@ -14,7 +14,9 @@ from response import render_budget_check, render_budget_conversion, render_prefe
 from tools import (
     analyze_relaxations,
     check_listing_url,
+    commute_minutes,
     extract_restrictions,
+    get_listings_by_ids,
     load_listings,
     mrt_minutes,
     rank_listings,
@@ -32,8 +34,8 @@ class ToolsTest(unittest.TestCase):
             main_fields = connection.execute("PRAGMA table_info(listings)").fetchall()
         by_id = {listing["listing_id"]: listing for listing in listings}
 
-        self.assertEqual(len(listings), 519)
-        # 50 V2 columns plus the derived food_rank and the optional NUS commute.
+        self.assertEqual(len(listings), 376)
+        # 50 V2 columns plus the derived food_rank and the optional commutes to each faculty.
         self.assertEqual(len(main_fields), 52)
         self.assertIn("availability_status", listings[0])
         self.assertEqual(listings[0]["live_status"], "unknown")
@@ -42,13 +44,17 @@ class ToolsTest(unittest.TestCase):
         self.assertLessEqual({listing["cooking_policy"] for listing in listings}, {"allowed", "light_only", "not_allowed", "unknown"})
         self.assertLessEqual({listing["pets_policy"] for listing in listings}, {"allowed", "not_allowed", "unknown"})
         # The rechecked rent is used when V2 has one; the card rent is kept.
-        self.assertEqual((by_id["24842419"]["rent_monthly_sgd"], by_id["24842419"]["rent_monthly_sgd_card"]), (5800, 5900))
-        self.assertEqual((by_id["500253628"]["rent_monthly_sgd"], by_id["500253628"]["rent_monthly_sgd_now"]), (1850, None))
+        self.assertEqual((by_id["25604246"]["rent_monthly_sgd"], by_id["25604246"]["rent_monthly_sgd_card"]), (5500, 5700))
+        # Every current listing was rechecked; the fixture has none, so its card rent is used.
+        self.assertTrue(all(listing["rent_monthly_sgd_now"] is not None for listing in listings))
+        with closing(create_mock_database()) as connection:
+            card_only = get_listings_by_ids(connection, ["S001"])[0]
+        self.assertEqual((card_only["rent_monthly_sgd"], card_only["rent_monthly_sgd_now"]), (card_only["rent_monthly_sgd_card"], None))
         # The 80 sqft check runs on V2 areas; 7.43 sqm is an 80 sqft room.
         self.assertIn("area_outside_review_range", by_id["25107881"]["review_flags"])
         self.assertNotIn("area_outside_review_range", by_id["25558367"]["review_flags"])
         # V2.3 adds coordinates and nearby counts; food_rank is derived at load time.
-        self.assertEqual(by_id["24842419"]["coord_source"], "onemap_postcode")
+        self.assertEqual(by_id["500253628"]["coord_source"], "onemap_postcode")
         self.assertTrue(all(listing["poi_fnb_1km"] is not None for listing in listings))
         # food_rank averages the F&B and hawker positions: 0 is the most choice, 1 the least.
         self.assertLess(by_id["24970286"]["food_rank"], 0.05)   # 1282 F&B, 8 hawker centres
@@ -153,6 +159,12 @@ class ToolsTest(unittest.TestCase):
         text = render_budget_check({"monthly_limit_sgd": 57_282, "rent_90th_percentile_sgd": 18_000})
         self.assertIn("每月 S$57,282 的上限高于数据中 90% 房源的月租（S$18,000）", text)
         self.assertIn("一年或整个租期的总预算", text)
+        low = render_budget_check({"monthly_limit_sgd": 5, "lowest_rent_sgd": 528, "stated_budget": None}, "en")
+        self.assertEqual(
+            low,
+            "Note: a monthly limit of S$5 is far below the cheapest rent in the data (S$528), so it was not used or "
+            "saved. If a unit such as thousand is missing, tell me the correct amount.",
+        )
 
     def test_balanced_ranking_weighs_mrt_walking_distance(self):
         preferences = SearchPreferences(max_price_sgd=1_100)
@@ -200,18 +212,39 @@ class ToolsTest(unittest.TestCase):
             self.assertNotIn("unfurnished", values("furnishing", furnished_required=True))
             self.assertEqual(values("air_conditioning", air_conditioning_required=True), {"yes"})
 
-    def test_nus_commute_minutes_load_from_an_optional_file(self):
+    def test_faculty_commutes_load_from_an_optional_file(self):
+        with closing(create_database()) as connection:
+            first, second = [listing["listing_id"] for listing in load_listings(connection)[:2]]
         with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "commute_nus.csv"
-            path.write_text("listing_id,commute_nus_minutes\n24842419,38\n500253628,\n", encoding="utf-8")
+            path = Path(folder) / "commute_faculty.csv"
+            path.write_text(
+                "listing_id,faculty,minutes,mode,departure\n"
+                f"{first},School of Computing,8,walk,2026-10-12 08:30\n"
+                f"{first},Faculty of Law,51,transit,2026-10-12 08:30\n"
+                f"{second},School of Computing,,,2026-10-12 08:30\n",
+                encoding="utf-8",
+            )
+            # A file from before walking checks has no mode column: its times are by public transport.
+            old = Path(folder) / "old.csv"
+            old.write_text(f"listing_id,faculty,minutes,departure\n{first},Faculty of Law,51,2026-10-12 08:30\n", encoding="utf-8")
             with closing(create_database(commute_path=path)) as connection:
-                loaded = {listing["listing_id"]: listing["commute_nus_minutes"] for listing in load_listings(connection)}
+                loaded = {listing["listing_id"]: listing["commutes"] for listing in load_listings(connection)}
+            with closing(create_database(commute_path=old)) as connection:
+                before_walking = {listing["listing_id"]: listing["commutes"] for listing in load_listings(connection)}
             with closing(create_database(commute_path=Path(folder) / "missing.csv")) as connection:
-                missing = {listing["commute_nus_minutes"] for listing in load_listings(connection)}
+                missing = [listing["commutes"] for listing in load_listings(connection)]
 
-        self.assertEqual(loaded["24842419"], 38)
-        self.assertIsNone(loaded["500253628"])
-        self.assertEqual(missing, {None})
+        self.assertEqual(loaded[first], {
+            "School of Computing": {"minutes": 8, "mode": "walk"},
+            "Faculty of Law": {"minutes": 51, "mode": "transit"},
+        })
+        self.assertEqual(before_walking[first], {"Faculty of Law": {"minutes": 51, "mode": "transit"}})
+        # An empty cell is a route OneMap could not find: no data, not zero minutes.
+        self.assertEqual(loaded[second], {})
+        self.assertTrue(all(commutes == {} for commutes in missing))
+        listing = {"commutes": loaded[first]}
+        self.assertEqual(commute_minutes(listing, SearchPreferences(faculty="Faculty of Law")), 51)
+        self.assertIsNone(commute_minutes(listing, SearchPreferences()))
 
     def test_url_checks_compare_the_final_listing_id(self):
         class Response:

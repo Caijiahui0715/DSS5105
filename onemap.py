@@ -1,9 +1,10 @@
 import base64
 import json
 import os
+from datetime import datetime
 from math import ceil
 from pathlib import Path
-from time import time
+from time import sleep, time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -165,6 +166,81 @@ def calculate_mrt_walk(
     }
 
 
+def public_transport_minutes(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    token: str,
+    departure: datetime,
+    *,
+    opener=urlopen,
+) -> int | None:
+    """OneMap's fastest public-transport trip at that departure time, in whole minutes.
+
+    None means OneMap found no route. Durations include the walks to and from stops.
+    """
+    payload = public_transport_plan(start, end, token, departure, opener=opener)
+    if payload is None:
+        return None
+    try:
+        seconds = [float(itinerary["duration"]) for itinerary in (payload.get("plan") or {}).get("itineraries") or []]
+    except (KeyError, TypeError, ValueError) as error:
+        raise OneMapError("OneMap returned an invalid public-transport route") from error
+    return ceil(min(seconds) / 60) if seconds else None
+
+
+def public_transport_plan(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    token: str,
+    departure: datetime,
+    *,
+    opener=urlopen,
+) -> dict | None:
+    """OneMap's public-transport trips at that departure time, as it returns them; None without a route."""
+    return _route(
+        {
+            "start": f"{start[0]},{start[1]}",
+            "end": f"{end[0]},{end[1]}",
+            "routeType": "pt",
+            "mode": "TRANSIT",
+            "date": f"{departure:%m-%d-%Y}",
+            "time": f"{departure:%H:%M:%S}",
+            "maxWalkDistance": 1000,
+            "numItineraries": 3,
+        },
+        token,
+        opener,
+    )
+
+
+def walking_minutes(start: tuple[float, float], end: tuple[float, float], token: str, *, opener=urlopen) -> int | None:
+    """OneMap's walking route between two points, in whole minutes; None when it finds none."""
+    payload = _route({"start": f"{start[0]},{start[1]}", "end": f"{end[0]},{end[1]}", "routeType": "walk"}, token, opener)
+    if payload is None:
+        return None
+    try:
+        return ceil(float(payload["route_summary"]["total_time"]) / 60)
+    except (KeyError, TypeError, ValueError) as error:
+        raise OneMapError("OneMap returned an invalid walking route") from error
+
+
+def _route(params: dict[str, object], token: str, opener) -> dict | None:
+    """A routing request; None when OneMap finds no route. A slow answer is asked again twice."""
+    for attempt in range(3):
+        try:
+            # Public-transport routes sometimes take longer than the usual 10 s.
+            return _get_json("/api/public/routingsvc/route", params, token, opener, timeout=30)
+        except OneMapError as error:
+            text = str(error)
+            if "No route" in text:
+                return None  # OneMap answers HTTP 404 "No route found".
+            # Still slow after three tries: raised rather than taken as "no route", so a
+            # later run asks again instead of keeping a gap.
+            if attempt == 2 or not ("timed out" in text or "Timeout" in text):
+                raise
+            sleep(4 * (attempt + 1))
+
+
 def geocode_location(query: str, *, opener=urlopen) -> tuple[float, float]:
     """Resolve a user-named Singapore place using the existing OneMap search API."""
     return _geocode(query, load_token(opener=opener), opener, require_unique=True)
@@ -197,13 +273,13 @@ def _geocode(query: str, token: str, opener, *, require_unique: bool = False) ->
         raise OneMapError(f"OneMap returned an unusable match for {query!r}") from error
 
 
-def _get_json(path: str, params: dict[str, object], token: str, opener) -> dict:
+def _get_json(path: str, params: dict[str, object], token: str, opener, timeout: float = 10) -> dict:
     request = Request(
         f"{_BASE_URL}{path}?{urlencode(params)}",
         headers={"Accept": "application/json", "Authorization": token},
     )
     try:
-        with opener(request, timeout=10) as response:
+        with opener(request, timeout=timeout) as response:
             payload = json.load(response)
     except HTTPError as error:
         hint = " - token missing, wrong, or expired" if error.code in (401, 403) else ""
@@ -228,8 +304,6 @@ def _body_snippet(error: HTTPError, limit: int = 200) -> str:
 
 
 if __name__ == "__main__":
-    from datetime import datetime
-
     result = get_token()
     expiry = int(result["expiry_timestamp"])
     print(result["access_token"])

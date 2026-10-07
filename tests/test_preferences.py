@@ -128,6 +128,23 @@ class PreferenceIntegrationTest(unittest.TestCase):
         self.assertTrue(all(row["distance_to_reference_m"] <= 1500 for row in shown))
         _location_coordinates.cache_clear()
 
+    def test_a_named_nus_faculty_is_located_without_onemap(self):
+        _location_coordinates.cache_clear()
+        message = "我在商学院上课，想住在学院2公里以内"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"nearby_location": {"query": "商学院", "radius_m": 2000}}, "user_quote": message})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as db, patch("tools.geocode_location", side_effect=AssertionError("OneMap was called")):
+            result, = run_agent(db, model, message)
+        location = result["preferences"].nearby_location
+        self.assertEqual((location.latitude, location.longitude), (1.292522, 103.774133))
+        shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
+        self.assertTrue(shown and all(row["distance_to_reference_m"] <= 2000 for row in shown))
+        # The agent is told which faculties are recorded and on which campus.
+        self.assertIn("Lee Kuan Yew School of Public Policy (Bukit Timah)", model.calls[0][0].content)
+        _location_coordinates.cache_clear()
+
     def test_failed_geocoding_does_not_save_or_invent_a_location(self):
         _location_coordinates.cache_clear()
         message = "测试地点1500米以内"

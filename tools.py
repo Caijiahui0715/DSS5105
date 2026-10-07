@@ -18,6 +18,7 @@ from models import (
     RestrictionSummary,
     SearchPreferences,
 )
+from faculties import find_faculty
 from onemap import OneMapNotFound, calculate_mrt_walk, geocode_location, load_token
 
 
@@ -48,7 +49,7 @@ _FOOD_RANK = "food_rank"
 # where lower is better, or None when the listing lacks the data.
 _RANKING_CRITERIA = {
     "mrt": lambda listing, preferences: _ratio(mrt_distance_m(listing), _mrt_reference_m(preferences)),
-    "commute": lambda listing, preferences: _ratio(listing.get("commute_nus_minutes"), _commute_reference(preferences)),
+    "commute": lambda listing, preferences: _ratio(commute_minutes(listing, preferences), _commute_reference(preferences)),
     "food": lambda listing, preferences: listing.get(_FOOD_RANK),
     "space": lambda listing, preferences: listing.get("space_rank"),
     "price": lambda listing, preferences: _ratio(listing.get("rent_monthly_sgd"), preferences.max_price_sgd),
@@ -155,7 +156,9 @@ def _stated_value(value):
 
 @lru_cache(maxsize=128)
 def _location_coordinates(query: str) -> tuple[float, float]:
-    return geocode_location(query)
+    # A recorded NUS faculty needs no lookup; OneMap would find several buildings for most of them.
+    faculty = find_faculty(query)
+    return (faculty["latitude"], faculty["longitude"]) if faculty else geocode_location(query)
 
 
 def resolve_search_location(preferences: SearchPreferences) -> SearchPreferences:
@@ -243,7 +246,6 @@ def search_listings(
             "AND mrt_operation_status <> 'under_construction'",
             preferences.max_mrt_minutes,
         ),
-        ("commute_nus_minutes <= ?", preferences.max_commute_minutes),
         ("bedrooms >= ? AND rental_scope <> 'room'", preferences.min_bedrooms),
         ("area_sqm >= ? AND space_rank IS NOT NULL", preferences.min_area_sqm),
         ("tenant_count_reported >= ?", preferences.occupant_count),
@@ -280,7 +282,6 @@ def search_listings(
         "mrt": "COALESCE(mrt_walk_distance_m, mrt_distance_m) IS NOT NULL "
         "AND mrt_operation_status <> 'under_construction'",
         "amenities": f"{_FOOD_RANK} IS NOT NULL",
-        "commute": "commute_nus_minutes IS NOT NULL",
         "space": "space_rank IS NOT NULL",
         **{name: f"{name}_rank IS NOT NULL" for name in AMENITY_FIELDS},
         "school_distance": "pg_school_nearest_walk_min IS NOT NULL",
@@ -294,7 +295,27 @@ def search_listings(
     )
     active = [field for field in EXTRA_CONDITION_LABELS if getattr(preferences, field) != SearchPreferences.model_fields[field].default]
     # ponytail: Python filtering is sufficient for this 519-row prototype; use SQL at larger scale.
-    return [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
+    candidates = [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
+    # Commutes depend on the user's faculty, so they are checked here rather than in SQL.
+    if preferences.max_commute_minutes is not None or "commute" in preferences.ranking_priority:
+        limit = preferences.max_commute_minutes
+        candidates = [
+            listing
+            for listing in candidates
+            if (minutes := commute_minutes(listing, preferences)) is not None and (limit is None or minutes <= limit)
+        ]
+    return candidates
+
+
+def commute(listing: Listing, faculty: str | None) -> dict | None:
+    """The trip from the listing to a faculty, {"minutes", "mode"} with mode transit or walk."""
+    return (listing.get("commutes") or {}).get(faculty) if faculty else None
+
+
+def commute_minutes(listing: Listing, preferences: SearchPreferences) -> float | None:
+    """Minutes from the listing to the user's faculty, when both are known."""
+    trip = commute(listing, preferences.faculty)
+    return trip["minutes"] if trip else None
 
 
 def refresh_mrt_walk_data(
@@ -430,8 +451,8 @@ def rank_listings(
 ) -> list[RankingResult]:
     """Rank matches by normalized use of the user's stated limits.
 
-    Rent and MRT walking distance are always weighed; nearby food and the NUS commute
-    only when the user asks for them. Named priorities share 70% of the weight.
+    Rent and MRT walking distance are always weighed; nearby food and the commute to the
+    user's faculty only when the user asks for them. Named priorities share 70% of the weight.
     """
     names = _ranking_factors(preferences)
     weights = _factor_weights(names, preferences.ranking_priority)
@@ -459,6 +480,8 @@ def rank_listings(
                 "rank_value": rank_value,
                 "factors": factors,
                 "warnings": list(listing.get("review_flags", [])),
+                # For listing cards: the trip to the user's faculty, when one is saved.
+                "commute": preferences.faculty and {"faculty": preferences.faculty, "minutes": None, "mode": None, **(commute(listing, preferences.faculty) or {})},
             }
         )
     ranked.sort(key=_rank_key)
@@ -658,6 +681,8 @@ def _query(
     columns = [column[0] for column in cursor.description]
     listings = [dict(zip(columns, row)) for row in cursor.fetchall()]
     for listing in listings:
+        if isinstance(listing.get("commutes"), str):
+            listing["commutes"] = json.loads(listing["commutes"])
         flags = listing.get("review_flags") or "[]"
         parsed_flags = json.loads(flags) if isinstance(flags, str) else flags
         listing["review_flags"] = [

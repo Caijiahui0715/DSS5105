@@ -120,13 +120,16 @@ class DecisionTest(unittest.TestCase):
         self.assertNotIn("room", {listing["rental_scope"] for listing in studios})
 
     def test_whole_unit_requests_keep_unstated_scope_for_confirmation(self):
+        preferences = SearchPreferences(rental_scope="entire_unit")
         with closing(create_database()) as connection:
-            strict, pending = search_with_unknowns(
-                connection, SearchPreferences(rental_scope="entire_unit")
-            )
+            strict, _ = search_with_unknowns(connection, preferences)
+        # The current data states every listing's scope; the fixture still has two unstated ones.
+        with closing(create_mock_database()) as connection:
+            _, pending = search_with_unknowns(connection, preferences)
 
         self.assertTrue(strict)
         self.assertEqual({listing["rental_scope"] for listing in strict}, {"entire_unit"})
+        self.assertTrue(pending)
         self.assertEqual({listing["rental_scope"] for listing in pending}, {"unknown"})
         self.assertTrue(all(listing["unknown_conditions"] == ["rental_scope"] for listing in pending))
 
@@ -174,20 +177,40 @@ class DecisionTest(unittest.TestCase):
             round(listing["rent_monthly_sgd"] / 2000, 3),
         )
         self.assertEqual(explanation["conditions"], {"max_price_sgd": "pass"})
-        self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "listing_card")
+        # Every current listing's rent was rechecked after collection.
+        self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "rechecked_listing")
         self.assertIn("S$", explanation["evidence"]["card_text"])
 
     def test_explanation_names_the_rent_source(self):
         preferences = SearchPreferences(max_price_sgd=6000)
         with closing(create_database()) as connection:
-            rechecked, card_only = get_listings_by_ids(connection, ["24842419", "500253628"])
+            (rechecked,) = get_listings_by_ids(connection, ["25604246"])
+        # Fixture listings were never rechecked, so their card rent is the source.
+        with closing(create_mock_database()) as connection:
+            (card_only,) = get_listings_by_ids(connection, ["S001"])
         explanation = explain_listing(rechecked, preferences)
         text = render_listing_explanation(explanation)
 
         self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "rechecked_listing")
         self.assertEqual(explain_listing(card_only, preferences)["sources"]["rent_monthly_sgd"], "listing_card")
         self.assertIn("月租来自重新采集的现价", text)
-        self.assertIn("采集时房源卡片为 S$5,900，现价 S$5,800", text)
+        self.assertIn("采集时房源卡片为 S$5,700，现价 S$5,500", text)
+
+    def test_explanation_names_the_commute_source(self):
+        preferences = SearchPreferences(max_price_sgd=1500, faculty="School of Computing")
+        with closing(create_mock_database()) as connection:
+            (listing,) = get_listings_by_ids(connection, ["S006"])
+        for mode, source, name in (
+            ("transit", "onemap_public_transport_route", "OneMap 公共交通路线"),
+            ("walk", "onemap_walking_route", "OneMap 步行路线"),
+            # Normanton Park's two listings were routed with Google's Routes API instead.
+            ("transit_google", "google_public_transport_route", "Google 公共交通路线"),
+        ):
+            trip = {**listing, "commutes": {"School of Computing": {"minutes": 25, "mode": mode}}}
+            explanation = explain_listing(trip, preferences)
+
+            self.assertEqual(explanation["sources"]["commute_minutes"], source)
+            self.assertIn(f"到计算机学院通勤时间来自{name}", render_listing_explanation(explanation))
 
     def test_a_stated_priority_without_data_needs_confirmation(self):
         preferences = SearchPreferences(max_price_sgd=1500, ranking_priority="amenities")
@@ -200,12 +223,12 @@ class DecisionTest(unittest.TestCase):
         self.assertTrue(all(listing["unknown_conditions"] == ["nearby_food"] for listing in pending))
 
     def test_each_stated_priority_without_data_is_named(self):
-        preferences = SearchPreferences(max_price_sgd=1500, ranking_priority=["amenities", "commute"])
+        preferences = SearchPreferences(max_price_sgd=1500, ranking_priority=["amenities", "commute"], faculty="School of Computing")
         with closing(create_mock_database()) as connection:
             strict, pending = search_with_unknowns(connection, preferences)
             self.assertEqual(strict, search_listings(connection, preferences))
 
-        # No fixture listing has nearby counts; S009 has no NUS commute minutes either.
+        # No fixture listing has nearby counts; S009 has no commute minutes either.
         self.assertEqual(strict, [])
         conditions = {listing["listing_id"]: listing["unknown_conditions"] for listing in pending}
         self.assertEqual(conditions["S009"], ["nearby_food", "max_commute_minutes"])
@@ -257,8 +280,17 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual(status("furnished_required", True, furnishing="partially_furnished"), "pass")
         self.assertEqual(status("furnished_required", True, furnishing="unfurnished"), "fail")
         self.assertEqual(status("air_conditioning_required", True, air_conditioning="unknown"), "unknown")
-        self.assertEqual(status("max_commute_minutes", 40, commute_nus_minutes=35), "pass")
-        self.assertEqual(status("max_commute_minutes", 40, commute_nus_minutes=None), "unknown")
+        commute = SearchPreferences(max_commute_minutes=40, faculty="School of Computing")
+        def trips(faculty, minutes, mode="transit"):
+            return {"commutes": {faculty: {"minutes": minutes, "mode": mode}}}
+
+        self.assertEqual(condition_status("max_commute_minutes", trips("School of Computing", 35), commute), "pass")
+        self.assertEqual(condition_status("max_commute_minutes", trips("School of Computing", 12, "walk"), commute), "pass")
+        self.assertEqual(condition_status("max_commute_minutes", trips("School of Computing", 45), commute), "fail")
+        self.assertEqual(condition_status("max_commute_minutes", trips("Faculty of Law", 35), commute), "unknown")
+        # Without the user's faculty there is no commute to check.
+        no_faculty = commute.model_copy(update={"faculty": None})
+        self.assertEqual(condition_status("max_commute_minutes", trips("School of Computing", 35), no_faculty), "unknown")
 
     def test_unstated_conditions_are_named_for_confirmation(self):
         preferences = SearchPreferences(max_price_sgd=1200, tenant_gender="female", landlord_not_living_in=True)
@@ -275,18 +307,21 @@ class DecisionTest(unittest.TestCase):
         )
         self.assertGreater(rows["landlord_not_living_in"]["unknown"], 0)
 
-    def test_nus_commute_uses_the_loaded_minutes(self):
-        preferences = SearchPreferences(max_price_sgd=1500, max_commute_minutes=30)
+    def test_commute_uses_the_minutes_to_the_users_faculty(self):
+        preferences = SearchPreferences(max_price_sgd=1500, max_commute_minutes=30, faculty="School of Computing")
         with closing(create_mock_database()) as connection:
             strict, pending = search_with_unknowns(connection, preferences)
-            priority = SearchPreferences(max_price_sgd=1500, ranking_priority="commute")
+            priority = SearchPreferences(max_price_sgd=1500, ranking_priority="commute", faculty="School of Computing")
             ranked = rank_listings(search_with_unknowns(connection, priority)[0], priority)
+            # The fixture only has minutes to School of Computing.
+            elsewhere, _ = search_with_unknowns(connection, preferences.model_copy(update={"faculty": "Faculty of Law"}))
 
         # Mock minutes: S006 25, S010 28, S001 35; S009 has none.
         self.assertEqual({listing["listing_id"] for listing in strict}, {"S006", "S010"})
         self.assertIn("S009", {listing["listing_id"] for listing in pending})
         self.assertEqual(ranked[0]["listing"]["listing_id"], "S006")
         self.assertEqual(ranked[0]["factors"]["commute"]["weight"], 0.7)
+        self.assertEqual(elsewhere, [])
 
     def test_mrt_priority_sends_listings_without_mrt_data_to_confirmation(self):
         preferences = SearchPreferences(max_price_sgd=8000, ranking_priority="mrt")
@@ -348,7 +383,7 @@ class DecisionTest(unittest.TestCase):
 
         mix = rental_scope_mix(preferences, strict, shown)
         self.assertEqual(mix["shown_scopes"], ["room"])
-        self.assertEqual(mix["entire_unit"], {"database_count": 128, "cheapest_sgd": 2000})
+        self.assertEqual(mix["entire_unit"], {"database_count": 88, "cheapest_sgd": 2000})
         self.assertIsNone(rental_scope_mix(preferences.model_copy(update={"rental_scope": "room"}), strict, shown))
         # Under S$1,500 every match is a room, so there is no mix to mention.
         self.assertIsNone(rental_scope_mix(preferences, room_only, room_only[:3]))

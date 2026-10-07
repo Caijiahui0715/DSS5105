@@ -8,6 +8,7 @@ import re
 import sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Annotated, Any, Literal, TypedDict
 
 from langchain_core.messages import (
@@ -19,6 +20,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, ValidationError
@@ -37,6 +39,7 @@ from decision import (
     whole,
 )
 from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
+from faculties import FACULTIES, find_faculty
 from graph import (
     _CYRILLIC,
     _HAN,
@@ -52,6 +55,7 @@ from graph import (
 from models import ResponseLanguage, SearchPreferences
 from onemap import OneMapError
 from parser import PREFERENCE_GUIDANCE
+from profiles import UserProfiles
 from response import (
     _availability_text,
     _check_summary_text,
@@ -60,20 +64,27 @@ from response import (
     render_budget_check,
     render_budget_conversion,
     render_budget_ladder,
+    render_commutes,
     render_comparison,
     render_decision_context,
+    render_faculty_change,
     render_listing_details,
     render_link_checks,
     render_listing_explanation,
     render_needs_confirmation,
+    render_no_faculty,
     render_preference_changes,
+    render_remembered_profile,
     render_rental_scope_mix,
     render_response,
     render_saved_preferences,
+    TOOL_LABELS,
 )
 from tools import (
     analyze_relaxations,
     check_listing_url,
+    commute,
+    commute_minutes,
     extract_restrictions,
     get_listings_by_ids,
     mrt_distance_m,
@@ -163,9 +174,11 @@ Using tools
   gender from a name or writing style.
 - 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
   furnished_required; 要空调 or aircon sets air_conditioning_required.
-- Commute times exist only for public transport to NUS (Kent Ridge campus). 到 NUS 40 分钟以内
-  sets max_commute_minutes=40; a short commute to NUS adds commute to ranking_priority.
-  For any other destination, say commute times are only available for NUS and set nothing.
+- Commute times are minutes from each listing to the user's NUS faculty (faculty in the
+  conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
+  is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 sets
+  max_commute_minutes=40; a short commute adds commute to ranking_priority. For a destination
+  that is not an NUS faculty, say commute times only cover NUS faculties and set nothing.
 - Ranking always weighs MRT walking distance, and rent when there is a budget; the named
   priorities share 70% of the weight. A listing without MRT data or near a station that is not
   open yet counts as a 10-minute walk.
@@ -181,6 +194,46 @@ Using tools
   user wants a whole unit or a room.
 """
 _SYSTEM_PROMPT += PREFERENCE_GUIDANCE
+# Listed from faculties.py, so the prompt stays in step with the recorded addresses.
+_FACULTY_LIST = "; ".join(f"{faculty['name']} ({faculty['campus']})" for faculty in FACULTIES)
+_SYSTEM_PROMPT += f"""
+NUS faculties and schools
+- These have recorded addresses: {_FACULTY_LIST}.
+- When the user names one as a place (离 SoC 2 公里内), also in Chinese or as an abbreviation, put
+  its English name from this list in nearby_location.query; the system locates it without a
+  lookup. Being close still needs an explicit radius, as for any place.
+"""
+_FACULTY_GUIDANCE = """
+The user's faculty (faculty tool)
+- faculty in the conversation state is the faculty saved in the user's account, used for every
+  commute time in every conversation; null means not set.
+- When it is null and the user asks how long a commute takes or states a commute condition, ask
+  which NUS faculty they study at and say it will be saved to their account. Their answer is
+  enough: call faculty with action=set, the faculty and their words as user_quote.
+- When a faculty is saved and the user says they study at a different one, do not change it yet:
+  ask 要把你的学院改成X吗？之后所有对话都会按X计算通勤时间。 and call action=set only after they
+  agree, quoting their agreement. The system confirms the change to the user.
+- For how long listings take to school, call faculty with action=commute. A hypothetical or
+  another faculty (如果我在法学院呢) uses action=commute with that faculty and saves nothing.
+- Without commute data for a listing, say so and give the straight-line distance and MRT walk the
+  tool returns. Never estimate minutes.
+"""
+_MEMORY_GUIDANCE = """
+Long-term memory (user_memory tool)
+- memory_consent says whether this user agreed to be remembered across conversations; null means
+  not decided. The system asks once after criteria are saved. When the user agrees (记住, 好的记住吧,
+  yes remember them) call user_memory with action=allow; when they refuse (不用记, no) action=decline.
+- remembered_profile holds criteria this user agreed to keep in an earlier conversation, with the
+  user's words behind each field. The system has already shown it; it may be outdated and is not
+  applied. When the user wants to reuse it (沿用, 跟上次一样, same as last time) call user_memory with
+  action=restore, then search_listings with only the changes the user asks for now.
+- 你记得我什么 or what do you remember calls action=show; 忘掉我的信息, 删除我的数据 or forget me calls
+  action=forget. Never claim to remember anything that is not in user_memory results or the state.
+"""
+_MEMORY_ASK = (
+    "要我记住这些条件吗？记住后，下次开新对话时我会先问你是否沿用；随时可以说“忘掉我的信息”删除。",
+    "Should I remember these criteria? Next time you start a new conversation I will ask whether to reuse them; say \"forget my data\" at any time to delete them.",
+)
 
 _MOVE_IN_NOTE = (
     "入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
@@ -221,7 +274,20 @@ class AgentState(TypedDict, total=False):
     viewed_listing_id: str | None
     relaxations: list[dict]
     last_search: dict | None
+    # ISO date of the latest turn; a later date means the conversation resumed on another day.
+    last_active_date: str | None
+    # Long-term memory, used only with a profile store: who is talking, the user's words and date
+    # behind each saved field, the budget as stated, a profile kept from an earlier conversation
+    # that is offered but not applied yet, and whether the system already asked for consent.
+    user_id: str | None
+    preference_sources: dict
+    budget_statement: dict | None
+    remembered_profile: dict | None
+    memory_asked: bool
+    # Each final reply's trace by message id, so the processing steps can be shown again later.
+    reply_traces: dict
     # Reset at the start of every turn.
+    memory_dirty: bool
     tool_rounds: int
     drafts: list[str]
     notes: list[str]
@@ -249,7 +315,7 @@ class SearchArgs(BaseModel):
         default_factory=SearchPreferences,
         description="Only the preference fields that change to a new value; leave every other field out. Null or default values here change nothing.",
     )
-    clear: list[Literal[tuple(SearchPreferences.model_fields)]] = Field(
+    clear: list[Literal[tuple(field for field in SearchPreferences.model_fields if field != "faculty")]] = Field(
         default_factory=list,
         description="Saved preference fields to drop back to 'any', for example district_code when the user no longer minds the district.",
     )
@@ -297,6 +363,22 @@ class ExcludeArgs(BaseModel):
     restore: list[str] = Field(default_factory=list)
 
 
+class MemoryArgs(BaseModel):
+    """This user's criteria kept across conversations: allow or decline keeping them, show what is kept, forget it, or restore it into this conversation. Act only on the user's own request."""
+
+    action: Literal["allow", "decline", "show", "forget", "restore"]
+    user_quote: str = Field("", description="The user's words from the latest message that ask for this; not needed for show.")
+
+
+class FacultyArgs(BaseModel):
+    """The user's NUS faculty, used for every commute time: save it to their account (set), or look up commute times from listings to it or to any other faculty without saving anything (commute)."""
+
+    action: Literal["set", "commute"]
+    faculty: str | None = Field(None, description="A recorded faculty by its English name from the list; for commute, leave empty to use the user's saved faculty.")
+    listing_ids: list[str] = Field(default_factory=list, description="For commute: the listings to look up; empty means the listings shown last.")
+    user_quote: str = Field("", description="For set: the user's words in the latest message that state or confirm the faculty.")
+
+
 class ToolError(ValueError):
     """An expected problem the model should read and act on."""
 
@@ -307,12 +389,23 @@ def build_agent(
     checkpointer=None,
     listing_checker=check_listing_url,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    profiles: UserProfiles | None = None,
 ):
+    """With profiles, a user_id in the input enables long-term memory for that user."""
     # Monthly limits above this barely filter and may be yearly budgets; see search().
     high_rent = rent_percentile_sgd(connection, 0.9)
+    lowest_rent = rent_percentile_sgd(connection, 0)
 
     def validate(ranked, **limits):
-        return validate_ranked_listings(connection, ranked, listing_checker, **limits)
+        checked_links = 0
+
+        def checker(listing_id, url):
+            nonlocal checked_links
+            checked_links += 1
+            _progress(f"正在检查房源链接（第 {checked_links} 套）", f"Checking listing links ({checked_links})")
+            return listing_checker(listing_id, url)
+
+        return validate_ranked_listings(connection, ranked, checker, **limits)
 
     def checked(work, check):
         """Record the link result of each listing about to be shown, then return those listings."""
@@ -372,6 +465,7 @@ def build_agent(
             amount = args.budget.amount
             if args.budget.currency != "SGD":
                 try:
+                    _progress("正在换算汇率", "Converting the currency")
                     conversion = convert_to_sgd(amount, args.budget.currency)
                 except UnknownCurrencyError as error:
                     raise ToolError(
@@ -409,14 +503,37 @@ def build_agent(
                 "Saving preference changes needs user_quote copied from the latest user message. "
                 "Use preview=true to only look."
             )
-        preferences = SearchPreferences.model_validate({**current.model_dump(), **changes})
+        # A budget missing 万 or 千 is at least ten times too small. A limit under a tenth of the
+        # cheapest rent is neither used nor kept, and the system says so itself instead of leaving
+        # it to the model; budgets that are only a little low still get relaxation suggestions.
+        budget_check = None
+        limit = changes.get("max_price_sgd")
+        if limit is not None and lowest_rent and limit < lowest_rent / 10:
+            del changes["max_price_sgd"]
+            budget_check = {
+                "monthly_limit_sgd": limit,
+                "lowest_rent_sgd": whole(lowest_rent),
+                "stated_budget": args.budget and args.budget.model_dump(),
+            }
+            # The stated budget is not kept either, and there is no conversion to show.
+            conversion, args = None, args.model_copy(update={"budget": None})
+            note = render_budget_check(budget_check, work["response_language"])
+            if note not in work["notes"]:
+                work["notes"].append(note)
+        # The faculty is not one of the criteria (model_dump leaves it out), so it is carried over.
+        preferences = SearchPreferences.model_validate({**current.model_dump(), **changes, "faculty": current.faculty})
         try:
             preferences = resolve_search_location(preferences)
         except OneMapError as error:
             raise ToolError(f"Cannot resolve the requested place: {error}. Ask for a more precise address/postcode or user-supplied coordinates; do not invent them.") from error
         changes = {field: getattr(preferences, field) for field in changes}
         if not _has_search_criteria(preferences):
-            raise ToolError("There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time.")
+            raise ToolError(
+                "The budget was not used: the system already told the user it is far below every rent and "
+                "asked for the correct amount, so do not repeat that; wait for their answer."
+                if budget_check
+                else "There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time."
+            )
 
         excluded = _search_exclusions(work)
         strict, pending = search_with_unknowns(connection, preferences, excluded)
@@ -442,6 +559,22 @@ def build_agent(
             if changes:
                 work["notes"].append(render_preference_changes(current, changes, language))
                 work["preferences"] = preferences
+                # The user's words behind each saved field, kept with the profile if they agree.
+                sources = dict(work["preference_sources"])
+                for field in changes:
+                    if getattr(preferences, field) == getattr(defaults, field):
+                        sources.pop(field, None)
+                    else:
+                        sources[field] = {"quote": args.user_quote, "date": date.today().isoformat()}
+                work["preference_sources"] = sources
+                # Keep the budget as stated so a reused one is converted at that day's rate.
+                if args.budget:
+                    work["budget_statement"] = args.budget.model_dump()
+                elif "max_price_sgd" in changes:
+                    work["budget_statement"] = None
+                # New criteria supersede what an earlier conversation kept.
+                work["remembered_profile"] = None
+                work["memory_dirty"] = True
             # Same single-condition policy and URL checks as the workflow's relaxation node.
             if not shown:
                 relaxations = analyze_relaxations(connection, preferences, excluded, listing_checker)
@@ -452,6 +585,15 @@ def build_agent(
                 else [render_rental_scope_mix(scope_mix, language)] if scope_mix
                 else []
             )
+            # Ask once whether to keep the saved criteria for later conversations.
+            user_id = work.get("user_id")
+            if changes and profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
+                work["footers"].append(_text(work, *_MEMORY_ASK))
+                work["memory_asked"] = True
+            # Commute criteria measure to the user's faculty; without one they cannot be checked.
+            commute_asked = preferences.max_commute_minutes is not None or "commute" in preferences.ranking_priority
+            if profiles and user_id and commute_asked and not preferences.faculty:
+                work["footers"].append(render_no_faculty(language))
             work["last_search"] = {
                 "strict_database_count": len(strict),
                 "needs_confirmation_database_count": len(pending),
@@ -460,7 +602,6 @@ def build_agent(
         if conversion:
             (work["drafts"] if preview else work["notes"]).append(render_budget_conversion(conversion, language))
         # A new monthly limit above almost every rent is more likely a yearly or whole-lease budget.
-        budget_check = None
         limit = preferences.max_price_sgd
         if "max_price_sgd" in changes and limit and high_rent and limit > high_rent:
             budget_check = {"monthly_limit_sgd": limit, "rent_90th_percentile_sgd": whole(high_rent)}
@@ -552,7 +693,7 @@ def build_agent(
             work["drafts"].append(_text(work, f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。", f"Listing {listing_id} is no longer available at its original link and will not be recommended."))
             return {"listing_id": listing_id, "link_status": "inactive"}
         listing = ranked[0]["listing"]
-        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"]))
+        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"], ranked[0]["commute"]))
         preferences = work["preferences"]
         return {
             **_facts(ranked[0], work["response_language"]),
@@ -613,6 +754,7 @@ def build_agent(
         ]
         saved = work["shortlisted_listing_ids"]
         if add or remove:
+            work["memory_dirty"] = True
             removed = [listing_id for listing_id in remove if listing_id in before]
             not_found = [listing_id for listing_id in add if listing_id not in found]
             # Shown verbatim, like the workflow's shortlist replies, so a wrong pick is visible.
@@ -655,11 +797,166 @@ def build_agent(
         work["shortlisted_listing_ids"] = [
             listing_id for listing_id in work["shortlisted_listing_ids"] if listing_id not in excluded
         ]
+        work["memory_dirty"] = work["memory_dirty"] or bool(excluded or restored)
         if excluded:
             work["notes"].append(_text(work, f"已排除房源 {'、'.join(excluded)}，之后的搜索不再显示（可以说“恢复 {excluded[0]}”撤销）。", f"Excluded listings {', '.join(excluded)} from later searches (say \"restore {excluded[0]}\" to undo)."))
         if restored:
             work["notes"].append(_text(work, f"已恢复房源 {'、'.join(restored)}。", f"Restored listings {', '.join(restored)}."))
         return {"excluded": excluded, "restored": restored, "excluded_listing_ids": work["excluded_listing_ids"]}
+
+    def user_memory(work, args: MemoryArgs):
+        user_id = work.get("user_id")
+        if not user_id:
+            raise ToolError("This conversation has no user id, so nothing can be kept across conversations; tell the user.")
+        if args.action != "show" and not _quotes(args.user_quote, work["message"]):
+            raise ToolError("This action needs user_quote copied from the latest user message.")
+        language = work["response_language"]
+        if args.action == "show":
+            kept = profiles.profile(user_id)
+            work["drafts"].append(
+                render_remembered_profile(kept, language, welcome=False) if kept
+                else _text(work, "目前没有为你长期保存任何内容。", "Nothing is kept for you across conversations.")
+            )
+            return {"memory_consent": profiles.consent(user_id), "kept_profile": kept}
+        if args.action == "allow":
+            profiles.set_consent(user_id, True)
+            profiles.save(user_id, _kept_profile(work))
+            work["memory_asked"] = True
+            work["notes"].append(_text(
+                work,
+                "好的，已记住当前的条件、候选和排除。下次开新对话时我会先问你是否沿用；随时可以说“忘掉我的信息”删除。",
+                "Done: your current criteria, shortlist and exclusions are kept. Next time you start a new conversation I will ask whether to reuse them; say \"forget my data\" at any time to delete them.",
+            ))
+            return {"memory_consent": True}
+        if args.action in ("decline", "forget"):
+            profiles.set_consent(user_id, False)
+            work["memory_asked"] = True
+            work["remembered_profile"] = None
+            work["notes"].append(
+                _text(work, "好的，不会保存你的条件，新对话不会带入这些内容。", "OK, your criteria will not be kept for new conversations.")
+                if args.action == "decline"
+                else _text(
+                    work,
+                    "已删除为你长期保存的条件、候选和排除，之后也不会再保存。当前这段对话的记录仍在，开新对话后不会带入。",
+                    "Deleted the criteria, shortlist and exclusions kept for you, and nothing more will be kept. This conversation's own record remains; new conversations will not include it.",
+                )
+            )
+            return {"memory_consent": False, "deleted": args.action == "forget"}
+
+        kept = profiles.profile(user_id)
+        if not kept:
+            raise ToolError("Nothing is kept for this user; tell the user and ask for their criteria.")
+        current = work["preferences"]
+        restored = SearchPreferences.model_validate({**kept.get("preferences", {}), "faculty": current.faculty})
+        budget, conversion = kept.get("budget"), None
+        if budget:
+            # Work the monthly limit out again at today's rate; keep the saved one if that fails.
+            amount = budget["amount"]
+            try:
+                if budget["currency"] != "SGD":
+                    _progress("正在换算汇率", "Converting the currency")
+                    conversion = convert_to_sgd(amount, budget["currency"])
+                    amount = conversion["amount_sgd"]
+                months = budget.get("months", 1)
+                if months > 1:
+                    conversion = {
+                        **(conversion or {"original_amount": amount, "original_currency": "SGD", "amount_sgd": amount}),
+                        "months": months,
+                        "monthly_sgd": amount // months,
+                    }
+                    amount //= months
+                restored = restored.model_copy(update={"max_price_sgd": amount})
+            except (CurrencyConversionError, ValueError):
+                work["notes"].append(_text(
+                    work,
+                    f"汇率服务暂时不可用，先沿用上次换算的月租上限 S${restored.max_price_sgd:,}。",
+                    f"The exchange-rate service is unavailable, so the monthly limit from last time, S${restored.max_price_sgd:,}, is used.",
+                ))
+        changes = {
+            field: getattr(restored, field)
+            for field in SearchPreferences.model_fields
+            if getattr(restored, field) != getattr(current, field)
+        }
+        kept_ids = kept.get("shortlisted_listing_ids", [])
+        present = [listing["listing_id"] for listing in get_listings_by_ids(connection, kept_ids)]
+        gone = [listing_id for listing_id in kept_ids if listing_id not in present]
+        work["preferences"] = restored
+        work["shortlisted_listing_ids"] = list(dict.fromkeys([*work["shortlisted_listing_ids"], *present]))
+        work["excluded_listing_ids"] = list(dict.fromkeys([*work["excluded_listing_ids"], *kept.get("excluded_listing_ids", [])]))
+        work["preference_sources"] = kept.get("sources", {})
+        work["budget_statement"] = budget
+        work["remembered_profile"] = None
+        work["relaxations"], work["last_search"] = [], None
+        work["memory_dirty"] = True
+        if changes:
+            work["notes"].append(render_preference_changes(current, changes, language))
+        if conversion:
+            work["notes"].append(render_budget_conversion(conversion, language))
+        work["notes"].append(_text(
+            work,
+            f"已沿用上次的候选清单：{'、'.join(present) or '空'}" + (f"；{'、'.join(gone)} 已不在当前房源数据中，未恢复。" if gone else "。"),
+            f"Restored last time's shortlist: {', '.join(present) or 'empty'}" + (f"; {', '.join(gone)} no longer in the listing data and not restored." if gone else "."),
+        ))
+        return {
+            "restored_preferences": restored.model_dump(mode="json", exclude_defaults=True),
+            "budget_conversion": conversion,
+            "shortlist": work["shortlisted_listing_ids"],
+            "not_restored_delisted": gone,
+            "next_step": "Call search_listings with only the changes the user asks for now to show listings.",
+        }
+
+    def faculty_tool(work, args: FacultyArgs):
+        named = find_faculty(args.faculty) if args.faculty else None
+        if args.faculty and not named:
+            raise ToolError(
+                f"{args.faculty!r} is not a recorded faculty. Use an English name from the NUS faculties list "
+                "in your instructions; if the user's faculty is not there, tell the user commute times only cover those."
+            )
+        saved = work["preferences"].faculty
+        if args.action == "set":
+            user_id = work.get("user_id")
+            if not user_id:
+                raise ToolError("This conversation has no user id, so the faculty cannot be saved; tell the user.")
+            if not named:
+                raise ToolError("Name the faculty to save in faculty.")
+            if not _quotes(args.user_quote, work["message"]):
+                raise ToolError("Saving the faculty needs user_quote copied from the latest user message that states or confirms it.")
+            if named["name"] != saved:
+                profiles.set_faculty(user_id, named["name"])
+                work["preferences"] = work["preferences"].model_copy(update={"faculty": named["name"]})
+                work["notes"].append(render_faculty_change(saved, named["name"], work["response_language"]))
+            return {"faculty": named["name"], "campus": named["campus"], "changed": named["name"] != saved}
+
+        faculty = named or find_faculty(saved or "")
+        if not faculty:
+            raise ToolError("No faculty is saved for this user. Ask which NUS faculty they study at; it will be saved to their account.")
+        listing_ids = _clean_ids(args.listing_ids) or work["shown_listing_ids"]
+        if not listing_ids and work.get("viewed_listing_id"):
+            listing_ids = [work["viewed_listing_id"]]
+        listings = get_listings_by_ids(connection, listing_ids)
+        if not listings:
+            raise ToolError("Name the listings in listing_ids, from shown_listings_in_display_order or the shortlist.")
+        to_faculty = SearchPreferences(faculty=faculty["name"])
+        place = SimpleNamespace(latitude=faculty["latitude"], longitude=faculty["longitude"])
+        rows = [
+            {
+                "listing_id": listing["listing_id"],
+                "title": listing.get("title"),
+                "commute_minutes": whole(commute_minutes(listing, to_faculty)),
+                "commute_mode": (commute(listing, faculty["name"]) or {}).get("mode"),
+                "distance_m": round(distance) if (distance := location_distance_m(listing, place)) is not None else None,
+                "mrt_minutes": mrt_minutes(listing),
+            }
+            for listing in listings
+        ]
+        work["drafts"].append(render_commutes(faculty["name"], rows, work["response_language"]))
+        return {
+            "faculty": faculty["name"],
+            "campus": faculty["campus"],
+            "saved_faculty": saved,
+            "trip": "public transport leaving 08:30 on a weekday, or walking within 1.5 km when faster (commute_mode)",
+            "listings": rows,
+        }
 
     tools = {
         "search_listings": (SearchArgs, search),
@@ -670,6 +967,9 @@ def build_agent(
         "shortlist": (ShortlistArgs, shortlist),
         "exclude_listings": (ExcludeArgs, exclude),
     }
+    if profiles:
+        tools["user_memory"] = (MemoryArgs, user_memory)
+        tools["faculty"] = (FacultyArgs, faculty_tool)
     bound_model = model.bind_tools([_tool_spec(name, schema) for name, (schema, _) in tools.items()])
 
     def snapshot(state: AgentState) -> dict:
@@ -688,7 +988,17 @@ def build_agent(
                 for position, listing in enumerate(get_listings_by_ids(connection, listing_ids), 1)
             ]
 
+        memory = (
+            {
+                "memory_consent": profiles.consent(state["user_id"]),
+                "remembered_profile": state.get("remembered_profile"),
+                "faculty": preferences.faculty,
+            }
+            if profiles and state.get("user_id")
+            else {}
+        )
         return {
+            **memory,
             "today": date.today().isoformat(),
             "saved_preferences": preferences.model_dump(mode="json", exclude_defaults=True),
             "missing_refinements": _open_preferences(preferences),
@@ -704,28 +1014,80 @@ def build_agent(
         }
 
     def begin_turn(state: AgentState):
+        language = _response_language(state["message"], state.get("response_language"))
+        turn = {"response_language": language}
+        preferences = state.get("preferences") or SearchPreferences()
+        # The faculty is an account setting that can change between turns, on the web page too.
+        user_id = state.get("user_id")
+        preferences = preferences.model_copy(update={"faculty": profiles.faculty(user_id) if profiles and user_id else None})
+        today = date.today()
+        notes, trace = [], []
+        # A saved conversation can outlive a data refresh that delisted shortlisted listings.
+        shortlisted = state.get("shortlisted_listing_ids", [])
+        known = {listing["listing_id"] for listing in get_listings_by_ids(connection, shortlisted)}
+        gone = [listing_id for listing_id in shortlisted if listing_id not in known]
+        if gone:
+            notes.append(_text(
+                turn,
+                f"候选清单里的 {'、'.join(gone)} 已不在当前房源数据中（可能已下架），已从候选清单移除。",
+                f"{', '.join(gone)} from your shortlist no longer appear in the listing data (possibly delisted) and were removed.",
+            ))
+            trace.append(f"[resume] dropped delisted shortlist entries: {', '.join(gone)}")
+        # On a later day, earlier suggestions and counts rest on old data and link checks.
+        last_active = state.get("last_active_date")
+        new_day = last_active is not None and last_active != today.isoformat()
+        if new_day:
+            trace.append(f"[resume] last active {last_active}; cleared pending relaxations and last search counts")
+            if preferences.move_in_date and preferences.move_in_date < today:
+                notes.append(_text(
+                    turn,
+                    f"你之前填写的入住日期 {preferences.move_in_date.isoformat()} 已经过去，如需更新请告诉我。",
+                    f"The move-in date you gave, {preferences.move_in_date.isoformat()}, has passed; tell me if it changed.",
+                ))
+        # A new conversation of a user who agreed to be remembered opens with what was kept.
+        remembered = state.get("remembered_profile")
+        if profiles and user_id and not state.get("messages"):
+            remembered = profiles.profile(user_id)
+            if remembered:
+                kept = remembered.get("shortlisted_listing_ids", [])
+                present = {listing["listing_id"] for listing in get_listings_by_ids(connection, kept)}
+                notes.append(render_remembered_profile(remembered, language, gone=[i for i in kept if i not in present]))
+                trace.append(f"[memory] offered the profile kept on {remembered.get('saved_on')}")
         return {
             "messages": [HumanMessage(content=state["message"])],
-            "response_language": _response_language(state["message"], state.get("response_language")),
-            "preferences": state.get("preferences") or SearchPreferences(),
+            "response_language": language,
+            "preferences": preferences,
             "shown_listing_ids": state.get("shown_listing_ids", []),
-            "shortlisted_listing_ids": state.get("shortlisted_listing_ids", []),
+            "shortlisted_listing_ids": [listing_id for listing_id in shortlisted if listing_id in known],
             "excluded_listing_ids": state.get("excluded_listing_ids", []),
-            "relaxations": state.get("relaxations", []),
-            "last_search": state.get("last_search"),
+            "relaxations": [] if new_day else state.get("relaxations", []),
+            "last_search": None if new_day else state.get("last_search"),
+            "last_active_date": today.isoformat(),
+            "preference_sources": state.get("preference_sources", {}),
+            "budget_statement": state.get("budget_statement"),
+            "remembered_profile": remembered,
+            "memory_asked": state.get("memory_asked", False),
+            "memory_dirty": False,
             "tool_rounds": 0,
             "drafts": [],
-            "notes": [],
+            "notes": notes,
             "footers": [],
             "link_checks": [],
             "observations": [],
-            "trace": [],
+            "trace": trace,
         }
 
     def agent_node(state: AgentState):
+        last = state["messages"][-1]
+        _progress(
+            *("回复未通过事实核对，正在重写", "Rewriting a reply that failed the fact check") if isinstance(last, SystemMessage)
+            else ("正在整理结果", "Putting the results together") if isinstance(last, ToolMessage)
+            else ("正在理解你的需求", "Understanding your request")
+        )
         language = "English" if state["response_language"] == "en" else "Simplified Chinese"
         system = (
             _SYSTEM_PROMPT.format(language=language)
+            + (_MEMORY_GUIDANCE + _FACULTY_GUIDANCE if profiles and state.get("user_id") else "")
             + "\nConversation state:\n"
             + json.dumps(snapshot(state), ensure_ascii=False, default=str)
         )
@@ -758,6 +1120,12 @@ def build_agent(
                 "viewed_listing_id",
                 "relaxations",
                 "last_search",
+                "user_id",
+                "preference_sources",
+                "budget_statement",
+                "remembered_profile",
+                "memory_asked",
+                "memory_dirty",
                 "drafts",
                 "notes",
                 "footers",
@@ -770,6 +1138,8 @@ def build_agent(
         # Sequential on purpose: later calls in the same message see earlier state changes.
         for call in state["messages"][-1].tool_calls:
             schema, handler = tools.get(call["name"], (None, None))
+            label = TOOL_LABELS.get(call["name"], (call["name"], call["name"]))
+            _progress(f"正在{label[0]}", label[1])
             line = len(work["trace"])
             work["trace"].append(f"[tool] {call['name']}({json.dumps(call['args'], ensure_ascii=False, default=str)})")
             try:
@@ -793,6 +1163,7 @@ def build_agent(
         return "tools" if last.tool_calls and state["tool_rounds"] <= max_tool_rounds else "finalize"
 
     def finalize(state: AgentState):
+        _progress("正在核对回复", "Checking the reply")
         messages = state["messages"]
         last = messages[-1]
         language = state["response_language"]
@@ -816,6 +1187,12 @@ def build_agent(
             return {"messages": [RemoveMessage(id=last.id), SystemMessage(content=feedback)], "trace": trace}
         if problems:
             trace.append(f"[guard] reply rejected ({'; '.join(problems)}) -> fallback")
+        # Keep this turn's changes for later conversations, only with consent. While an earlier
+        # profile is offered but not reused or replaced, it is left as it was.
+        user_id = state.get("user_id")
+        if profiles and user_id and state.get("memory_dirty") and not state.get("remembered_profile"):
+            if profiles.save(user_id, _kept_profile(state)):
+                trace.append("[memory] kept this conversation's criteria for later conversations")
         footers = list(state["footers"])
         if problems or not reply.strip():
             # Drafts already carry each unverified link's reason in their data notes.
@@ -826,7 +1203,12 @@ def build_agent(
             if unverified:
                 footers.append(render_link_checks(unverified, language))
         response = "\n\n".join([*state["notes"], reply.strip(), *footers])
-        return {"response": response, "trace": trace, "messages": [AIMessage(content=response, id=last.id)]}
+        return {
+            "response": response,
+            "trace": trace,
+            "messages": [AIMessage(content=response, id=last.id)],
+            "reply_traces": {**(state.get("reply_traces") or {}), last.id: trace},
+        }
 
     def fallback(state: AgentState) -> str:
         language = state["response_language"]
@@ -859,6 +1241,27 @@ def build_agent(
     return graph.compile(checkpointer=checkpointer)
 
 
+def _progress(zh: str, en: str) -> None:
+    """Tell a streaming caller, such as the web server, what is happening; nothing otherwise."""
+    try:
+        get_stream_writer()({"progress": {"zh": zh, "en": en}})
+    except RuntimeError:
+        pass  # Outside a graph run.
+
+
+def _kept_profile(state) -> dict:
+    """What long-term memory keeps: saved criteria with their sources, never conversation text."""
+    return {
+        "preferences": state["preferences"].model_dump(mode="json", exclude_defaults=True),
+        "budget": state.get("budget_statement"),
+        "sources": state.get("preference_sources") or {},
+        "shortlisted_listing_ids": state.get("shortlisted_listing_ids", []),
+        "excluded_listing_ids": state.get("excluded_listing_ids", []),
+        "response_language": state.get("response_language"),
+        "saved_on": date.today().isoformat(),
+    }
+
+
 def _tool_spec(name: str, schema: type[BaseModel]) -> dict:
     spec = convert_to_openai_tool(schema)
     spec["function"]["name"] = name
@@ -883,7 +1286,8 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
         "mrt_minutes": mrt_minutes(listing),
         "mrt_distance_m": whole(mrt_distance_m(listing)),
         "mrt_from_onemap": listing.get("mrt_walk_minutes") is not None,
-        "commute_nus_minutes": whole(listing.get("commute_nus_minutes")),
+        "commute_minutes_to_faculty": whole((item.get("commute") or {}).get("minutes")),
+        "commute_mode": (item.get("commute") or {}).get("mode"),
         "availability_note": _availability_text(listing, language),
         "nearby_1km": {
             key: listing[field]

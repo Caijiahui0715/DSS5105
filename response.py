@@ -1,3 +1,5 @@
+import re
+
 from models import (
     Listing,
     ListingCheckSummary,
@@ -8,12 +10,13 @@ from models import (
     SearchPreferences,
     UserIntent,
 )
+from faculties import faculty_label
 from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, mrt_minutes
 
 
 _FACTOR_LABELS = {
-    "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮", "commute": "到 NUS 通勤", "space": "空间大小"},
-    "en": {"price": "price", "mrt": "MRT", "food": "nearby food", "commute": "commute to NUS", "space": "space"},
+    "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮", "commute": "到学院通勤", "space": "空间大小"},
+    "en": {"price": "price", "mrt": "MRT", "food": "nearby food", "commute": "commute to your faculty", "space": "space"},
 }
 
 _RESTRICTION_TEXT = {
@@ -106,7 +109,7 @@ PREFERENCE_LABELS = {
         "landlord_not_living_in": "不要房东同住",
         "furnished_required": "需要家具",
         "air_conditioning_required": "需要空调",
-        "max_commute_minutes": "到 NUS 公共交通上限（分钟）",
+        "max_commute_minutes": "到学院公共交通上限（分钟）",
         "ranking_priority": "排序偏好",
     },
     "en": {
@@ -127,7 +130,7 @@ PREFERENCE_LABELS = {
         "landlord_not_living_in": "no live-in landlord",
         "furnished_required": "furnished",
         "air_conditioning_required": "air conditioning",
-        "max_commute_minutes": "public-transport limit to NUS (minutes)",
+        "max_commute_minutes": "public-transport limit to your faculty (minutes)",
         "ranking_priority": "ranking priority",
     },
 }
@@ -148,7 +151,7 @@ _CONDITION_LABELS = {
         "landlord_not_living_in": "房东是否同住",
         "furnished_required": "家具",
         "air_conditioning_required": "空调",
-        "max_commute_minutes": "到 NUS 通勤时间",
+        "max_commute_minutes": "到学院通勤时间",
         "nearby_food": "周边餐饮",
     },
     "en": {
@@ -166,7 +169,7 @@ _CONDITION_LABELS = {
         "landlord_not_living_in": "whether the landlord lives in",
         "furnished_required": "furnishing",
         "air_conditioning_required": "air conditioning",
-        "max_commute_minutes": "commute time to NUS",
+        "max_commute_minutes": "commute time to your faculty",
         "nearby_food": "nearby food",
     },
 }
@@ -177,22 +180,22 @@ _CONDITION_STATUS_TEXT = {
 }
 
 _SOURCE_TEXT = {
-    "zh": {"listing_card": "房源卡片", "rechecked_listing": "重新采集的现价", "onemap_walking_route": "OneMap 步行路线", "onemap_public_transport_route": "OneMap 公共交通路线", None: "无数据"},
-    "en": {"listing_card": "the listing card", "rechecked_listing": "the rechecked current price", "onemap_walking_route": "a OneMap walking route", "onemap_public_transport_route": "a OneMap public-transport route", None: "no data"},
+    "zh": {"listing_card": "房源卡片", "rechecked_listing": "重新采集的现价", "onemap_walking_route": "OneMap 步行路线", "onemap_public_transport_route": "OneMap 公共交通路线", "google_public_transport_route": "Google 公共交通路线", None: "无数据"},
+    "en": {"listing_card": "the listing card", "rechecked_listing": "the rechecked current price", "onemap_walking_route": "a OneMap walking route", "onemap_public_transport_route": "a OneMap public-transport route", "google_public_transport_route": "a Google public-transport route", None: "no data"},
 }
 
 _FACTOR_FORMULAS = {
     "zh": {
         "price": "月租 ÷ 预算上限",
         "mrt": "到已通车 MRT 站的步行米数 ÷ 参考距离（米数上限或分钟上限 × 85 米，两者取小；均未指定时 850 米）",
-        "commute": "到 NUS 公共交通分钟 ÷ 通勤上限（没给上限时 45 分钟）",
+        "commute": "到学院的分钟数（公共交通按工作日 8:30 出发；1.5 公里内步行更快时按步行）÷ 通勤上限（没给上限时 45 分钟）",
         "food": "按 1 公里内餐饮和小贩中心数在全部房源里的排位",
         "space": "同一出租方式和面积口径内，广告面积从大到小的百分位（0 最大）",
     },
     "en": {
         "price": "rent ÷ budget",
         "mrt": "walking metres to an operating MRT station ÷ reference (metres limit or minutes × 85 m, the smaller when both are given; 850 m without either)",
-        "commute": "public-transport minutes to NUS ÷ commute limit (45 minutes without a limit)",
+        "commute": "minutes to your faculty (public transport leaving 8:30 on a weekday, or walking within 1.5 km when faster) ÷ commute limit (45 minutes without a limit)",
         "food": "position among all listings on F&B and hawker centres within 1 km",
         "space": "descending area percentile within the same rental type and area scope (0 is largest)",
     },
@@ -278,8 +281,8 @@ def render_response(
                 ),
             ]
         )
-        if commute := _commute_text(listing, language):
-            lines.append(_text(language, f"   到 NUS：{commute}", f"   To NUS: {commute}"))
+        if commute := _commute_text(item.get("commute"), language):
+            lines.append(f"   {commute}")
         lines.append(_text(language, f"   面积：{_area_text(listing, language)}", f"   Area: {_area_text(listing, language)}"))
         if listing.get("bathrooms") is not None:
             lines.append(_text(language, f"   卫生间：{listing['bathrooms']} 个", f"   Bathrooms: {listing['bathrooms']}"))
@@ -426,6 +429,7 @@ def render_listing_details(
     listing: Listing,
     restrictions: RestrictionSummary,
     language: ResponseLanguage = "zh",
+    commute: dict | None = None,
 ) -> str:
     price = listing.get("rent_monthly_sgd")
     bedrooms = listing.get("bedrooms")
@@ -443,7 +447,7 @@ def render_listing_details(
         _text(language, f"- 地区：{listing.get('district_code') or '未知'}", f"- District: {listing.get('district_code') or 'unknown'}"),
         _text(language, f"- 地址：{listing.get('address') or '未知'}", f"- Address: {listing.get('address') or 'unknown'}"),
         _text(language, f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing, language)}", f"- MRT: {listing.get('mrt_station') or 'unknown station'}, {_mrt_text(listing, language)}"),
-        _text(language, f"- 到 NUS：{_commute_text(listing, language)}", f"- To NUS: {_commute_text(listing, language)}") if listing.get("commute_nus_minutes") is not None else "",
+        f"- {line}" if (line := _commute_text(commute, language)) else "",
         _text(language, f"- 入住状态：{_availability_text(listing, language)}", f"- Availability: {_availability_text(listing, language)}"),
         _nearby_text(listing, language),
         _text(language, f"- 链接状态：{_link_status_text(listing, language)}", f"- Link status: {_link_status_text(listing, language)}"),
@@ -581,8 +585,9 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
         lines.append(_text(language, f"- 条件核对：{checks}", f"- Conditions: {checks}"))
     rent_source = _SOURCE_TEXT[language][explanation["sources"]["rent_monthly_sgd"]]
     mrt_source = _SOURCE_TEXT[language][explanation["sources"]["mrt_minutes"]]
-    commute_source = explanation["sources"].get("commute_nus_minutes")
-    commute = _text(language, f"，到 NUS 通勤时间来自{_SOURCE_TEXT['zh'][commute_source]}", f", commute to NUS from {_SOURCE_TEXT['en'][commute_source]}") if commute_source else ""
+    commute_source = explanation["sources"].get("commute_minutes")
+    place = faculty_label(explanation.get("faculty"), language)
+    commute = _text(language, f"，到{place}通勤时间来自{_SOURCE_TEXT['zh'][commute_source]}", f", commute to {place} from {_SOURCE_TEXT['en'][commute_source]}") if commute_source else ""
     lines.append(
         _text(
             language,
@@ -666,14 +671,140 @@ def render_budget_conversion(conversion: dict, language: ResponseLanguage = "zh"
 
 
 def render_budget_check(check: dict, language: ResponseLanguage = "zh") -> str:
-    """A monthly limit above almost every rent may be a yearly or whole-lease budget."""
-    limit, high = check["monthly_limit_sgd"], check["rent_90th_percentile_sgd"]
+    """A monthly limit above almost every rent may be a yearly or whole-lease budget; one far below
+    every rent most likely left out a unit such as 万."""
+    limit = check["monthly_limit_sgd"]
+    if "lowest_rent_sgd" in check:
+        low, stated = check["lowest_rent_sgd"], check.get("stated_budget")
+        zh = f"你说的预算是{_budget_phrase(stated, 'zh')}，折合每月 S${limit:,}，" if stated else f"每月 S${limit:,} 的上限"
+        en = f"your budget of {_budget_phrase(stated, 'en')} comes to S${limit:,} a month," if stated else f"a monthly limit of S${limit:,} is"
+        return _text(
+            language,
+            f"提醒：{zh}远低于数据中最便宜房源的月租（S${low:,}），所以这次没有按预算筛选，也没有保存。"
+            "如果少写了“万”“千”等单位，请告诉我正确的金额。",
+            f"Note: {en} far below the cheapest rent in the data (S${low:,}), so it was not used or saved. "
+            "If a unit such as thousand is missing, tell me the correct amount.",
+        )
+    high = check["rent_90th_percentile_sgd"]
     return _text(
         language,
         f"提醒：每月 S${limit:,} 的上限高于数据中 90% 房源的月租（S${high:,}），基本起不到筛选作用。"
         "如果你说的是一年或整个租期的总预算，请告诉我，我会按月重新计算。",
         f"Note: a monthly limit of S${limit:,} is above the rent of 90% of listings (S${high:,}), so it barely "
         "narrows the results. If you meant a yearly or whole-lease budget, tell me and I will recalculate it per month.",
+    )
+
+
+# What each agent tool does, for progress lines and the steps shown under a reply.
+TOOL_LABELS = {
+    "search_listings": ("搜索房源", "Searching listings"),
+    "explore_budgets": ("比较不同预算", "Comparing budgets"),
+    "get_listing_details": ("查看房源详情", "Reading listing details"),
+    "explain_listing": ("解释排名依据", "Explaining a ranking"),
+    "compare_listings": ("比较房源", "Comparing listings"),
+    "shortlist": ("更新候选清单", "Updating the shortlist"),
+    "exclude_listings": ("排除或恢复房源", "Excluding or restoring listings"),
+    "user_memory": ("处理长期记忆", "Handling long-term memory"),
+    "faculty": ("查看学院和通勤时间", "Checking your faculty and commute times"),
+}
+
+
+def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[str]:
+    """One reply's processing steps, from its trace, in words a renter can follow."""
+    steps = []
+    for line in trace:
+        kind, _, rest = line.partition(" ")
+        if kind == "[tool]":
+            label = _text(language, *TOOL_LABELS.get(rest.split("(", 1)[0], (rest, rest)))
+            failed = " -> error: " in rest
+            steps.append(label + (_text(language, "：参数有误，已把原因告诉模型", " - failed; the reason went back to the model") if failed else ""))
+        elif kind == "[links]":
+            entries = rest.split("; ")
+            statuses = [entry.split()[1] for entry in entries if "inactive skipped" not in entry and len(entry.split()) > 1]
+            skipped = sum(int(entry.split()[0]) for entry in entries if entry.endswith("inactive skipped"))
+            steps.append(_text(
+                language,
+                f"检查房源链接：有效 {statuses.count('active')} 套，暂时无法确认 {statuses.count('unknown')} 套"
+                + (f"，跳过已失效 {skipped} 套" if skipped else ""),
+                f"Checked listing links: {statuses.count('active')} active, {statuses.count('unknown')} unverified"
+                + (f", {skipped} inactive skipped" if skipped else ""),
+            ))
+        elif kind == "[fx]":
+            steps.append(_text(language, f"换算汇率：{rest}", f"Converted the currency: {rest}"))
+        elif kind == "[budget]":
+            match = re.fullmatch(r"S\$(\d+) for (\d+) months -> S\$(\d+) a month", rest)
+            steps.append(
+                _text(language, f"按月折算预算：S${match[1]} ÷ {match[2]} 个月 = 每月 S${match[3]}", f"Budget per month: S${match[1]} / {match[2]} = S${match[3]}")
+                if match else line
+            )
+        elif kind == "[guard]":
+            problems = rest.removeprefix("reply rejected (").rsplit(") -> ", 1)
+            retried = rest.endswith("-> retry")
+            steps.append(_text(
+                language,
+                f"回复未通过事实核对（{problems[0]}），" + ("已让模型重写" if retried else "改用系统模板回复"),
+                f"The reply failed the fact check ({problems[0]}); " + ("the model rewrote it" if retried else "the system template was used"),
+            ))
+        elif kind == "[resume]" and rest.startswith("dropped delisted shortlist entries: "):
+            ids = rest.split(": ", 1)[1]
+            steps.append(_text(language, f"继续之前的对话：候选清单里已下架的 {ids} 已移除", f"Resumed conversation: removed delisted {ids} from the shortlist"))
+        elif kind == "[resume]":
+            day = rest.removeprefix("last active ").split(";", 1)[0]
+            steps.append(_text(language, f"隔天继续对话（上次 {day}）：清除了过期的放宽建议和搜索统计", f"Resumed on a later day (last {day}): cleared stale suggestions and counts"))
+        elif kind == "[memory]" and rest.startswith("offered"):
+            steps.append(_text(language, f"长期记忆：显示了 {rest.rsplit(' ', 1)[1]} 保存的条件", f"Long-term memory: offered criteria kept on {rest.rsplit(' ', 1)[1]}"))
+        elif kind == "[memory]":
+            steps.append(_text(language, "长期记忆：已更新为你保存的条件", "Long-term memory: updated what is kept for you"))
+        else:
+            steps.append(line)
+    return steps
+
+
+def _budget_phrase(budget: dict, language: ResponseLanguage) -> str:
+    """A budget as the user stated it, such as 一年 300,000 CNY."""
+    amount, currency, months = f"{budget['amount']:,}", budget["currency"], budget.get("months", 1)
+    return _text(
+        language,
+        f"{'一年' if months == 12 else f'{months} 个月共' if months > 1 else '每月'} {amount} {currency}",
+        f"{amount} {currency} {'a year' if months == 12 else f'for {months} months' if months > 1 else 'a month'}",
+    )
+
+
+def render_remembered_profile(
+    profile: dict,
+    language: ResponseLanguage = "zh",
+    gone: list[str] = (),
+    welcome: bool = True,
+) -> str:
+    """What the user agreed to keep: offered at the start of a new conversation, or shown on request."""
+    saved = SearchPreferences.model_validate(profile.get("preferences", {})).model_dump(exclude_defaults=True)
+    budget = profile.get("budget")
+    items = []
+    for field, value in saved.items():
+        if field == "max_price_sgd" and budget:
+            # The budget as the user stated it; the monthly limit is worked out again when reused.
+            items.append(_text(language, "预算 ", "budget ") + _budget_phrase(budget, language))
+        else:
+            items.append(f"{PREFERENCE_LABELS[language][field]} {_preference_value(value, language)}")
+    shortlist = profile.get("shortlisted_listing_ids", [])
+    separator = "；" if language == "zh" else "; "
+    criteria = separator.join(items) or _text(language, "无", "none")
+    listings = _text(
+        language,
+        f"候选清单 {len(shortlist)} 套" + (f"（{'、'.join(gone)} 已不在当前房源数据中）" if gone else ""),
+        f"{len(shortlist)} shortlisted listings" + (f" ({', '.join(gone)} no longer in the listing data)" if gone else ""),
+    )
+    saved_on = profile.get("saved_on", "")
+    if not welcome:
+        return _text(
+            language,
+            f"目前为你长期保存的内容（{saved_on} 更新）：条件：{criteria}；{listings}。说“忘掉我的信息”可以删除。",
+            f"Kept for you across conversations (updated {saved_on}): criteria: {criteria}; {listings}. Say \"forget my data\" to delete it.",
+        )
+    return _text(
+        language,
+        f"欢迎回来。上次（{saved_on}）记住的条件：{criteria}；{listings}。说“沿用”可以继续用这些条件，也可以直接告诉我新的需求。",
+        f"Welcome back. Kept from last time ({saved_on}): criteria: {criteria}; {listings}. Say \"reuse\" to continue with them, or tell me what you need now.",
     )
 
 
@@ -740,7 +871,7 @@ def _preference_value(value: object, language: ResponseLanguage) -> str:
         "price": ("价格优先", "lower price"),
         "mrt": ("离 MRT 近", "nearer MRT"),
         "amenities": ("吃饭方便", "more food nearby"),
-        "commute": ("到 NUS 通勤近", "shorter commute to NUS"),
+        "commute": ("到学院通勤近", "shorter commute to your faculty"),
         "space": ("空间大优先", "more space"),
         "female": ("女性", "female"),
         "male": ("男性", "male"),
@@ -788,11 +919,64 @@ def _mrt_text(listing: dict, language: ResponseLanguage) -> str:
     return _text(language, f"房源描述约 {minutes} 分钟{suffix}", f"about {minutes} minutes according to the listing{suffix}") if minutes is not None else _text(language, "时间未知", "walking time unknown")
 
 
-def _commute_text(listing: dict, language: ResponseLanguage) -> str:
-    minutes = listing.get("commute_nus_minutes")
-    if minutes is None:
+def _commute_text(commute: dict | None, language: ResponseLanguage) -> str:
+    """One listing's trip to the user's faculty, e.g. 到计算机学院：公共交通约 23 分钟（工作日 8:30 出发）."""
+    if not commute or commute.get("minutes") is None:
         return ""
-    return _text(language, f"公共交通约 {minutes:g} 分钟", f"about {minutes:g} minutes by public transport")
+    place, minutes = faculty_label(commute["faculty"], language), commute["minutes"]
+    if commute.get("mode") == "walk":
+        return _text(language, f"到{place}：步行约 {minutes:g} 分钟", f"To {place}: about {minutes:g} minutes on foot")
+    return _text(
+        language,
+        f"到{place}：公共交通约 {minutes:g} 分钟（工作日 8:30 出发）",
+        f"To {place}: about {minutes:g} minutes by public transport (leaving 8:30 on a weekday)",
+    )
+
+
+def render_commutes(faculty: str, rows: list[dict], language: ResponseLanguage = "zh") -> str:
+    """How long each listing takes to a faculty; without minutes, the distance and MRT walk instead."""
+    place = faculty_label(faculty, language)
+    lines = [_text(
+        language,
+        f"到{place}的通勤时间（公共交通按工作日 8:30 出发；1.5 公里内步行更快时按步行）：",
+        f"Commute to {place} (public transport leaving 8:30 on a weekday, or walking within 1.5 km when faster):",
+    )]
+    for row in rows:
+        name = f"{row['title']}（{row['listing_id']}）" if language == "zh" else f"{row['title']} ({row['listing_id']})"
+        if row["commute_minutes"] is not None:
+            how = _text(language, *(("步行", "on foot") if row["commute_mode"] == "walk" else ("公共交通", "by public transport")))
+            lines.append(_text(language, f"- {name}：{how}约 {row['commute_minutes']:g} 分钟", f"- {name}: about {row['commute_minutes']:g} minutes {how}"))
+            continue
+        known = [
+            _text(language, f"直线距离约 {row['distance_m']:,.0f} 米", f"{row['distance_m']:,.0f} m in a straight line") if row["distance_m"] is not None else "",
+            _text(language, f"最近 MRT 步行约 {row['mrt_minutes']:g} 分钟", f"about {row['mrt_minutes']:g} minutes' walk to the nearest MRT") if row["mrt_minutes"] is not None else "",
+        ]
+        reference = ("；" if language == "zh" else "; ").join(part for part in known if part)
+        lines.append(_text(
+            language,
+            f"- {name}：没有这套房到{place}的通勤数据" + (f"，作为参考：{reference}" if reference else ""),
+            f"- {name}: no commute data to {place}" + (f"; for reference: {reference}" if reference else ""),
+        ))
+    return "\n".join(lines)
+
+
+def render_faculty_change(before: str | None, after: str, language: ResponseLanguage = "zh") -> str:
+    """Shown verbatim when the user's faculty setting changes in a conversation."""
+    old, new = faculty_label(before, language), faculty_label(after, language)
+    return _text(
+        language,
+        (f"已把你的学院从{old}改为{new}" if before else f"已把你的学院设为{new}") + "，之后所有对话都按它计算通勤时间。",
+        (f"Your faculty is now {new} (was {old})" if before else f"Your faculty is set to {new}") + "; every conversation now uses it for commute times.",
+    )
+
+
+def render_no_faculty(language: ResponseLanguage = "zh") -> str:
+    """Commute criteria need a faculty to measure to."""
+    return _text(
+        language,
+        "还没有设置你的学院，所以通勤时间没法计算，相关房源都列为“需确认”。告诉我你在哪个学院，或者在左侧“我的学院”里选择。",
+        "Your faculty is not set, so commute times cannot be worked out and those listings need confirmation. Tell me your faculty, or choose it under \"My faculty\" on the left.",
+    )
 
 
 def render_rental_scope_mix(mix: dict, language: ResponseLanguage = "zh") -> str:

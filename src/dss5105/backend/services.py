@@ -10,36 +10,91 @@ def get_candidate_pool(
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     """
-    Retrieve a broad candidate pool from the database.
+    Retrieve a broad pool of currently active rental listings.
 
-    Only constraints that are safe to filter deterministically
-    at the SQL layer should be applied here.
+    Only constraints that are safe to apply deterministically at
+    the SQL layer should be used here.
+
+    Current rent is preferred over the original snapshot rent.
     """
 
-    conditions = []
+    conditions = [
+        "l.scrape_status = 'active'"
+    ]
+
     params = []
 
     if max_budget is not None:
-        conditions.append("l.rent_monthly_sgd <= %s")
+        conditions.append(
+            """
+            COALESCE(
+                l.rent_monthly_sgd_now,
+                l.rent_monthly_sgd
+            ) <= %s
+            """
+        )
         params.append(max_budget)
 
-    where_clause = ""
-    if conditions:
-        where_clause = "WHERE " + " AND ".join(conditions)
+    where_clause = (
+        "WHERE " + " AND ".join(conditions)
+    )
 
     query = f"""
         SELECT
             l.*,
+
+            COALESCE(
+                l.rent_monthly_sgd_now,
+                l.rent_monthly_sgd
+            ) AS effective_rent_monthly_sgd,
+
             d.district,
+
             m.availability_status,
-            m.review_flags
+            m.review_flags,
+
+            e.enriched_at,
+            e.postcode,
+            e.street_name,
+            e.latitude,
+            e.longitude,
+
+            e.poi_hawker_1km,
+            e.poi_library_1km,
+            e.poi_sport_1km,
+            e.poi_healthcare_1km,
+            e.poi_community_1km,
+            e.poi_fnb_1km,
+
+            e.pg_school_count,
+            e.pg_school_nearest_walk_m,
+            e.pg_school_nearest_walk_min,
+
+            e.pg_mrt_count,
+            e.pg_mrt_nearest_walk_m,
+
+            e.coord_source,
+            e.coord_error_m
+
         FROM listings l
+
         JOIN district_lookup d
             ON l.district_code = d.district_code
+
         JOIN listing_metadata m
             ON l.listing_id = m.listing_id
+
+        LEFT JOIN listing_enrichment e
+            ON l.listing_id = e.listing_id
+
         {where_clause}
-        ORDER BY l.rent_monthly_sgd ASC
+
+        ORDER BY
+            COALESCE(
+                l.rent_monthly_sgd_now,
+                l.rent_monthly_sgd
+            ) ASC
+
         LIMIT %s;
     """
 
@@ -47,9 +102,17 @@ def get_candidate_pool(
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(query, tuple(params))
+            cur.execute(
+                query,
+                tuple(params),
+            )
+
             rows = cur.fetchall()
-            columns = [desc.name for desc in cur.description]
+
+            columns = [
+                desc.name
+                for desc in cur.description
+            ]
 
             return [
                 dict(zip(columns, row))
@@ -65,8 +128,8 @@ def find_candidates(
     limit: int = 200,
 ) -> dict[str, list[dict]]:
     """
-    Retrieve candidate listings and classify them using
-    three-state hard constraint logic.
+    Retrieve active listings and classify them using
+    three-state hard-constraint logic.
 
     Returns:
         {
@@ -74,6 +137,11 @@ def find_candidates(
             "needs_confirmation": [...],
             "fail": [...]
         }
+
+    The database layer performs only safe pruning.
+    Uncertain constraints are evaluated in Python so that
+    missing information can become needs_confirmation rather
+    than being silently excluded.
     """
 
     listings = get_candidate_pool(
@@ -100,6 +168,8 @@ def find_candidates(
             "evaluation": evaluation,
         }
 
-        results[evaluation["status"]].append(record)
+        results[
+            evaluation["status"]
+        ].append(record)
 
     return results

@@ -92,7 +92,7 @@ def evaluate_hard_constraints(
 
     if max_budget is not None:
         checks["max_budget"] = evaluate_max_budget(
-            listing.get("rent_monthly_sgd"),
+            listing.get("effective_rent_monthly_sgd"),
             max_budget,
         )
 

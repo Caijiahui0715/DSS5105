@@ -1,0 +1,17 @@
+﻿faculty_code,faculty_name,destination_name,address,postal_code,campus_area,latitude,longitude,is_default
+BUS,NUS Business School,Mochtar Riady Building (BIZ1),"15 Kent Ridge Drive, Singapore 119245",119245,Kent Ridge,,,true
+SOC,School of Computing,Computing 1 (COM1),"13 Computing Drive, Singapore 117417",117417,Kent Ridge,,,true
+CDE,College of Design and Engineering,Block EA,"9 Engineering Drive 1, Singapore 117575",117575,Kent Ridge,,,true
+FASS,Faculty of Arts and Social Sciences,Shaw Foundation Building (AS7),"5 Arts Link, Singapore 117570",117570,Kent Ridge,,,true
+SCI,Faculty of Science,Block S16,"6 Science Drive 2, Singapore 117546",117546,Kent Ridge,,,true
+MED,Yong Loo Lin School of Medicine,Clinical Research Centre / MD11,"10 Medical Drive, Singapore 117597",117597,Kent Ridge,,,true
+DEN,Faculty of Dentistry,National University Centre for Oral Health Singapore (NUCOHS),"9 Lower Kent Ridge Road, Singapore 119085",119085,Kent Ridge,,,true
+SPH,Saw Swee Hock School of Public Health,Tahir Foundation Building / MD1,"12 Science Drive 2, Singapore 117549",117549,Kent Ridge,,,true
+YST,Yong Siew Toh Conservatory of Music,YST Conservatory,"3 Conservatory Drive, Singapore 117376",117376,Kent Ridge,,,true
+LAW,Faculty of Law,NUS Law,"20 College Avenue West, Singapore 138529",138529,University Town,,,true
+LKYSPP,Lee Kuan Yew School of Public Policy,Oei Tiong Ham Building,"469C Bukit Timah Road, Singapore 259772",259772,Bukit Timah,,,true
+DUKENUS,Duke-NUS Medical School,Duke-NUS Medical School,"8 College Road, Singapore 169857",169857,Outram,,,true
+NUSC,NUS College,NUS College,"16 College Avenue West, Singapore 138527",138527,University Town,,,true
+NUSGS,NUS Graduate School,"University Hall, Tan Chin Tuan Wing","21 Lower Kent Ridge Road, Singapore 119077",119077,Kent Ridge,,,true
+SCALE,School of Continuing and Lifelong Education,Block AS8,"10 Kent Ridge Crescent, Singapore 119260",119260,Kent Ridge,,,true
+ISS,Institute of Systems Science (NUS-ISS),NUS-ISS,"25 Heng Mui Keng Terrace, Singapore 119615",119615,Kent Ridge,,,true

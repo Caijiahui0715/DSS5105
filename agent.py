@@ -295,6 +295,8 @@ class AgentState(TypedDict, total=False):
     link_checks: list[dict]
     observations: list[str]
     trace: list[str]
+    # The listings a search showed this turn, with each one's status, for the frontend; None without a search.
+    recommendations: dict | None
 
 
 class Budget(BaseModel):
@@ -392,9 +394,6 @@ def build_agent(
     profiles: UserProfiles | None = None,
 ):
     """With profiles, a user_id in the input enables long-term memory for that user."""
-    # Monthly limits above this barely filter and may be yearly budgets; see search().
-    high_rent = rent_percentile_sgd(connection, 0.9)
-    lowest_rent = rent_percentile_sgd(connection, 0)
 
     def validate(ranked, **limits):
         checked_links = 0
@@ -508,7 +507,9 @@ def build_agent(
         # it to the model; budgets that are only a little low still get relaxation suggestions.
         budget_check = None
         limit = changes.get("max_price_sgd")
-        if limit is not None and lowest_rent and limit < lowest_rent / 10:
+        # Read from the data each time, so a reloaded database is used.
+        lowest_rent = limit is not None and rent_percentile_sgd(connection, 0)
+        if lowest_rent and limit < lowest_rent / 10:
             del changes["max_price_sgd"]
             budget_check = {
                 "monthly_limit_sgd": limit,
@@ -603,7 +604,9 @@ def build_agent(
             (work["drafts"] if preview else work["notes"]).append(render_budget_conversion(conversion, language))
         # A new monthly limit above almost every rent is more likely a yearly or whole-lease budget.
         limit = preferences.max_price_sgd
-        if "max_price_sgd" in changes and limit and high_rent and limit > high_rent:
+        # Monthly limits above this barely filter and may be yearly budgets.
+        high_rent = "max_price_sgd" in changes and limit and rent_percentile_sgd(connection, 0.9)
+        if high_rent and limit > high_rent:
             budget_check = {"monthly_limit_sgd": limit, "rent_90th_percentile_sgd": whole(high_rent)}
             (work["drafts"] if preview else work["notes"]).append(render_budget_check(budget_check, language))
         work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in [*shown, *pending_shown]]
@@ -635,7 +638,7 @@ def build_agent(
             parts.append(_text(work, *_MOVE_IN_NOTE))
         work["drafts"].append("\n\n".join(part for part in parts if part))
 
-        return {
+        observation = {
             "preview": preview,
             "preferences": preferences.model_dump(mode="json", exclude_defaults=True),
             "saved_changes": {} if preview else {field: preferences.model_dump(mode="json")[field] for field in changes},
@@ -660,6 +663,16 @@ def build_agent(
             "missing_refinements": missing,
             "move_in_date_cannot_be_verified": preferences.move_in_date is not None,
         }
+        # For the frontend's listing cards: the listings this search shows, in display order.
+        work["recommendations"] = {
+            "preview": preview,
+            "listings": [
+                {"status": status, **facts}
+                for status, part in (("match", "strict_matches"), ("needs_confirmation", "needs_confirmation"))
+                for facts in observation[part]["listings"]
+            ],
+        }
+        return observation
 
     def budgets(work, args: BudgetArgs):
         preferences = work["preferences"]
@@ -1075,6 +1088,7 @@ def build_agent(
             "link_checks": [],
             "observations": [],
             "trace": trace,
+            "recommendations": None,
         }
 
     def agent_node(state: AgentState):
@@ -1132,6 +1146,7 @@ def build_agent(
                 "link_checks",
                 "observations",
                 "trace",
+                "recommendations",
             )
         }
         messages = []

@@ -86,6 +86,11 @@ class ServerTest(unittest.TestCase):
         # The user is known to the agent: it offers to remember the criteria.
         self.assertIn("要我记住这些条件吗？", reply["text"])
         self.assertEqual(reply["steps"][0], "搜索房源")
+        # The listings the search showed, for the frontend's cards, in display order.
+        shown = reply["recommendations"]["listings"]
+        self.assertFalse(reply["recommendations"]["preview"])
+        self.assertEqual([item["position"] for item in shown], list(range(1, len(shown) + 1)))
+        self.assertTrue(all(item["status"] in {"match", "needs_confirmation"} and item["rent_monthly_sgd"] <= 1300 for item in shown))
 
         history = self.alice.get(f"/api/conversations/{thread_id}/messages").json()
         self.assertEqual(history, [
@@ -94,6 +99,35 @@ class ServerTest(unittest.TestCase):
         ])
         listed = self.alice.get("/api/conversations").json()
         self.assertEqual([(thread["id"], thread["title"]) for thread in listed], [(thread_id, "预算1300")])
+
+    def test_a_frontend_server_signs_in_with_a_header_token(self):
+        self.sign_up(self.alice, "alice")
+        frontend = self.client()
+        wrong = frontend.post("/api/token", json={"username": "alice", "password": "not-the-password"})
+        self.assertEqual(wrong.status_code, 400)
+        signed_in = frontend.post("/api/token", json={"username": "alice", "password": PASSWORD}).json()
+        header = {"Authorization": f"Bearer {signed_in['token']}"}
+
+        self.assertEqual((signed_in["token_type"], signed_in["username"]), ("bearer", "alice"))
+        self.assertEqual(frontend.get("/api/me").status_code, 401)
+        self.assertEqual(frontend.get("/api/me", headers=header).json()["username"], "alice")
+        frontend.post("/api/logout", headers=header)
+        self.assertEqual(frontend.get("/api/me", headers=header).status_code, 401)
+        # The page's own cookie session is a different token and stays signed in.
+        self.assertEqual(self.alice.get("/api/me").status_code, 200)
+
+    def test_listings_can_be_browsed_and_opened_after_signing_in(self):
+        self.assertEqual(self.alice.get("/api/listings").status_code, 401)
+        self.sign_up(self.alice, "alice")
+
+        page = self.alice.get("/api/listings?limit=5&offset=10").json()
+        details = self.alice.get("/api/listings/S001").json()
+
+        self.assertEqual(page["total"], 12)
+        self.assertEqual(len(page["listings"]), 2)
+        self.assertEqual(details["listing"]["listing_id"], "S001")
+        self.assertIn("commutes", details["listing"])
+        self.assertEqual(self.alice.get("/api/listings/NOPE").status_code, 404)
 
     def test_other_users_cannot_reach_a_conversation(self):
         self.sign_up(self.alice, "alice")

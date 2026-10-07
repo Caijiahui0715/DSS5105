@@ -108,26 +108,51 @@ def create_database(
             {field: value or None for field, value in row.items()}
             for row in reader
         ]
+    v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
+    return listing_database(
+        listings,
+        {row["listing_id"]: row for row in v1["listing_metadata"]},
+        v1["district_lookup"],
+        _commutes(commute_path),
+    )
+
+
+def listing_database(
+    listings: list[dict],
+    metadata: dict[str, dict],
+    districts: list[dict],
+    commutes: dict[str, dict[str, dict]],
+    health: list[tuple] = (),
+) -> sqlite3.Connection:
+    """The agent's in-memory database from V2 listing rows, read from the CSV or the group's PostgreSQL.
+
+    metadata holds each listing's V1 availability_status and review_flags by id, commutes its
+    trips by faculty, and health link checks saved earlier, as listing_health rows.
+    """
     for listing in listings:
         for field, labels in _V1_LABELS.items():
             listing[field] = labels.get(listing[field], listing[field])
     ranks = _food_ranks(listings)
-    commutes = _commutes(commute_path)
     for listing in listings:
         listing[FOOD_RANK_FIELD] = ranks.get(listing["listing_id"])
         listing[COMMUTE_FIELD] = json.dumps(commutes.get(listing["listing_id"], {}), ensure_ascii=False)
-    v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
-    metadata = {row["listing_id"]: row for row in v1["listing_metadata"]}
-    return _create_database(
+    connection = _create_database(
         {
             "listings": listings,
             "listing_metadata": [
                 _v2_metadata(listing, metadata.get(listing["listing_id"]))
                 for listing in listings
             ],
-            "district_lookup": v1["district_lookup"],
+            "district_lookup": districts,
         }
     )
+    known = {listing["listing_id"] for listing in listings}
+    with connection:
+        connection.executemany(
+            "INSERT INTO listing_health VALUES (?, ?, ?, ?, ?, ?)",
+            [row for row in health if row[0] in known],
+        )
+    return connection
 
 
 def create_mock_database(path: Path = DEFAULT_FIXTURE) -> sqlite3.Connection:

@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from agent import build_agent
 from config import env
 from graph import build_graph
-from mock_db import create_database
+from group_db import open_listings
 from profiles import UserProfiles
 from sessions import open_storage
 
@@ -35,8 +35,10 @@ def main() -> None:
     if not model_name:
         raise SystemExit("Set OPENAI_MODEL to a model available to your account")
 
+    # Listings first: with AGENT_DB=postgres an unreachable database stops here with a clear message.
+    listings = open_listings()
     storage, memory = open_storage()
-    with closing(create_database()) as connection, closing(storage):
+    with closing(listings) as connection, closing(storage):
         # Reasoning models such as gpt-5.x only accept function tools on the Responses API.
         model = ChatOpenAI(
             model=model_name,

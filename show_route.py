@@ -13,7 +13,7 @@ from datetime import date, datetime
 
 from build_commutes import DEPARTURE_TIME, next_weekday_morning
 from faculties import find_faculty
-from mock_db import create_database
+from group_db import open_listings
 from onemap import load_token, public_transport_plan, walking_minutes
 from tools import get_listings_by_ids
 
@@ -24,7 +24,7 @@ def main() -> None:
     names = [arg for arg in sys.argv[1:] if not arg.startswith("--date=")]
     if len(names) != 2:
         raise SystemExit("Usage: python show_route.py LISTING_ID FACULTY [--date=YYYY-MM-DD]")
-    with closing(create_database()) as connection:
+    with closing(open_listings()) as connection:
         listings = get_listings_by_ids(connection, [names[0]])
     faculty = find_faculty(names[1])
     if not listings or listings[0].get("latitude") is None:

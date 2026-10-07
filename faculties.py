@@ -4,6 +4,7 @@ Coordinates are OneMap's for each address, looked up on 2026-10-06. Several NUS 
 one postcode (ten use 21 Lower Kent Ridge Road, 119077), so where OneMap lists more than one
 building the coordinates are the named building's. Recorded places need no OneMap lookup, which
 also avoids its "more than one place matches" refusal for names such as School of Computing.
+Each code is the faculty_code of the group database's nus_destinations table.
 """
 
 import re
@@ -11,6 +12,7 @@ import re
 FACULTIES = (
     {
         "name": "NUS Business School",
+        "code": "BUS",
         "building": "Mochtar Riady Building (BIZ1)",
         "address": "15 Kent Ridge Drive, Singapore 119245",
         "campus": "Kent Ridge",
@@ -21,6 +23,7 @@ FACULTIES = (
     },
     {
         "name": "School of Computing",
+        "code": "SOC",
         "building": "Computing 1 (COM1)",
         "address": "13 Computing Drive, Singapore 117417",
         "campus": "Kent Ridge",
@@ -31,6 +34,7 @@ FACULTIES = (
     },
     {
         "name": "College of Design and Engineering",
+        "code": "CDE",
         # OneMap's point for 117575 is LT7A at the same address.
         "building": "Engineering Block EA",
         "address": "9 Engineering Drive 1, Singapore 117575",
@@ -42,6 +46,7 @@ FACULTIES = (
     },
     {
         "name": "Faculty of Arts and Social Sciences",
+        "code": "FASS",
         "building": "Shaw Foundation Building (AS7)",
         "address": "5 Arts Link, Singapore 117570",
         "campus": "Kent Ridge",
@@ -52,6 +57,7 @@ FACULTIES = (
     },
     {
         "name": "Faculty of Science",
+        "code": "SCI",
         "building": "Block S16",
         "address": "6 Science Drive 2, Singapore 117546",
         "campus": "Kent Ridge",
@@ -62,6 +68,7 @@ FACULTIES = (
     },
     {
         "name": "Yong Loo Lin School of Medicine",
+        "code": "MED",
         "building": "NUS Medicine (MD11)",
         "address": "10 Medical Drive, Singapore 117597",
         "campus": "Kent Ridge / NUH",
@@ -72,6 +79,7 @@ FACULTIES = (
     },
     {
         "name": "Faculty of Dentistry",
+        "code": "DEN",
         "building": "National University Centre for Oral Health Singapore",
         "address": "9 Lower Kent Ridge Road, Singapore 119085",
         "campus": "Kent Ridge / NUH",
@@ -82,6 +90,7 @@ FACULTIES = (
     },
     {
         "name": "Saw Swee Hock School of Public Health",
+        "code": "SPH",
         "building": "Tahir Foundation Building (MD1)",
         # The document suggests 12 Service Drive 2; OneMap records 117549 as 12 Science Drive 2.
         "address": "12 Science Drive 2, Singapore 117549",
@@ -93,6 +102,7 @@ FACULTIES = (
     },
     {
         "name": "Yong Siew Toh Conservatory of Music",
+        "code": "YST",
         "building": "YST Conservatory",
         "address": "3 Conservatory Drive, Singapore 117376",
         "campus": "Kent Ridge",
@@ -103,6 +113,7 @@ FACULTIES = (
     },
     {
         "name": "Faculty of Law",
+        "code": "LAW",
         # As the document gives it; OneMap names this postcode NUS College, about 100 m away.
         "building": "New NUS Law campus",
         "address": "20 College Avenue West, Singapore 138529",
@@ -114,6 +125,7 @@ FACULTIES = (
     },
     {
         "name": "Lee Kuan Yew School of Public Policy",
+        "code": "LKYSPP",
         "building": "Oei Tiong Ham Building",
         "address": "469C Bukit Timah Road, Singapore 259772",
         "campus": "Bukit Timah",
@@ -124,6 +136,7 @@ FACULTIES = (
     },
     {
         "name": "Duke-NUS Medical School",
+        "code": "DUKENUS",
         "building": "Duke-NUS Medical School",
         "address": "8 College Road, Singapore 169857",
         "campus": "Outram",
@@ -134,6 +147,7 @@ FACULTIES = (
     },
     {
         "name": "NUS College",
+        "code": "NUSC",
         "building": "NUS College",
         "address": "16 College Avenue West, Singapore 138527",
         "campus": "University Town",
@@ -144,6 +158,7 @@ FACULTIES = (
     },
     {
         "name": "NUS Graduate School",
+        "code": "NUSGS",
         "building": "University Hall, Tan Chin Tuan Wing",
         "address": "21 Lower Kent Ridge Road, Singapore 119077",
         "campus": "Kent Ridge",
@@ -154,6 +169,7 @@ FACULTIES = (
     },
     {
         "name": "School of Continuing and Lifelong Education",
+        "code": "SCALE",
         "building": "AS8",
         "address": "10 Kent Ridge Crescent, Singapore 119260",
         "campus": "Kent Ridge",
@@ -164,6 +180,7 @@ FACULTIES = (
     },
     {
         "name": "NUS Institute of Systems Science",
+        "code": "ISS",
         "building": "NUS-ISS",
         "address": "25 Heng Mui Keng Terrace, Singapore 119615",
         "campus": "Kent Ridge",

@@ -12,11 +12,12 @@ uv add langgraph-checkpoint-sqlite fastapi uvicorn      # 首次：会话持久�
 .\.venv\Scripts\python.exe .\demo.py --chat --trace     # 同时打印每轮的工具调用（失败时带原因）、货币换算、链接检查结果和被拦的回复
 .\.venv\Scripts\python.exe .\demo.py --chat --workflow  # 原固定 LangGraph workflow，作对照
 .\.venv\Scripts\python.exe .\build_commutes.py          # 用 OneMap 算每套房源到各学院的通勤时间（约一小时，可中断续跑）
+.\.venv\Scripts\python.exe .\build_commutes.py --import # AGENT_DB=postgres 时：把 commute_faculty.csv 写入数据库（--export 反过来）
 .\.venv\Scripts\python.exe .\show_route.py 24611200 牙医学院  # 打印 OneMap 的具体路线，核对看起来不对的通勤时间
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-需要 `.env` 中的 `OPENAI_API_KEY` 和 `OPENAI_MODEL`，模型需要支持 tool calling。对话、账号和用户同意后的长期档案默认存在项目根目录的 `sessions.sqlite`（已加入 `.gitignore`，里面有用户说过的条件和密码哈希，不要提交）；删除这个文件即清空所有账号、对话和档案。也可以改存到组里的 Postgres，见下方“存储位置”。
+需要 `.env` 中的 `OPENAI_API_KEY` 和 `OPENAI_MODEL`，模型需要支持 tool calling。对话、账号和用户同意后的长期档案默认存在项目根目录的 `sessions.sqlite`（已加入 `.gitignore`，里面有用户说过的条件和密码哈希，不要提交）；删除这个文件即清空所有账号、对话和档案。设了 `AGENT_DB=postgres` 时，房源、账号和对话都改用组里的 PostgreSQL，见下方“数据和存储位置”。
 
 命令行 `demo.py` 是本机开发工具，不需要密码：`--user=NAME` 和网页版用的是同一套用户名（不区分大小写），所以在网页上注册的 alice 和 `--user=alice` 看到的是同样的对话和长期档案。只在自己电脑上用它。
 
@@ -32,10 +33,15 @@ uv add langgraph-checkpoint-sqlite fastapi uvicorn      # 首次：会话持久�
 - 删除：可以删除单段对话；“删除我的所有数据”删除这个用户的全部对话、长期档案和学院设置，账号保留，并让所有设备退出登录。对话里说“忘掉我的信息”只删除长期档案，学院设置不变。
 - `--lan`：监听 0.0.0.0 并打印本机局域网地址（Windows 第一次运行会弹出防火墙提示，需要允许专用网络）。这是明文 HTTP，密码和对话在局域网里不加密，只在信任的网络里用；默认只监听 127.0.0.1。
 
-## 存储位置
+## 数据和存储位置
 
-- 默认：`sessions.sqlite`（SQLite，WAL 模式，多人同时用没问题）。
-- 组里的 Postgres：`.env` 里加 `AGENT_DB=postgres`，并复用数据管道已有的 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`。需要先 `uv add langgraph-checkpoint-postgres "psycopg[binary]"`。所有表（账号、令牌、对话列表、长期档案、学院设置和 LangGraph 的 checkpoint 表）都建在单独的 `agent` schema 里，不碰房源数据表。和负责数据的同学约定：重新导入房源数据时只清理房源相关的表或 schema，不要删除整个数据库，否则所有账号和对话都会丢失。
+- 默认（没设 `AGENT_DB`）：房源读 `output-final-delivery/rental_data_v2.csv`（可用性、review flags 和区名取自 V1 JSON），通勤读 `commute_faculty.csv`；账号和对话在 `sessions.sqlite`（SQLite，WAL 模式，多人同时用没问题）；链接检查结果只在内存里，重启后重新检查。测试和没有数据库权限时用这种方式。
+- 组里的 PostgreSQL（`.env` 里加 `AGENT_DB=postgres`，复用数据管道的 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`；可选 `DB_CONNECT_TIMEOUT`，默认 10 秒）：整个项目的数据库。
+  - 房源（`group_db.py`）：启动时从 `public` 读 `scrape_status = 'active'` 的房源（`listings`、`listing_enrichment`、`listing_metadata`、`district_lookup`）和通勤（`listing_commutes`、`nus_destinations`），放进和 CSV 方式完全相同的内存 SQLite，搜索、排序和解释的逻辑不变。服务每 5 分钟比对一次数据指纹（对这些表算的一个 md5），数据变了就整份重建再替换，同步新数据后不用重启；比对失败时继续用已加载的数据并记日志。
+  - 连不上或读不到：启动时直接报错退出，不会悄悄改用本地文件，避免演示时用了旧数据还不知道。
+  - `agent` schema：账号、令牌、对话列表、长期档案、学院设置、LangGraph 的 checkpoint 表，以及链接检查结果 `listing_health`（重启后 24 小时内继续复用）。约定 `public` 只由数据管道写（`src/dss5105/data`、`build_commutes.py`），`agent` 只由服务器写；重新导入房源数据时只清理 `public` 里的表，不要删除整个数据库，否则所有账号和对话都会丢失。
+  - 第一次准备数据库：按顺序执行 `src/dss5105/database/` 里的 `schema.sql`、`migration_v2.sql`、`migration_nus_destinations.sql`、`migration_listing_commutes.sql`、`migration_commute_benchmark.sql`，再运行 `load_data.py`（V1）和 `sync_v2.py`（V2，没跑的话所有房源都不是 active，一套都读不到），最后 `build_commutes.py --import` 写入学院和通勤。学院以 `faculties.py` 为准（`--import` 会写入坐标），不要再用 `seed_nus_destinations.py` 覆盖。
+  - 需要先 `uv add langgraph-checkpoint-postgres`（`psycopg[binary]` 已在依赖里）。
 - 两种方式表结构和代码路径相同。旧版的 `user_sessions` 表（每个用户只记最近一段对话）会被删除，之前的对话不迁移。
 
 ## 架构
@@ -45,17 +51,27 @@ uv add langgraph-checkpoint-sqlite fastapi uvicorn      # 首次：会话持久�
 - `decision.py`：条件三态判断（符合 / 不符合 / 数据未注明）、逐个放开条件的诊断、排序溯源。严格匹配结果与 `tools.search_listings` 完全一致。
 - `graph.py`：原固定 workflow，保留作评估 baseline。
 - `tools.py`、`response.py`、`mock_db.py`：检索与 URL 校验、事实模板、数据加载，两套流程共用。
-- `sessions.py`：打开存储（SQLite 或 Postgres），用 LangGraph 的 checkpointer 把每轮的完整状态（条件、候选、排除、对话消息、每条回复的处理过程）按对话保存，`threads` 表记录每段对话属于哪个用户；Agent 与 workflow 的对话分开存。房源数据库仍在每次启动时重建，链接检查缓存不跨进程保留。
+- `sessions.py`：打开存储（SQLite 或 Postgres），用 LangGraph 的 checkpointer 把每轮的完整状态（条件、候选、排除、对话消息、每条回复的处理过程）按对话保存，`threads` 表记录每段对话属于哪个用户；Agent 与 workflow 的对话分开存。
 - `accounts.py`：注册、密码校验、登录锁定和令牌，只用标准库。
-- `faculties.py`：NUS 各学院的地址和坐标，供地点条件按学院名定位，也是通勤时间的目的地。
-- `build_commutes.py`：用 OneMap 离线计算每套房源到每个学院的公共交通时间（1.5 公里内再比较步行），写入 `commute_faculty.csv`。
+- `group_db.py`：`AGENT_DB=postgres` 时从组里的 PostgreSQL 读房源并定时检查更新、把链接检查结果存回数据库（见“数据和存储位置”）；`open_listings()` 按设置返回数据库或 CSV 的房源，网页版、命令行和通勤脚本都用它。
+- `src/dss5105/`：pizza 的数据层，`database/` 是建表和迁移，`data/` 是 V1 导入、V2 同步和学院表脚本。推荐逻辑统一用 agent 的，原来的 `api/`、`backend/`、`commute/`、`decision/` 已不再使用（计划移进 `archive/`）。
+- `faculties.py`：NUS 各学院的地址、坐标和数据库里的学院代码（`code`），供地点条件按学院名定位，也是通勤时间的目的地。
+- `build_commutes.py`：用 OneMap 离线计算每套房源到每个学院的公共交通时间（1.5 公里内再比较步行），写入 `commute_faculty.csv`。`AGENT_DB=postgres` 时数据库是源头：先把 `listing_commutes` 导出成 CSV，补算缺的，结束（包括中途出错）时写回数据库，CSV 就是数据库的副本。`--import` / `--export` 单独做写入或导出，例如跑完 `fix_transit_google.py` 后用 `--import`。
 - `show_route.py`：打印某套房到某个学院的 OneMap 路线（每段的方式、起止和分钟数），用来核对可疑的通勤时间。
-- `server.py`、`static/index.html`：多用户网页版的接口和页面。
+- `server.py`、`static/index.html`：多用户网页版的接口和页面（页面留作开发测试，正式前端是 Streamlit，见“给前端的接口”）。
 - `profiles.py`：长期记住用户（只在 Agent 中，workflow baseline 不变）。档案存在同一个存储的 `user_profiles` 表，只保存经过 `user_quote` 检查而保存的条件（附每个字段对应的用户原话和日期）、按原说法记录的预算（金额、币种、覆盖月数）、候选和排除，不保存对话内容，也不让模型自由写入记忆。
   - 征得同意：第一次保存条件时固定问一次“要我记住这些条件吗”；用户同意（工具 `user_memory`，`action=allow`）后才写入，拒绝则不保存。之后每轮有变化时自动更新档案。
   - 沿用：同一用户开新对话（网页上的“新建对话”或命令行 `--new`）时，回复开头固定列出上次记住的条件和候选（已下架的标出来），但不自动套用；用户说“沿用”时 `action=restore` 恢复条件、候选和排除，非新币或按年的预算按当天汇率重新换算（换算失败则沿用上次的月租上限并说明）。只显示、未沿用时档案保持不变；用户在新对话里直接保存新条件，档案就换成这段对话的内容。
   - 查看与删除：“你记得我什么”是 `action=show`；“忘掉我的信息”是 `action=forget`，删除档案并不再保存（当前这段对话的记录仍保留，开新对话后不会带入）。
 - 继续之前的对话时，Agent 每轮先移除候选清单里已不在当前数据中的房源并固定提示；隔天回来时清掉旧的让步建议和上次搜索统计（它们基于旧数据和旧的链接检查），入住日期已过去时提醒用户更新。
+
+## 给前端的接口
+
+除聊天页面用的接口外，供 Streamlit 前端从它自己的服务器调用（对话状态都在服务端，前端只传对话 ID 和用户说的话）：
+
+- 登录：`POST /api/token`（`{"username", "password"}`）返回 `{"token", "token_type": "bearer", "username", "faculty"}`，之后每个请求带 `Authorization: Bearer <token>`；注册仍用 `POST /api/register`。网页用的 cookie 登录不变。所有接口都要登录。
+- 房源：`GET /api/listings?limit=50&offset=0`（`limit` 最多 200）返回 `{"total", "listings"}`，字段和 agent 排序用的一样（含 `commutes` 各学院通勤、`live_status` 链接检查结果）；`GET /api/listings/{id}` 返回 `{"listing", "source_evidence"}`，后者是房源页原文，没有记录时为 `null`，找不到房源返回 404。
+- 对话：`POST /api/conversations` 新建，`POST /api/conversations/{id}/messages`（`{"message"}`）用 Server-Sent Events 返回 `progress` 和最后的 `reply`。`reply` 里除了 `text`、`steps`，还有 `recommendations`：这一轮搜索展示的房源，`{"preview", "listings": [...]}`，每套带 `status`（`match` 完全符合 / `needs_confirmation` 需确认，后者有 `unknown_conditions`）、`position`、月租、MRT、到“我的学院”的 `commute_minutes_to_faculty` 和 `commute_mode`、`link_status` 等；这一轮没有搜索时为 `null`。`preview` 为 true 表示只是假设，条件没有保存。
 
 ## Agent 的边界
 
@@ -66,7 +82,7 @@ uv add langgraph-checkpoint-sqlite fastapi uvicorn      # 首次：会话持久�
 - 整租 / 合租使用 `rental_scope`（entire_unit / room），取 v2 数据的出租方式；未注明的房源列为“需确认”，不当作整租。引导用户补充条件时先问整租还是合租，选了合租再问房型。用户没选、而完全符合的房源里两种都有时，回复末尾固定提示展示的是哪一种，以及另一种的套数和最低月租。
 - 排序：MRT 步行距离始终参与（米数 ÷ 参考距离，参考距离 = 步行上限 × 85 米，没给上限时 850 米），有预算时再加月租 ÷ 预算；吃饭方便、到 NUS 通勤只在用户提出时参与。`ranking_priority` 最多保存 3 个偏好，点名的几项平分 70%，其余因素平分 30%，但其余每项不超过任何一个点名项（例如点名 3 项、只剩 1 项时四项各 25%）；没点名时等权。多轮对话中用户说“还 / 也 / 另外”时追加偏好，说“算了 / 改成 / 只要”时替换；分不清时追加，并以固定文字显示变更，用户可以直接纠正。超过 3 个时先问用户哪三个最重要。点名的每一项都需要数据，缺任何一项的房源列为“需确认”。没有 MRT 数据或最近的站尚未通车按参考距离计（比值 1）；但用户点名在意 MRT 时，这类房源列为“需确认”。并列时先比权重最高的一项，再比下一项，最后才比月租。
 - 限制条件（符合 / 不符合 / 未注明三态，未注明一律列为“需确认”，整租也一样）：`tenant_gender`（用户自己说明的住户性别：female / male / mixed，对照数据的 gender_restriction）、`landlord_not_living_in`（不要房东同住）、`furnished_required`、`air_conditioning_required`。
-- 通勤时间：`max_commute_minutes` 和排序偏好 `commute` 指从房源到用户账号里“我的学院”的时间：公共交通按工作日早上 8:30 出发（OneMap 路线，含步行段）；学院在直线 1.5 公里以内时，再查 OneMap 步行路线，取更快的一种，回复里写“步行约 X 分钟”或“公共交通约 X 分钟（工作日 8:30 出发）”。数据来自 `build_commutes.py` 生成的 `commute_faculty.csv`（列 listing_id、faculty、minutes、mode、departure；mode 是 transit、walk 或 transit_google（见下一条），minutes 为空表示没有可用路线）。这个文件在项目根目录，是唯一提交到 Git 的 CSV（`.gitignore` 忽略其他 CSV，用 `!commute_faculty.csv` 单独放行），组员拉取后重启服务即可，不需要 OneMap 账号。由一个人重跑脚本并提交，免得几个人各自重算、提交时冲突；房源数据换版本后要重跑，新房源才有通勤时间，CSV 里的 listing_id 和本地房源数据对不上的房源显示为没有数据。重跑只补缺的部分：新房源、旧文件缺的步行检查、上次中断后没算的路线；OneMap 连续超时三次时脚本停下，已算好的都保存，再运行一次接着算，不会把超时记成“没有路线”。文件不存在、这套房没有数据或用户没设学院时，通勤一律算“未注明”：设了通勤条件的房源列为“需确认”，没设学院时回复末尾固定提示去设置；用户问“去学校要多久”时，没有数据就明说，并给出到学院的直线距离和最近 MRT 步行时间作参考，不估算分钟。只支持数据里的房源，不算任意地址。测试用 fixture 里的模拟分钟数。脚本需要 `.env` 里的 `ONEMAP_EMAIL` / `ONEMAP_PASSWORD`。
+- 通勤时间：`max_commute_minutes` 和排序偏好 `commute` 指从房源到用户账号里“我的学院”的时间：公共交通按工作日早上 8:30 出发（OneMap 路线，含步行段）；学院在直线 1.5 公里以内时，再查 OneMap 步行路线，取更快的一种，回复里写“步行约 X 分钟”或“公共交通约 X 分钟（工作日 8:30 出发）”。数据来自 `build_commutes.py` 生成的通勤数据：设了 `AGENT_DB=postgres` 时读数据库的 `listing_commutes`，否则读 `commute_faculty.csv`（列 listing_id、faculty、minutes、mode、departure；mode 是 transit、walk 或 transit_google（见下一条），minutes 为空表示没有可用路线）。这个文件在项目根目录，是唯一提交到 Git 的 CSV（`.gitignore` 忽略其他 CSV，用 `!commute_faculty.csv` 单独放行），组员拉取后重启服务即可，不需要 OneMap 账号。由一个人重跑脚本并提交，免得几个人各自重算、提交时冲突；房源数据换版本后要重跑，新房源才有通勤时间，CSV 里的 listing_id 和本地房源数据对不上的房源显示为没有数据。重跑只补缺的部分：新房源、旧文件缺的步行检查、上次中断后没算的路线；OneMap 连续超时三次时脚本停下，已算好的都保存，再运行一次接着算，不会把超时记成“没有路线”。文件不存在、这套房没有数据或用户没设学院时，通勤一律算“未注明”：设了通勤条件的房源列为“需确认”，没设学院时回复末尾固定提示去设置；用户问“去学校要多久”时，没有数据就明说，并给出到学院的直线距离和最近 MRT 步行时间作参考，不估算分钟。只支持数据里的房源，不算任意地址。测试用 fixture 里的模拟分钟数。脚本需要 `.env` 里的 `ONEMAP_EMAIL` / `ONEMAP_PASSWORD`。
 - 2026-10-07 核对 OneMap 结果时发现：49 Normanton Park 的两套房（24611200、24666342）到 1.5–4.6 公里外的学院公共交通要 81–110 分钟，同距离的其他房源只要 25–37 分钟，所以这两套到 16 个学院的时间改用 Google Routes API 的公共交通路线（`fix_transit_google.py`，工作日 8:30 出发，mode 为 `transit_google`）。回复里同样写“公共交通约 X 分钟（工作日 8:30 出发）”，解释排名时数据来源写“Google 公共交通路线”。`build_commutes.py` 的 `UNRELIABLE_TRANSIT` 记下了这两套，重跑时不向 OneMap 查询，也不覆盖这些行；重算它们需要 `.env` 里的 `GOOGLE_MAPS_API_KEY`。圣淘沙湾的房源普遍比距离推算慢 45–50 分钟，其中两套没有公共交通路线，看起来是那里公共交通确实不便，暂时保留。
 - 面积：明确的最低面积用 `min_area_sqm`（平方米；sqft × 0.09290304）筛选；“空间大一点 / 宽敞”在 `ranking_priority` 中加入 `space`，无需先给预算或整租方式。空间偏好按上面的规则分到权重，按同一出租方式和面积口径内的面积百分位排序，不把房间与整套平方米直接比较。整租使用 `floor_reported`，房间使用 `room_reported`；未注明、出租方式未知或房间只报整套面积的房源列为“需确认”。搜索结果和详情显示面积口径。
 - 其余数据中的租房需求也已接入（缺失仍为“需确认”）：卫生间数 `min_bathrooms`、独立卫浴 `private_bathroom_required`、宠物 `pets_allowed_required`、报价性质 `rent_price_types`、项目/地址/街道/邮编 `title_keyword` / `address_keyword` / `street_name` / `postcode`、最近运营 MRT `mrt_station`、周边站数 `min_mrt_stations`、步行米数上限 `max_mrt_distance_m`、挂牌日期下限 `listed_after`、房东明确的性别偏好 `gender_preference`。

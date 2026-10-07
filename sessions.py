@@ -15,7 +15,7 @@ from uuid import uuid4
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from config import env
+from config import postgres_settings, use_postgres
 
 DEFAULT_PATH = Path(__file__).parent / "sessions.sqlite"
 SCHEMA = "agent"
@@ -97,7 +97,7 @@ class Storage:
 
 def open_storage():
     """The Storage for the agent's tables and a checkpointer for conversation states."""
-    if (env("AGENT_DB") or "sqlite").strip().lower() == "postgres":
+    if use_postgres():
         return _open_postgres()
     return open_sqlite(DEFAULT_PATH)
 
@@ -121,13 +121,7 @@ def _open_postgres():
     from psycopg import Connection
     from psycopg.rows import dict_row
 
-    settings = {
-        "host": env("DB_HOST"),
-        "port": env("DB_PORT"),
-        "dbname": env("DB_NAME"),
-        "user": env("DB_USER"),
-        "password": env("DB_PASSWORD"),
-    }
+    settings = postgres_settings()
     with Connection.connect(**settings, autocommit=True) as setup:
         setup.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
     # Every table, LangGraph's checkpoint tables included, is created inside the agent schema.

@@ -647,28 +647,36 @@ def _get_listing_health(
         "http_status": result.get("http_status"),
         "error_reason": result.get("error_reason"),
     }
-    with connection:
-        connection.execute(
-            """
-            INSERT INTO listing_health
-                (listing_id, status, checked_at, final_url, http_status, error_reason)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(listing_id) DO UPDATE SET
-                status = excluded.status,
-                checked_at = excluded.checked_at,
-                final_url = excluded.final_url,
-                http_status = excluded.http_status,
-                error_reason = excluded.error_reason
-            """,
-            (
-                listing["listing_id"],
-                health["status"],
-                health["checked_at"],
-                health["final_url"],
-                health["http_status"],
-                health["error_reason"],
-            ),
-        )
+    try:
+        with connection:
+            connection.execute(
+                """
+                INSERT INTO listing_health
+                    (listing_id, status, checked_at, final_url, http_status, error_reason)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(listing_id) DO UPDATE SET
+                    status = excluded.status,
+                    checked_at = excluded.checked_at,
+                    final_url = excluded.final_url,
+                    http_status = excluded.http_status,
+                    error_reason = excluded.error_reason
+                """,
+                (
+                    listing["listing_id"],
+                    health["status"],
+                    health["checked_at"],
+                    health["final_url"],
+                    health["http_status"],
+                    health["error_reason"],
+                ),
+            )
+    except sqlite3.IntegrityError:
+        # The listing left the data in a reload during this turn (group_db.LiveListings).
+        pass
+    # Listings read from the group's PostgreSQL also keep the check there (group_db.LiveListings).
+    save = getattr(connection, "save_listing_health", None)
+    if save:
+        save(listing["listing_id"], health)
     return health
 
 

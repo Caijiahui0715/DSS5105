@@ -57,6 +57,7 @@ from onemap import OneMapError
 from parser import PREFERENCE_GUIDANCE
 from profiles import UserProfiles
 from response import (
+    _CONDITION_LABELS,
     _availability_text,
     _check_summary_text,
     _link_status_text,
@@ -221,7 +222,8 @@ The user's faculty (faculty tool)
 _MEMORY_GUIDANCE = """
 Long-term memory (user_memory tool)
 - memory_consent says whether this user agreed to be remembered across conversations; null means
-  not decided. The system asks once after criteria are saved. When the user agrees (记住, 好的记住吧,
+  not decided. The system asks once after criteria are saved, at the end of that reply, so never ask
+  it yourself. When the user agrees (记住, 好的记住吧,
   yes remember them) call user_memory with action=allow; when they refuse (不用记, no) action=decline.
 - remembered_profile holds criteria this user agreed to keep in an earlier conversation, with the
   user's words behind each field. The system has already shown it; it may be outdated and is not
@@ -297,6 +299,10 @@ class AgentState(TypedDict, total=False):
     trace: list[str]
     # The listings a search showed this turn, with each one's status, for the frontend; None without a search.
     recommendations: dict | None
+    # The latest search's listings, kept across turns so a reopened conversation can show them again.
+    last_recommendations: dict | None
+    # The frontend's interface language ("zh" or "en"), which the reply then uses; None detects it per message.
+    reply_language: ResponseLanguage | None
 
 
 class Budget(BaseModel):
@@ -664,10 +670,15 @@ def build_agent(
             "move_in_date_cannot_be_verified": preferences.move_in_date is not None,
         }
         # For the frontend's listing cards: the listings this search shows, in display order.
-        work["recommendations"] = {
+        labels = _CONDITION_LABELS[language]
+        work["recommendations"] = work["last_recommendations"] = {
             "preview": preview,
             "listings": [
-                {"status": status, **facts}
+                {
+                    "status": status,
+                    **facts,
+                    "unknown_condition_labels": [labels.get(field, field) for field in facts.get("unknown_conditions", [])],
+                }
                 for status, part in (("match", "strict_matches"), ("needs_confirmation", "needs_confirmation"))
                 for facts in observation[part]["listings"]
             ],
@@ -833,7 +844,7 @@ def build_agent(
             return {"memory_consent": profiles.consent(user_id), "kept_profile": kept}
         if args.action == "allow":
             profiles.set_consent(user_id, True)
-            profiles.save(user_id, _kept_profile(work))
+            profiles.save(user_id, kept_profile(work))
             work["memory_asked"] = True
             work["notes"].append(_text(
                 work,
@@ -1027,7 +1038,9 @@ def build_agent(
         }
 
     def begin_turn(state: AgentState):
-        language = _response_language(state["message"], state.get("response_language"))
+        # The message's own language; the interface language (from a frontend) only when the message
+        # does not show one, such as "1000" or "D05".
+        language = _response_language(state["message"], state.get("reply_language") or state.get("response_language"))
         turn = {"response_language": language}
         preferences = state.get("preferences") or SearchPreferences()
         # The faculty is an account setting that can change between turns, on the web page too.
@@ -1147,6 +1160,7 @@ def build_agent(
                 "observations",
                 "trace",
                 "recommendations",
+                "last_recommendations",
             )
         }
         messages = []
@@ -1190,6 +1204,9 @@ def build_agent(
             json.dumps(snapshot(state), ensure_ascii=False, default=str),
         ]
         problems = _reply_problems(reply, sources, language) if reply.strip() else []
+        # The system's question about remembering the criteria ends this reply; the model asking too repeats it.
+        if reply.strip() and _text(state, *_MEMORY_ASK) in state["footers"] and re.search(r"remember|记住", reply, re.IGNORECASE):
+            problems.append("it asks whether to remember the criteria, which the system already asks at the end of the reply")
         trace = list(state["trace"])
         retried = any(isinstance(message, SystemMessage) for message in messages[_turn_start(messages):])
         if problems and not retried:
@@ -1206,7 +1223,7 @@ def build_agent(
         # profile is offered but not reused or replaced, it is left as it was.
         user_id = state.get("user_id")
         if profiles and user_id and state.get("memory_dirty") and not state.get("remembered_profile"):
-            if profiles.save(user_id, _kept_profile(state)):
+            if profiles.save(user_id, kept_profile(state)):
                 trace.append("[memory] kept this conversation's criteria for later conversations")
         footers = list(state["footers"])
         if problems or not reply.strip():
@@ -1241,7 +1258,9 @@ def build_agent(
         return "\n".join(part for part in parts if part)
 
     def route_after_finalize(state: AgentState):
-        return "agent" if isinstance(state["messages"][-1], SystemMessage) else END
+        # Also reached by the server's shortlist changes, possibly before the first message.
+        messages = state.get("messages") or []
+        return "agent" if messages and isinstance(messages[-1], SystemMessage) else END
 
     graph = StateGraph(AgentState)
     graph.add_node("begin_turn", begin_turn)
@@ -1264,7 +1283,7 @@ def _progress(zh: str, en: str) -> None:
         pass  # Outside a graph run.
 
 
-def _kept_profile(state) -> dict:
+def kept_profile(state) -> dict:
     """What long-term memory keeps: saved criteria with their sources, never conversation text."""
     return {
         "preferences": state["preferences"].model_dump(mode="json", exclude_defaults=True),

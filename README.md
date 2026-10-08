@@ -1,5 +1,7 @@
 # DSS5105 — Singapore Rental Decision Agent
 
+第一次使用（安装、两个 `.env` 文件要填什么、启动和常见问题）见 [使用说明.md](使用说明.md)。
+
 ## 运行
 
 ```powershell
@@ -65,13 +67,28 @@ uv add langgraph-checkpoint-sqlite fastapi uvicorn      # 首次：会话持久�
   - 查看与删除：“你记得我什么”是 `action=show`；“忘掉我的信息”是 `action=forget`，删除档案并不再保存（当前这段对话的记录仍保留，开新对话后不会带入）。
 - 继续之前的对话时，Agent 每轮先移除候选清单里已不在当前数据中的房源并固定提示；隔天回来时清掉旧的让步建议和上次搜索统计（它们基于旧数据和旧的链接检查），入住日期已过去时提醒用户更新。
 
+## Streamlit 前端（`app/`）
+
+正式前端是 `app/` 里的 Streamlit 应用（Fangyue 做的页面），它是单独的 uv 项目，和后端各用各的环境，开两个终端运行：
+
+```powershell
+.\.venv\Scripts\python.exe .\server.py                                   # 终端 1：后端，http://127.0.0.1:8000
+uv run --project app streamlit run app/streamlit_app.py                  # 终端 2：前端，http://localhost:8501
+uv run --project app pytest app/tests                                    # 前端测试（离线演示模式，不需要后端）
+```
+
+账号、房源、推荐、通勤、对话和收藏都来自后端：聊天走真正的 agent，前端不再自己打分，也不用演示通勤。前端的设置写在 `app/.env`（不提交）：`BACKEND_URL`（默认 `http://127.0.0.1:8000`）；`DEMO_USERNAME` / `DEMO_PASSWORD` 填一个先在网页上注册好的演示账号（例如 `demo_user`）后，登录页才显示“Continue with demo account”，大家共用这个账号的对话；`AGENT_MODE=mock` 时改为不连后端的离线演示（静态文件和脚本化的演示 agent）。界面语言默认英文，登录页和对话栏可切换中文。agent 按消息本身的语言回复（中文消息回中文），只有消息看不出语言时（只发了数字、区号或 yes）才用界面语言。“记住我”把登录令牌存在浏览器 cookie 里 7 天（这个 cookie 页面脚本读得到，和网页版的 HttpOnly cookie 不同），退出登录时删除 cookie 并作废令牌。
+
 ## 给前端的接口
 
-除聊天页面用的接口外，供 Streamlit 前端从它自己的服务器调用（对话状态都在服务端，前端只传对话 ID 和用户说的话）：
+除聊天页面用的接口外，供 Streamlit 前端从它自己的服务器调用（对话状态都在服务端，前端只传对话 ID 和用户说的话；`app/adapters/backend_client.py` 是前端这边的调用，`tests/test_frontend_client.py` 检查两边一致）：
 
-- 登录：`POST /api/token`（`{"username", "password"}`）返回 `{"token", "token_type": "bearer", "username", "faculty"}`，之后每个请求带 `Authorization: Bearer <token>`；注册仍用 `POST /api/register`。网页用的 cookie 登录不变。所有接口都要登录。
-- 房源：`GET /api/listings?limit=50&offset=0`（`limit` 最多 200）返回 `{"total", "listings"}`，字段和 agent 排序用的一样（含 `commutes` 各学院通勤、`live_status` 链接检查结果）；`GET /api/listings/{id}` 返回 `{"listing", "source_evidence"}`，后者是房源页原文，没有记录时为 `null`，找不到房源返回 404。
-- 对话：`POST /api/conversations` 新建，`POST /api/conversations/{id}/messages`（`{"message"}`）用 Server-Sent Events 返回 `progress` 和最后的 `reply`。`reply` 里除了 `text`、`steps`，还有 `recommendations`：这一轮搜索展示的房源，`{"preview", "listings": [...]}`，每套带 `status`（`match` 完全符合 / `needs_confirmation` 需确认，后者有 `unknown_conditions`）、`position`、月租、MRT、到“我的学院”的 `commute_minutes_to_faculty` 和 `commute_mode`、`link_status` 等；这一轮没有搜索时为 `null`。`preview` 为 true 表示只是假设，条件没有保存。
+- 不用登录：`GET /api/faculties` 返回各学院的 `name`、`zh`、`campus`、`code`、`latitude`、`longitude`（注册表单和地图用）；`GET /api/options` 返回有房源的区 `{"code", "name"}` 和物业类型，供注册和个人资料表单选择。
+- 登录：`POST /api/token`（`{"username", "password"}`）返回 `{"token", "token_type": "bearer", "username", "faculty"}`，之后每个请求带 `Authorization: Bearer <token>`；注册仍用 `POST /api/register`（可带 `faculty`），`POST /api/logout` 作废令牌，`PUT /api/me/faculty` 改学院。网页用的 cookie 登录不变。下面的接口都要登录。
+- 房源：`GET /api/listings?limit=50&offset=0`（`limit` 最多 200）返回 `{"total", "listings"}`，字段和 agent 排序用的一样（含 `commutes` 各学院通勤、`live_status` 链接检查结果；`rent_monthly_sgd` 是重新检查过的月租，原广告月租在 `rent_monthly_sgd_card`）；`GET /api/listings/{id}` 返回 `{"listing", "source_evidence"}`，后者是房源页的完整记录（图片、原文、字段依据），没有记录时为 `null`，找不到房源返回 404。
+- 对话：`POST /api/conversations` 新建，`POST /api/conversations/{id}/messages`（`{"message", "language"}`，`language` 是界面语言 `zh` / `en`，只在消息本身看不出语言时使用，例如只发了 `1000`；其他时候回复跟随消息的语言）用 Server-Sent Events 返回 `progress`（`{"zh", "en"}` 两种文字）和最后的 `reply`。`reply` 里有 `text`、`steps`、保存的条件 `preferences`、对话的收藏 `shortlist`，以及 `recommendations`：这一轮搜索展示的房源，`{"preview", "listings": [...]}`，每套带 `status`（`match` 完全符合 / `needs_confirmation` 需确认，后者有 `unknown_conditions` 和按回复语言写好的 `unknown_condition_labels`）、`position`、月租、MRT、到“我的学院”的 `commute_minutes_to_faculty` 和 `commute_mode`、`link_status` / `link_note` 等；这一轮没有搜索时为 `null`，前端保留上一次的列表。`preview` 为 true 表示只是假设，条件没有保存。
+- 重新打开对话：`GET /api/conversations` 列出对话，`GET /api/conversations/{id}/messages` 是消息和每条回复的处理过程，`GET /api/conversations/{id}` 返回 `{"id", "preferences", "recommendations", "shortlist"}`（`recommendations` 是最近一次搜索展示的房源，格式同上）。
+- 收藏：就是 agent 的候选清单，每段对话各有一份，agent 在对话里也看得到。`POST /api/conversations/{id}/shortlist`（`{"listing_id"}`）加入，`DELETE /api/conversations/{id}/shortlist/{listing_id}` 移除，都返回 `{"shortlist"}`；规则和对话里的 shortlist 工具相同，用户同意记住时也写进长期档案。
 
 ## Agent 的边界
 

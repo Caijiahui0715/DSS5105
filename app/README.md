@@ -1,29 +1,54 @@
 # NUS Rental Decision Agent
 
-A Streamlit-only DSS5105 student demonstration for NUS students and staff.
-Search less, decide better. This app supports rental decisions using the latest
-V2 snapshot (376 active-at-snapshot advertisements checked on 2026-10-04).
-It is not a property marketplace or production Agent.
+The Streamlit frontend of the DSS5105 rental decision agent, for NUS students
+and staff. Search less, decide better. It is not a property marketplace.
+
+It runs in one of two modes:
+
+- **With the agent backend** (default): accounts, listings, the agent's replies
+  and recommendations, commute times to the user's faculty, conversations and
+  favorites all come from `server.py` at the repository root, which reads the
+  group's database (or the delivery files without one).
+- **Offline demo** (`AGENT_MODE=mock`): the original demonstration with static
+  V2 files, a scripted demo Agent, demo scores and demo commute estimates. No
+  backend and no real accounts. The tests run in this mode.
 
 ## Local setup and startup
 
-Python 3.12 and uv are required. From Windows PowerShell:
+Python 3.12 and uv are required. From Windows PowerShell, in the repository root:
 
 ```powershell
-cd E:\NUS_DSS\DSS5105-group-project
 $env:UV_CACHE_DIR = "$env:LOCALAPPDATA\uv\cache"
 $env:UV_LINK_MODE = "copy"
 uv sync --project app
-uv run --project app streamlit run app/streamlit_app.py
+.\.venv\Scripts\python.exe .\server.py                     # terminal 1: the agent backend
+uv run --project app streamlit run app/streamlit_app.py    # terminal 2: this app
 ```
 
-Open http://localhost:8501 and choose **Continue with demo account**, or fill
-the English Login/Register demo forms. Neither form verifies identity.
-Registration requires an explicit monthly budget, rental scope and minimum
-bedroom choice (including an explicit No minimum option). Soft preferences
-are optional; skipping them does not apply default district, MRT or commute preferences.
-Passwords are removed from widget/session state immediately on submission and
-are never persisted, logged, or sent to a Backend. Do not use a real password.
+Open http://localhost:8501, then sign in or create an account (username of 3–20
+letters, digits or underscores, not already taken, case-insensitive; password
+of at least 8 characters, typed twice at sign-up; optionally your NUS faculty,
+which commute times are measured to). Registration still asks
+for the monthly budget, rental scope and minimum bedroom choice, and optional
+soft preferences; they are sent to the agent as the first message, so its reply
+shows what it understood. **Remember me on this device** keeps the sign-in token
+in a browser cookie for 7 days (readable by page scripts, unlike the backend
+page's HttpOnly cookie); signing out deletes it and revokes the token.
+
+Settings live in the environment or `app/.env` (ignored by Git; copy
+`app/.env.example`, and see `使用说明.md` in the repository root):
+
+```
+BACKEND_URL=http://127.0.0.1:8000   # where server.py listens (the default)
+DEMO_USERNAME=demo_user             # optional: shows "Continue with demo account",
+DEMO_PASSWORD=...                   # signed in as this account (register it first; everyone shares it)
+AGENT_MODE=mock                     # optional: the offline demo instead of the backend
+```
+
+The interface is in English by default; the login page and the conversation
+panel switch it to Chinese. The agent replies in the language of each message
+(Chinese for a Chinese message); the interface language decides only when a
+message shows none, such as `1000` or `D05`.
 
 The app is an independent, non-package uv project. Only its environment and
 lockfile are managed; the root Python project is unchanged. No Node tooling,
@@ -50,16 +75,33 @@ and two fixed right-hand panels: map above and compact listing card below.
 Recommendations and requirement summaries do not appear in the chat column.
 The map has no markers until recommendations exist; the listing panel starts
 empty with suggested prompts. Its content scrolls internally without pagination.
-Existing secondary views remain implemented for later integration, outside the
-primary navigation. Login/Register remain the demo entry screen.
+The map's graduation cap is the user's faculty (the NUS anchor without one).
+Listing cards show the agent's rank, whether the listing meets every condition
+or needs confirmation (and which conditions the listing does not state), rent,
+MRT, the commute to the user's faculty and the link check; there is no 0–100
+score with the backend. Favorites are the agent's shortlist for the current
+conversation, so the agent can compare them in chat; the comparison table is
+display-only. Profile changes are sent to the agent as a message listing only
+what changed; the faculty is saved to the account directly.
+The secondary views (Recommendations, Rental Map, Conversation History,
+Evaluation) remain in `views/` for later work but are only routed in the offline
+demo, since they use its demo scoring.
 
 Views → shared components and session state → domain model → RentalApi/AgentApi.
-`StaticRentalApi` and `MockAgentApi` power the demo. `BackendMapper` owns
-snake_case-to-camelCase conversion. HTTP adapters are safe placeholders and do
-not send requests. Static loading uses `st.cache_data`; application state uses
+With the backend, `HttpRentalApi` and `HttpAgentApi` call it through
+`adapters/backend_client.py` (standard library HTTP, a Bearer token, Server-Sent
+Events for replies); `StaticRentalApi` and `MockAgentApi` power the offline demo.
+`BackendMapper` owns snake_case-to-camelCase conversion for both.
+`domain/criteria.py` turns the agent's saved criteria into form values and form
+changes into a message. `content/i18n.py` holds the interface language. Listings
+use `st.cache_data` (refreshed every 5 minutes); application state uses
 `st.session_state`. `st.set_page_config` is the first Streamlit command.
 
-## Real data and provenance
+## Offline demo: real data and provenance
+
+The rest of this section and the next describe the offline demo. With the
+backend, the same V2 data comes from `GET /api/listings` (see the repository
+README, "给前端的接口").
 
 Six existing files are read directly using paths resolved from the loader:
 
@@ -121,7 +163,7 @@ titles remain intact in the domain/source data. Non-English advertisement text
 and evidence are not reproduced in the English UI; the source link and files
 remain the reference, without fabricated translation.
 
-## Demo ranking and Agent
+## Offline demo ranking and Agent
 
 The local adapter mirrors budget, rental scope, and minimum bedroom checks.
 Status precedence is Fail → Needs confirmation → Pass. Review flags remain
@@ -139,10 +181,10 @@ unsupported landlord-reliability claims. It never calls an LLM or live scraper.
 
 ## Session limits and external resources
 
-Profiles, favorites, comparisons, selected listings and conversations exist
-only in the current Streamlit session. Refresh, WebSocket disconnection, server
-restart or logout can reset them. There is no database or localStorage
-persistence. Logout clears session-owned state. Compare up to three listings.
+With the backend, accounts, conversations, criteria and favorites are kept by
+the backend; the comparison and the selected listing last for the Streamlit
+session. In the offline demo everything lasts only for the session. Logout
+clears session-owned state. Compare up to three listings.
 
 Source photos are optional, read into memory with a timeout, never saved to
 disk, and replaced by a placeholder on failure. OpenStreetMap tiles and Folium
@@ -156,24 +198,23 @@ columns stack; this is not a native mobile app or a custom bottom-navigation UI.
 uv run --project app pytest app/tests
 ```
 
-Tests cover V2 joins, removed listings, refreshed-price budget boundaries,
+These tests run the offline demo (`tests/conftest.py` sets `AGENT_MODE=mock`).
+They cover V2 joins, removed listings, refreshed-price budget boundaries,
 label normalization, preservation, coordinates, images, three-state constraints,
 score ranges, separation, Agent queries, demo login password disposal, all
-pages, favorites, the compare limit, profile updates and conversation reopening.
-AppTest exercises Python/widget behaviour; browser checks separately verify
-layout and custom map rendering. Evaluation shows planned scenarios and
-baselines only, not fabricated final performance statistics.
+pages, favorites, the compare limit, profile updates, conversation reopening and
+the criteria messages sent to the agent. AppTest exercises Python/widget
+behaviour; browser checks separately verify layout and custom map rendering.
+The backend side is checked from the repository root:
+`tests/test_frontend_client.py` runs this app's backend client against
+`server.py`. Evaluation shows planned scenarios and baselines only, not
+fabricated final performance statistics.
 
-## Backend integration for B / Agent integration for C
+## Backend integration
 
-See `API_CONTRACT.md`. Agree endpoints before implementing HTTP adapters.
-Implement mapping for JSON-safe decimals, dates, arrays, missing values and
-quality metadata. B's candidate classification becomes authoritative. Implement
-server-owned authentication/profile/favorites/history as separate integration
-work. C implements requirement extraction, tool calls, explanations and context.
-Keep unknown facts and source evidence in responses. Replace adapter selection
-via `RENTAL_DATA_MODE` / `AGENT_MODE`; HTTP mode currently reports an explicit
-not-connected error. No secrets or endpoints are hardcoded.
+`API_CONTRACT.md` lists what this app calls. To add a page that needs backend
+data, add the call to `BackendClient`, map it in an adapter, and keep the
+offline demo working (or route the page only offline, as the secondary views are).
 
 ## Streamlit Community Cloud
 
@@ -192,9 +233,10 @@ Do not add local secrets files or private docs to the deployment. The six
 already tracked delivery JSON/CSV files must be present. Cloud deployment has not
 been performed or verified in this task.
 
+A deployed app also needs a reachable backend: set `BACKEND_URL` (and the demo
+account, if wanted) as environment variables for the deployment.
+
 ## Future scope
 
-Live routes, persistent identity and records, production Agent,
-conversation indexing, language switching, contract review and rental progress
-management are future work. No measured quality, latency or satisfaction is
-claimed by this demo.
+Conversation search, contract review and rental progress management are future
+work. No measured quality, latency or satisfaction is claimed by this demo.

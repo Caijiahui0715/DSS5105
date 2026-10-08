@@ -46,9 +46,9 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()["username"]
 
-    def send(self, client, thread_id, message, *steps):
+    def send(self, client, thread_id, message, *steps, language=None):
         self.model.steps.extend(steps)
-        response = client.post(f"/api/conversations/{thread_id}/messages", json={"message": message})
+        response = client.post(f"/api/conversations/{thread_id}/messages", json={"message": message, "language": language})
         self.assertEqual(response.status_code, 200, response.text)
         return events(response)
 
@@ -118,6 +118,11 @@ class ServerTest(unittest.TestCase):
 
     def test_listings_can_be_browsed_and_opened_after_signing_in(self):
         self.assertEqual(self.alice.get("/api/listings").status_code, 401)
+        # The sign-up form's choices need no account.
+        options = self.alice.get("/api/options").json()
+        self.assertIn({"code": "D05", "name": "Buona Vista / West Coast / Clementi New Town"}, options["districts"])
+        self.assertEqual(options["property_types"], sorted(set(options["property_types"])))
+        self.assertIn("condominium", options["property_types"])
         self.sign_up(self.alice, "alice")
 
         page = self.alice.get("/api/listings?limit=5&offset=10").json()
@@ -128,6 +133,57 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(details["listing"]["listing_id"], "S001")
         self.assertIn("commutes", details["listing"])
         self.assertEqual(self.alice.get("/api/listings/NOPE").status_code, 404)
+
+    def test_a_reopened_conversation_has_its_criteria_listings_and_shortlist(self):
+        self.sign_up(self.alice, "alice")
+        thread_id = self.alice.post("/api/conversations").json()["id"]
+        self.assertEqual(
+            self.alice.get(f"/api/conversations/{thread_id}").json(),
+            {"id": thread_id, "preferences": {}, "recommendations": None, "shortlist": []},
+        )
+        # A favorite before the first message is kept too.
+        self.assertEqual(self.alice.post(f"/api/conversations/{thread_id}/shortlist", json={"listing_id": "S002"}).json(), {"shortlist": ["S002"]})
+        self.send(
+            self.alice, thread_id, "预算1300",
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content=""),
+        )
+        shown = self.alice.get(f"/api/conversations/{thread_id}").json()["recommendations"]["listings"]
+        # A later turn without a search keeps the listings for the panel.
+        name, reply = self.send(self.alice, thread_id, "谢谢", AIMessage(content="不客气！"))[-1]
+        self.assertEqual((reply["recommendations"], reply["shortlist"]), (None, ["S002"]))
+
+        snapshot = self.alice.get(f"/api/conversations/{thread_id}").json()
+        self.assertEqual(snapshot["preferences"], {"max_price_sgd": 1300})
+        self.assertEqual(snapshot["recommendations"]["listings"], shown)
+        first = shown[0]["listing_id"]
+        self.assertEqual(self.alice.post(f"/api/conversations/{thread_id}/shortlist", json={"listing_id": first}).json()["shortlist"], ["S002", first])
+        self.assertEqual(self.alice.delete(f"/api/conversations/{thread_id}/shortlist/S002").json()["shortlist"], [first])
+        self.assertEqual(self.alice.post(f"/api/conversations/{thread_id}/shortlist", json={"listing_id": "NOPE"}).status_code, 404)
+        self.assertEqual(self.bob.get(f"/api/conversations/{thread_id}").status_code, 401)
+
+    def test_the_reply_follows_the_message_then_the_interface_language(self):
+        self.sign_up(self.alice, "alice")
+        thread_id = self.alice.post("/api/conversations").json()["id"]
+
+        # A message with no language of its own, such as a number, is answered in the interface language.
+        name, reply = self.send(
+            self.alice, thread_id, "1300",
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "1300"})),
+            AIMessage(content=""),
+            language="en",
+        )[-1]
+        self.assertIn("Should I remember these criteria?", reply["text"])
+        self.assertEqual(reply["preferences"], {"max_price_sgd": 1300})
+
+        # A Chinese message is answered in Chinese, whatever the interface language.
+        name, reply = self.send(
+            self.alice, thread_id, "预算改成1500",
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500}, "user_quote": "预算改成1500"})),
+            AIMessage(content=""),
+            language="en",
+        )[-1]
+        self.assertIn("已保存条件变更", reply["text"])
 
     def test_other_users_cannot_reach_a_conversation(self):
         self.sign_up(self.alice, "alice")
@@ -174,7 +230,10 @@ class ServerTest(unittest.TestCase):
     def test_the_faculty_is_chosen_at_sign_up_and_changed_in_settings(self):
         listed = self.client().get("/api/faculties").json()
         self.assertEqual(len(listed), 16)
-        self.assertIn({"name": "NUS Business School", "zh": "商学院", "campus": "Kent Ridge"}, listed)
+        self.assertIn(
+            {"name": "NUS Business School", "zh": "商学院", "campus": "Kent Ridge", "code": "BUS", "latitude": 1.292522, "longitude": 103.774133},
+            listed,
+        )
         signed_up = self.alice.post("/api/register", json={"username": "alice", "password": PASSWORD, "faculty": "商学院"})
         self.assertEqual(signed_up.json(), {"username": "alice", "faculty": "NUS Business School"})
 

@@ -12,8 +12,9 @@ def coordinates(listing):
 
 
 def location_note(listing):
-    source = listing.facts.get('coordSource') or 'Not provided'
+    from content.i18n import t
+    source = listing.facts.get('coordSource') or t('Not provided', '未提供')
     if listing.provenance.get('coordinates') == 'derived':
         error = listing.facts.get('coordErrorM')
-        return f'Approximate inferred location · {source}' + (f' · estimated error {error} m' if error is not None else '')
-    return f'Data location · {source} · not independently verified'
+        return t(f'Approximate inferred location · {source}', f'推断的大致位置 · {source}') + (t(f' · estimated error {error} m', f' · 估计误差 {error} 米') if error is not None else '')
+    return t(f'Data location · {source} · not independently verified', f'数据中的位置 · {source} · 未独立核实')

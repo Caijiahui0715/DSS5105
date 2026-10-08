@@ -10,12 +10,14 @@ can be shown, so only progress lines are sent while the agent works (Server-Sent
 
 import json
 import logging
+from functools import cache
 import socket
 import sys
 import threading
 from collections import defaultdict
 from pathlib import Path
 from queue import Queue
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
@@ -23,8 +25,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 from accounts import TOKEN_LIFETIME, AccountError, Accounts
-from agent import build_agent
-from decision import load_source_evidence
+from agent import build_agent, kept_profile
+from decision import EVIDENCE_PATH
 from faculties import FACULTIES, find_faculty
 from profiles import UserProfiles
 from response import render_steps
@@ -50,6 +52,13 @@ class FacultyIn(BaseModel):
 
 class MessageIn(BaseModel):
     message: str
+    # The frontend's interface language, for messages that do not show one ("1000", "D05"); otherwise
+    # the reply follows the message.
+    language: Literal["zh", "en"] | None = None
+
+
+class ShortlistIn(BaseModel):
+    listing_id: str
 
 
 def create_app(listings, model, storage: Storage, checkpointer, listing_checker=check_listing_url) -> FastAPI:
@@ -98,7 +107,21 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
 
     @app.get("/api/faculties")
     def faculties():
-        return [{"name": faculty["name"], "zh": faculty["zh"], "campus": faculty["campus"]} for faculty in FACULTIES]
+        return [
+            {key: faculty[key] for key in ("name", "zh", "campus", "code", "latitude", "longitude")}
+            for faculty in FACULTIES
+        ]
+
+    @app.get("/api/options")
+    def options():
+        """Choices for a frontend's sign-up and criteria forms: the districts that have listings, and property types."""
+        refresh()
+        rows = load_listings(listings)
+        districts = sorted({(row["district_code"], row["district"]) for row in rows if row.get("district_code")})
+        return {
+            "districts": [{"code": code, "name": name} for code, name in districts],
+            "property_types": sorted({row["property_type"] for row in rows if row.get("property_type")}),
+        }
 
     @app.post("/api/register")
     def register(body: Credentials, response: Response):
@@ -159,12 +182,12 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
 
     @app.get("/api/listings/{listing_id}")
     def listing_details(listing_id: str, user_id: str = Depends(current_user)):
-        """One listing with the listing page's original wording behind its fields, where recorded."""
+        """One listing with its full source record (page text, photos, field evidence), where recorded."""
         refresh()
         found = get_listings_by_ids(listings, [listing_id])
         if not found:
             raise HTTPException(404, "找不到这套房源。")
-        return {"listing": found[0], "source_evidence": load_source_evidence().get(listing_id)}
+        return {"listing": found[0], "source_evidence": _source_records().get(listing_id)}
 
     @app.get("/api/conversations")
     def conversations(user_id: str = Depends(current_user)):
@@ -173,6 +196,50 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     @app.post("/api/conversations")
     def new_conversation(user_id: str = Depends(current_user)):
         return {"id": storage.new_thread(user_id), "title": ""}
+
+    @app.get("/api/conversations/{thread_id}")
+    def conversation(thread_id: str, user_id: str = Depends(current_user)):
+        """What a frontend needs to reopen a conversation: the saved criteria, the latest search's
+        listings (as in each reply's recommendations) and the shortlist."""
+        owned(user_id, thread_id)
+        values = agent.get_state(config(thread_id)).values
+        preferences = values.get("preferences")
+        return {
+            "id": thread_id,
+            "preferences": preferences.model_dump(mode="json", exclude_defaults=True) if preferences else {},
+            "recommendations": values.get("last_recommendations"),
+            "shortlist": values.get("shortlisted_listing_ids", []),
+        }
+
+    def change_shortlist(user_id: str, thread_id: str, add: list[str], remove: list[str]) -> dict:
+        # The same rules as the agent's shortlist tool; one change at a time per conversation.
+        with lock_for(thread_id):
+            values = agent.get_state(config(thread_id)).values
+            found = [listing["listing_id"] for listing in get_listings_by_ids(listings, add)]
+            if add and not found:
+                raise HTTPException(404, "找不到这套房源。")
+            shortlist = [
+                listing_id
+                for listing_id in dict.fromkeys([*values.get("shortlisted_listing_ids", []), *found])
+                if listing_id not in remove
+            ]
+            excluded = [listing_id for listing_id in values.get("excluded_listing_ids", []) if listing_id not in found]
+            update = {"shortlisted_listing_ids": shortlist, "excluded_listing_ids": excluded}
+            agent.update_state(config(thread_id), update, as_node="finalize")
+            # A user who agreed to be remembered keeps the shortlist for later conversations, as in chat.
+            if values.get("preferences") and not values.get("remembered_profile") and profiles.consent(user_id):
+                profiles.save(user_id, kept_profile({**values, **update}))
+        return {"shortlist": shortlist}
+
+    @app.post("/api/conversations/{thread_id}/shortlist")
+    def add_to_shortlist(thread_id: str, body: ShortlistIn, user_id: str = Depends(current_user)):
+        owned(user_id, thread_id)
+        return change_shortlist(user_id, thread_id, [body.listing_id.strip()], [])
+
+    @app.delete("/api/conversations/{thread_id}/shortlist/{listing_id}")
+    def remove_from_shortlist(thread_id: str, listing_id: str, user_id: str = Depends(current_user)):
+        owned(user_id, thread_id)
+        return change_shortlist(user_id, thread_id, [], [listing_id])
 
     @app.get("/api/conversations/{thread_id}/messages")
     def history(thread_id: str, user_id: str = Depends(current_user)):
@@ -207,9 +274,8 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
                 refresh()
                 storage.touch(thread_id, text)
                 final = {}
-                for mode, chunk in agent.stream(
-                    {"message": text, "user_id": user_id}, config(thread_id), stream_mode=["custom", "values"]
-                ):
+                turn = {"message": text, "user_id": user_id, "reply_language": body.language}
+                for mode, chunk in agent.stream(turn, config(thread_id), stream_mode=["custom", "values"]):
                     if mode == "custom" and "progress" in chunk:
                         events.put(("progress", chunk["progress"]))
                     elif mode == "values":
@@ -217,7 +283,17 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
                 reply = final["messages"][-1]
                 steps = render_steps(final["reply_traces"][reply.id], final.get("response_language", "zh"))
                 # recommendations: the listings a search showed this turn, with each one's status, for listing cards.
-                events.put(("reply", {"text": final["response"], "steps": steps, "recommendations": final.get("recommendations")}))
+                events.put((
+                    "reply",
+                    {
+                        "text": final["response"],
+                        "steps": steps,
+                        "recommendations": final.get("recommendations"),
+                        "preferences": final["preferences"].model_dump(mode="json", exclude_defaults=True),
+                        # The agent can change the shortlist in chat too.
+                        "shortlist": final.get("shortlisted_listing_ids", []),
+                    },
+                ))
                 storage.touch(thread_id, text)
             except Exception:
                 logging.exception("turn failed in %s", thread_id)
@@ -257,6 +333,15 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         return {"ok": True}
 
     return app
+
+
+@cache
+def _source_records() -> dict[str, dict]:
+    try:
+        records = json.loads(EVIDENCE_PATH.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+    return {str(record["listing_id"]): record for record in records}
 
 
 def _lan_address() -> str:

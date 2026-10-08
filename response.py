@@ -271,8 +271,8 @@ def render_response(
                 f"{index}. {listing.get('title') or _text(language, '未命名房源', 'Untitled listing')} ({listing_id})",
                 _text(
                     language,
-                    f"   月租：{f'S${price:,}' if isinstance(price, (int, float)) else '未知'}",
-                    f"   Monthly rent: {f'S${price:,}' if isinstance(price, (int, float)) else 'unknown'}",
+                    f"   月租：{_sgd(price) if isinstance(price, (int, float)) else '未知'}",
+                    f"   Monthly rent: {_sgd(price) if isinstance(price, (int, float)) else 'unknown'}",
                 ),
                 _text(
                     language,
@@ -407,8 +407,8 @@ def render_comparison(
         lines.append(
             _text(
                 language,
-                f"- 最低月租：{cheapest['listing_id']}（S${cheapest['rent_monthly_sgd']:,}）",
-                f"- Lowest rent: {cheapest['listing_id']} (S${cheapest['rent_monthly_sgd']:,})",
+                f"- 最低月租：{cheapest['listing_id']}（{_sgd(cheapest['rent_monthly_sgd'])}）",
+                f"- Lowest rent: {cheapest['listing_id']} ({_sgd(cheapest['rent_monthly_sgd'])})",
             )
         )
 
@@ -437,7 +437,7 @@ def render_listing_details(
     occupants = listing.get("tenant_count_reported")
     lines = [
         _text(language, f"房源详情：{listing.get('title') or '未命名房源'}（{listing['listing_id']}）", f"Listing details: {listing.get('title') or 'Untitled listing'} ({listing['listing_id']})"),
-        _text(language, f"- 月租：{f'S${price:,}' if isinstance(price, (int, float)) else '未知'}", f"- Monthly rent: {f'S${price:,}' if isinstance(price, (int, float)) else 'unknown'}"),
+        _text(language, f"- 月租：{_sgd(price) if isinstance(price, (int, float)) else '未知'}", f"- Monthly rent: {_sgd(price) if isinstance(price, (int, float)) else 'unknown'}"),
         _text(language, f"- 房型：{_display(listing.get('room_type'), '未知')}", f"- Room type: {_display(listing.get('room_type'), 'unknown')}"),
         _text(language, f"- 出租范围：{_display(listing.get('rental_scope'), '未知')}", f"- Rental scope: {_display(listing.get('rental_scope'), 'unknown')}"),
         _text(language, f"- 物业类型：{_display(listing.get('property_type'), '未知')}", f"- Property type: {_display(listing.get('property_type'), 'unknown')}"),
@@ -549,7 +549,7 @@ def render_decision_context(rows: list[dict], language: ResponseLanguage = "zh")
             )
         limit = row.get("smallest_limit_with_a_match")
         if limit is not None and row["condition"] == "max_price_sgd":
-            line += _text(language, f"；预算至少 S${limit:,} 才有完全符合的房源", f"; a budget of at least S${limit:,} gives a full match")
+            line += _text(language, f"；预算至少 {_sgd(limit)} 才有完全符合的房源", f"; a budget of at least {_sgd(limit)} gives a full match")
         elif limit is not None:
             line += _text(language, f"；MRT 步行上限至少 {limit} 分钟才有完全符合的房源", f"; an MRT limit of at least {limit} minutes gives a full match")
         lines.append(line)
@@ -600,8 +600,8 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
         lines.append(
             _text(
                 language,
-                f"- 价格变化：采集时房源卡片为 S${card_rent:,}，现价 S${rent:,}；下面的原文是采集时的内容",
-                f"- Price change: the listing card showed S${card_rent:,} when collected and the current price is S${rent:,}; the source text below is from collection time",
+                f"- 价格变化：采集时房源卡片为 {_sgd(card_rent)}，现价 {_sgd(rent)}；下面的原文是采集时的内容",
+                f"- Price change: the listing card showed {_sgd(card_rent)} when collected and the current price is {_sgd(rent)}; the source text below is from collection time",
             )
         )
     card_text = (explanation.get("evidence") or {}).get("card_text")
@@ -629,9 +629,9 @@ def render_budget_ladder(
         if budget is None:
             label = _text(language, "不限预算", "No budget limit")
         elif budget == saved_budget:
-            label = _text(language, f"当前 S${budget:,}", f"Current S${budget:,}")
+            label = _text(language, f"当前 {_sgd(budget)}", f"Current {_sgd(budget)}")
         else:
-            label = f"S${budget:,}"
+            label = _sgd(budget)
         line = _text(
             language,
             f"- {label}：完全符合 {strict['count']} 套；需确认 {pending['count']} 套，其中 {pending['mrt_within_10_min']} 套步行 10 分钟内到 MRT",
@@ -642,8 +642,8 @@ def render_budget_ladder(
             count = strict["entire_unit"] + pending["entire_unit"]
             line += _text(
                 language,
-                f"；明确整租 {count} 套（最低 S${min(cheapest):,}）",
-                f"; explicit whole units {count} (from S${min(cheapest):,})",
+                f"；明确整租 {count} 套（最低 {_sgd(min(cheapest))}）",
+                f"; explicit whole units {count} (from {_sgd(min(cheapest))})",
             )
         lines.append(line)
     if not strict_grows:
@@ -656,17 +656,17 @@ def render_budget_conversion(conversion: dict, language: ResponseLanguage = "zh"
     amount, currency, sgd = conversion["original_amount"], conversion["original_currency"], conversion["amount_sgd"]
     months, monthly = conversion.get("months", 1), conversion.get("monthly_sgd", sgd)
     if conversion.get("rate_to_sgd"):
-        zh = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = S${sgd:,}（汇率日期 {conversion['rate_date']}）"
-        en = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = S${sgd:,} (rate date {conversion['rate_date']})"
+        zh = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = {_sgd(sgd)}（汇率日期 {conversion['rate_date']}）"
+        en = f"{amount:,} {currency} × {conversion['rate_to_sgd']} = {_sgd(sgd)} (rate date {conversion['rate_date']})"
     else:
-        zh = en = f"S${sgd:,}"
+        zh = en = _sgd(sgd)
     if months > 1:
-        zh = f"{months} 个月共 {zh}，÷ {months} = 每月 S${monthly:,}"
-        en = f"{en} for {months} months, ÷ {months} = S${monthly:,} a month"
+        zh = f"{months} 个月共 {zh}，÷ {months} = 每月 {_sgd(monthly)}"
+        en = f"{en} for {months} months, ÷ {months} = {_sgd(monthly)} a month"
     return _text(
         language,
-        f"预算换算：{zh}。搜索使用 S${monthly:,} 作为月租上限。",
-        f"Budget conversion: {en}. The search used S${monthly:,} as the monthly rent limit.",
+        f"预算换算：{zh}。搜索使用 {_sgd(monthly)} 作为月租上限。",
+        f"Budget conversion: {en}. The search used {_sgd(monthly)} as the monthly rent limit.",
     )
 
 
@@ -676,21 +676,21 @@ def render_budget_check(check: dict, language: ResponseLanguage = "zh") -> str:
     limit = check["monthly_limit_sgd"]
     if "lowest_rent_sgd" in check:
         low, stated = check["lowest_rent_sgd"], check.get("stated_budget")
-        zh = f"你说的预算是{_budget_phrase(stated, 'zh')}，折合每月 S${limit:,}，" if stated else f"每月 S${limit:,} 的上限"
-        en = f"your budget of {_budget_phrase(stated, 'en')} comes to S${limit:,} a month," if stated else f"a monthly limit of S${limit:,} is"
+        zh = f"你说的预算是{_budget_phrase(stated, 'zh')}，折合每月 {_sgd(limit)}，" if stated else f"每月 {_sgd(limit)} 的上限"
+        en = f"your budget of {_budget_phrase(stated, 'en')} comes to {_sgd(limit)} a month," if stated else f"a monthly limit of {_sgd(limit)} is"
         return _text(
             language,
-            f"提醒：{zh}远低于数据中最便宜房源的月租（S${low:,}），所以这次没有按预算筛选，也没有保存。"
+            f"提醒：{zh}远低于数据中最便宜房源的月租（{_sgd(low)}），所以这次没有按预算筛选，也没有保存。"
             "如果少写了“万”“千”等单位，请告诉我正确的金额。",
-            f"Note: {en} far below the cheapest rent in the data (S${low:,}), so it was not used or saved. "
+            f"Note: {en} far below the cheapest rent in the data ({_sgd(low)}), so it was not used or saved. "
             "If a unit such as thousand is missing, tell me the correct amount.",
         )
     high = check["rent_90th_percentile_sgd"]
     return _text(
         language,
-        f"提醒：每月 S${limit:,} 的上限高于数据中 90% 房源的月租（S${high:,}），基本起不到筛选作用。"
+        f"提醒：每月 {_sgd(limit)} 的上限高于数据中 90% 房源的月租（{_sgd(high)}），基本起不到筛选作用。"
         "如果你说的是一年或整个租期的总预算，请告诉我，我会按月重新计算。",
-        f"Note: a monthly limit of S${limit:,} is above the rent of 90% of listings (S${high:,}), so it barely "
+        f"Note: a monthly limit of {_sgd(limit)} is above the rent of 90% of listings ({_sgd(high)}), so it barely "
         "narrows the results. If you meant a yearly or whole-lease budget, tell me and I will recalculate it per month.",
     )
 
@@ -985,14 +985,14 @@ def render_rental_scope_mix(mix: dict, language: ResponseLanguage = "zh") -> str
     if mix["shown_scopes"] == ["room"]:
         text = _text(
             language,
-            f"提示：展示的都是合租房间；数据库里符合条件的整租有 {whole_unit['database_count']} 套，最低 S${whole_unit['cheapest_sgd']:,}。",
-            f"Note: the listings shown are all rooms; the database has {whole_unit['database_count']} whole units meeting your criteria, from S${whole_unit['cheapest_sgd']:,}.",
+            f"提示：展示的都是合租房间；数据库里符合条件的整租有 {whole_unit['database_count']} 套，最低 {_sgd(whole_unit['cheapest_sgd'])}。",
+            f"Note: the listings shown are all rooms; the database has {whole_unit['database_count']} whole units meeting your criteria, from {_sgd(whole_unit['cheapest_sgd'])}.",
         )
     elif mix["shown_scopes"] == ["entire_unit"]:
         text = _text(
             language,
-            f"提示：展示的都是整租；数据库里符合条件的合租房间有 {room['database_count']} 套，最低 S${room['cheapest_sgd']:,}。",
-            f"Note: the listings shown are all whole units; the database has {room['database_count']} rooms meeting your criteria, from S${room['cheapest_sgd']:,}.",
+            f"提示：展示的都是整租；数据库里符合条件的合租房间有 {room['database_count']} 套，最低 {_sgd(room['cheapest_sgd'])}。",
+            f"Note: the listings shown are all whole units; the database has {room['database_count']} rooms meeting your criteria, from {_sgd(room['cheapest_sgd'])}.",
         )
     else:
         text = _text(
@@ -1046,7 +1046,7 @@ def _check_summary_text(summary: ListingCheckSummary, language: ResponseLanguage
 def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLanguage) -> str:
     field = suggestion["field"]
     if field == "max_price_sgd":
-        return _text(language, f"将最高预算从 S${suggestion['current']:,} 提高到 S${suggestion['suggested']:,}", f"raising the maximum budget from S${suggestion['current']:,} to S${suggestion['suggested']:,}")
+        return _text(language, f"将最高预算从 {_sgd(suggestion['current'])} 提高到 {_sgd(suggestion['suggested'])}", f"raising the maximum budget from {_sgd(suggestion['current'])} to {_sgd(suggestion['suggested'])}")
     if field == "max_mrt_minutes":
         return _text(language, f"将 MRT 步行上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the MRT walking limit from {suggestion['current']} to {suggestion['suggested']} minutes")
     return _text(language, f"调整 {field}", f"changing {field}")
@@ -1112,6 +1112,13 @@ def _link_status_text(listing: Listing, language: ResponseLanguage) -> str:
 
 def _display(value: object, missing: str) -> str:
     return str(value).replace("_", " ") if value not in {None, "unknown"} else missing
+
+
+def _sgd(amount) -> str:
+    """An SGD amount; whole dollars without the ".0" that decimal rents from the data would show."""
+    if isinstance(amount, float) and amount.is_integer():
+        amount = int(amount)
+    return f"S${amount:,}"
 
 
 def _text(language: ResponseLanguage, zh: str, en: str) -> str:

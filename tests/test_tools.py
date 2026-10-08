@@ -404,6 +404,14 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(validation["summary"]["unchecked_count"], 10)
         self.assertEqual(validation["summary"]["unknown_count"], 1)
 
+    def test_whole_dollar_rents_show_without_decimals(self):
+        # Rents read from the delivery files and the database are decimals such as 2999.0.
+        with closing(create_mock_database()) as connection:
+            listing = {**load_listings(connection)[0], "rent_monthly_sgd": 2999.0}
+
+        self.assertIn("Monthly rent: S$2,999\n", render_response([{"listing": listing}], language="en"))
+        self.assertIn("月租：S$2,999\n", render_response([{"listing": listing}]))
+
     def test_live_validation_reports_unchecked_candidates_at_the_cap(self):
         with closing(create_mock_database()) as connection:
             ranked = [{"listing": listing} for listing in load_listings(connection)]

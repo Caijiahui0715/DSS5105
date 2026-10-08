@@ -671,6 +671,20 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(later["preferences"].max_price_sgd, 800)
         self.assertTrue(later["response"].startswith("你之前填写的入住日期 2026-11-01 已经过去，如需更新请告诉我。"))
 
+    def test_the_memory_question_is_not_repeated_by_the_model(self):
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content="预算已保存。要我记住这些条件吗？"),
+            AIMessage(content="预算已保存。"),
+        )
+        with closing(create_mock_database()) as connection:
+            asked = say(memory_agent(connection, model, UserProfiles(memory_storage())), "first", "预算1300")
+
+        # The model's own question is sent back once; the system's fixed question ends the reply.
+        self.assertEqual(asked["response"].count("要我记住"), 1)
+        self.assertTrue(asked["response"].endswith("随时可以说“忘掉我的信息”删除。"))
+        self.assertIn("预算已保存。", asked["response"])
+
     def test_consent_is_asked_once_and_allow_keeps_criteria_with_the_users_words(self):
         profiles = UserProfiles(memory_storage())
         model = ScriptedModel(

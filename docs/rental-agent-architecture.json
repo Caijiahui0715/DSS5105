@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "新加坡租房决策 Agent - 当前整体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1180, 600],
+    "views": [
+      {
+        "id": "request-path",
+        "label": "请求主链",
+        "focus": ["user", "demo", "graph", "tools", "response"],
+        "note": "输入经过状态编排和确定性工具后，形成可信事实草稿与自然回复。"
+      },
+      {
+        "id": "model-boundary",
+        "label": "模型边界",
+        "focus": ["graph", "openai", "response"],
+        "note": "模型只解释用户意图并润色可信草稿，不负责产生房源事实。"
+      },
+      {
+        "id": "state-and-data",
+        "label": "状态与数据",
+        "focus": ["graph", "memory", "tools", "sqlite", "fixture", "onemap"],
+        "note": "MemorySaver 保存会话状态；SQLite 和 OneMap 向工具层提供事实。"
+      }
+    ]
+  },
+  "components": [
+    {"id": "user", "type": "external", "label": "租客", "sublabel": "自然语言需求与反馈", "pos": [24, 260], "size": [150, 72]},
+    {"id": "demo", "type": "frontend", "label": "CLI / Chat 入口", "sublabel": "demo.py", "pos": [224, 260], "size": [160, 72]},
+    {"id": "graph", "type": "backend", "label": "LangGraph 编排器", "sublabel": "AgentState + 条件路由", "tag": "CORE", "pos": [446, 260], "size": [180, 72]},
+    {"id": "tools", "type": "backend", "label": "确定性工具层", "sublabel": "检索、限制、排名、让步", "pos": [700, 260], "size": [180, 72]},
+    {"id": "response", "type": "backend", "label": "可信回复层", "sublabel": "事实模板 + 模型自然化", "pos": [954, 260], "size": [190, 72]},
+    {"id": "openai", "type": "cloud", "label": "OpenAI 模型", "sublabel": "结构化理解与表达润色", "pos": [446, 68], "size": [180, 72]},
+    {"id": "onemap", "type": "external", "label": "OneMap API", "sublabel": "地址解析与 MRT 步行路线", "pos": [700, 68], "size": [180, 72]},
+    {"id": "memory", "type": "database", "label": "MemorySaver", "sublabel": "按 thread_id 保存多轮状态", "pos": [446, 458], "size": [180, 72]},
+    {"id": "sqlite", "type": "database", "label": "内存 SQLite", "sublabel": "当前虚拟房源数据库", "pos": [700, 458], "size": [180, 72]},
+    {"id": "fixture", "type": "database", "label": "Synthetic Fixture", "sublabel": "mock_listings.json", "pos": [954, 458], "size": [190, 72]}
+  ],
+  "connections": [
+    {"id": "user-demo", "from": "user", "to": "demo", "variant": "emphasis"},
+    {"id": "demo-graph", "from": "demo", "to": "graph", "label": "message + thread_id", "labelAt": [415, 246]},
+    {"id": "graph-tools", "from": "graph", "to": "tools", "label": "执行已选路径", "labelAt": [663, 246]},
+    {"id": "tools-response", "from": "tools", "to": "response", "label": "可信结果", "labelAt": [917, 246]},
+    {"id": "graph-openai", "from": "graph", "to": "openai", "label": "意图解析 / 回复润色", "fromSide": "top", "toSide": "bottom", "labelAt": [536, 198]},
+    {"id": "tools-onemap", "from": "tools", "to": "onemap", "label": "显式刷新", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelAt": [790, 198]},
+    {"id": "graph-memory", "from": "graph", "to": "memory", "label": "checkpoint", "fromSide": "bottom", "toSide": "top", "labelAt": [536, 396]},
+    {"id": "tools-sqlite", "from": "tools", "to": "sqlite", "label": "参数化 SQL", "fromSide": "bottom", "toSide": "top", "labelAt": [790, 396]},
+    {"id": "fixture-sqlite", "from": "fixture", "to": "sqlite", "label": "启动时载入", "labelAt": [917, 444]}
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "LangGraph 内部路径",
+      "items": ["interpret → 渐进搜索或 clarification", "拒绝房源与接受让步都会回到统一搜索链", "search → restrictions → rank / relaxation → respond"]
+    },
+    {
+      "dot": "emerald",
+      "title": "渐进式对话",
+      "items": ["任一有效条件即可先搜索并展示结果", "完全无条件时才阻止搜索并请求澄清", "未填写条件每轮最多提示一个，房型不限会被记住"]
+    },
+    {
+      "dot": "amber",
+      "title": "当前边界",
+      "items": ["房源数据库和会话检查点均为本地内存实现", "OneMap 能写入 MRT 步行数据，但 Demo 尚未自动刷新"]
+    }
+  ]
+}

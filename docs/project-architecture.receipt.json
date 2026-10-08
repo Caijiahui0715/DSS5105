@@ -1,0 +1,29 @@
+{
+  "diagram_type": "architecture",
+  "output": "C:\\Users\\23305\\Desktop\\nus\\DSS5105\\group project\\DSS5105\\docs\\project-architecture.html",
+  "repository_revision": "ccddd08f4d8dfdc516265ccdfe2ce30f308de0f5",
+  "specification_sha256": "ea2e45513cbcd7c306bc86fcab427ca7a70ff5b532bf53ebfde8226488a4e169",
+  "artifact_sha256": "beab61afc19eaec39b108768e6193689d163eaeaf9ccce91cc0d5c90cf465044",
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 0,
+  "automated_browser_receipt": "project-architecture.visual-check.json",
+  "reviewed_viewports": [
+    "1440x900 light / dark",
+    "2048x1320 light / dark"
+  ],
+  "measured_viewports": [
+    "1440x900",
+    "1600x1000",
+    "1920x1080",
+    "2048x1320"
+  ],
+  "review_method": "Reviewed four screenshots of the delivered HTML; no visual corrections after delivery.",
+  "review_observations": [
+    "Both themes render fully within the desktop viewport.",
+    "Primary request path, supporting services, data flow and explanation cards are visible.",
+    "No clipped nodes, page overflow or conspicuous empty lower band."
+  ],
+  "interactive_review": "Not performed: browser URL policy blocks file:// navigation. Automated browser evidence and screenshot review completed independently."
+}

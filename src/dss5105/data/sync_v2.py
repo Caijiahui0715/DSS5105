@@ -240,6 +240,12 @@ def main():
         },
     )
 
+    # Two street-level geocodes record their error as "~500", which the NUMERIC column refuses;
+    # coord_source already says they are approximate.
+    active_df["coord_error_m"] = pd.to_numeric(
+        active_df["coord_error_m"].astype("string").str.lstrip("~")
+    )
+
     active_records = dataframe_to_records(active_df)
     removed_records = dataframe_to_records(removed_df)
 

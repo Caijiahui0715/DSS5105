@@ -1,0 +1,167 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Singapore Rental Agent · 最新 LangGraph",
+    "locale": "zh-CN",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "output": "docs/langgraph_workflow.html"
+  },
+  "lanes": [
+    { "id": "orchestration", "label": "主搜索流程" },
+    { "id": "success", "label": "匹配结果处理" },
+    { "id": "relaxation_lane", "label": "让步处理" },
+    { "id": "conversation_lane", "label": "会话直接响应" }
+  ],
+  "phases": [
+    { "id": "understand", "label": "理解", "fromCol": 0, "toCol": 0 },
+    { "id": "prepare", "label": "状态变更", "fromCol": 1, "toCol": 1 },
+    { "id": "execute", "label": "查询与处理", "fromCol": 2, "toCol": 4, "variant": "emphasis" },
+    { "id": "answer", "label": "回复", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": [
+    "interpret",
+    "prepare_search",
+    "search",
+    "restrictions",
+    "rank",
+    "respond"
+  ],
+  "semanticChecks": {
+    "allowedRoots": ["interpret"],
+    "allowedTerminals": ["respond", "preview_relaxation", "conversation"],
+    "requiredPaths": [
+      { "from": "interpret", "to": "respond" },
+      { "from": "interpret", "to": "preview_relaxation" },
+      { "from": "interpret", "to": "conversation" }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "interpret",
+      "lane": "orchestration",
+      "col": 0,
+      "type": "backend",
+      "label": "interpret",
+      "sublabel": "LLM 识别意图 + 合并偏好",
+      "tag": "入口",
+      "width": 164
+    },
+    {
+      "id": "prepare_search",
+      "lane": "orchestration",
+      "col": 1,
+      "type": "backend",
+      "label": "prepare_search",
+      "sublabel": "清空上一轮查询结果",
+      "width": 148
+    },
+    {
+      "id": "search",
+      "lane": "orchestration",
+      "col": 2,
+      "type": "database",
+      "label": "search",
+      "sublabel": "SQLite 严格条件查询",
+      "width": 150
+    },
+    {
+      "id": "respond",
+      "lane": "orchestration",
+      "col": 5,
+      "type": "frontend",
+      "label": "respond",
+      "sublabel": "模板生成本轮回复",
+      "tag": "END",
+      "width": 150
+    },
+    {
+      "id": "restrictions",
+      "lane": "success",
+      "col": 3,
+      "type": "backend",
+      "label": "restrictions",
+      "sublabel": "提取做饭、房东等限制",
+      "width": 164
+    },
+    {
+      "id": "rank",
+      "lane": "success",
+      "col": 4,
+      "type": "backend",
+      "label": "rank",
+      "sublabel": "价格与 MRT 排名",
+      "width": 150
+    },
+    {
+      "id": "apply_relaxation",
+      "lane": "relaxation_lane",
+      "col": 1,
+      "type": "backend",
+      "label": "apply_relaxation",
+      "sublabel": "确认后修改正式偏好",
+      "width": 170
+    },
+    {
+      "id": "relaxation",
+      "lane": "relaxation_lane",
+      "col": 3,
+      "type": "backend",
+      "label": "relaxation",
+      "sublabel": "逐项验证可行让步",
+      "width": 156
+    },
+    {
+      "id": "preview_relaxation",
+      "lane": "relaxation_lane",
+      "col": 4,
+      "type": "backend",
+      "label": "preview_relaxation",
+      "sublabel": "临时查询；不修改正式偏好",
+      "tag": "END",
+      "width": 178
+    },
+    {
+      "id": "conversation",
+      "lane": "conversation_lane",
+      "col": 4,
+      "type": "frontend",
+      "label": "conversation",
+      "sublabel": "展示缓存 / 拒绝 / 澄清",
+      "tag": "END",
+      "width": 166
+    }
+  ],
+  "edges": [
+    { "id": "intent-search", "from": "interpret", "to": "prepare_search", "label": "search", "variant": "emphasis", "role": "main" },
+    { "id": "intent-accept", "from": "interpret", "to": "apply_relaxation", "label": "accept_relaxation", "variant": "default", "role": "branch" },
+    { "id": "intent-preview", "from": "interpret", "to": "preview_relaxation", "label": "show_results · 无正式结果", "variant": "dashed", "role": "branch" },
+    { "id": "intent-conversation", "from": "interpret", "to": "conversation", "label": "缓存结果 / 拒绝 / unknown", "variant": "dashed", "role": "branch" },
+    { "id": "apply-prepare", "from": "apply_relaxation", "to": "prepare_search", "label": "写入已确认让步", "variant": "emphasis" },
+    { "id": "prepare-query", "from": "prepare_search", "to": "search", "variant": "default", "role": "main" },
+    { "id": "search-match", "from": "search", "to": "restrictions", "label": "matches", "variant": "emphasis", "role": "main" },
+    { "id": "search-empty", "from": "search", "to": "relaxation", "label": "no_matches", "variant": "dashed", "role": "branch" },
+    { "id": "rules-rank", "from": "restrictions", "to": "rank", "variant": "default", "role": "main" },
+    { "id": "rank-response", "from": "rank", "to": "respond", "label": "已排序房源", "variant": "emphasis", "role": "main" },
+    { "id": "relax-response", "from": "relaxation", "to": "respond", "label": "有效让步建议", "variant": "dashed", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模型边界",
+      "items": [
+        "LLM 只在 interpret 中识别意图并合并偏好",
+        "搜索、让步验证、排名与回复均为确定性代码"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "状态语义",
+      "items": [
+        "preview_relaxation 只读，不改变正式 preferences",
+        "同一 thread_id 由 checkpointer 恢复多轮状态"
+      ]
+    }
+  ]
+}

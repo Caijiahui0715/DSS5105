@@ -1,0 +1,432 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DSS5105 · 租房决策系统架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/Caijiahui0715/DSS5105",
+      "revision": "ccddd08f4d8dfdc516265ccdfe2ce30f308de0f5"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [
+      40,
+      90
+    ],
+    "cols": 5,
+    "cellW": 190,
+    "cellH": 100,
+    "gapX": 85,
+    "gapY": 150
+  },
+  "components": [
+    {
+      "id": "web-client",
+      "type": "frontend",
+      "label": "网页 / 前端接入",
+      "sublabel": "测试网页 · Streamlit 接口",
+      "tag": "Streamlit 实现在仓库外",
+      "row": 1,
+      "col": 0,
+      "sources": [
+        {
+          "path": "static/index.html"
+        },
+        {
+          "path": "server.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "web-api",
+      "type": "backend",
+      "label": "FastAPI 服务",
+      "sublabel": "server.py · REST + SSE",
+      "tag": "用户隔离 · 每段对话串行",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "server.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "rental-agent",
+      "type": "backend",
+      "label": "LangGraph Agent",
+      "sublabel": "agent.py · 自主选择工具",
+      "tag": "最多 5 轮 · 事实核对后回复",
+      "row": 1,
+      "col": 2,
+      "sources": [
+        {
+          "path": "agent.py"
+        },
+        {
+          "path": "models.py"
+        },
+        {
+          "path": "response.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "decision-tools",
+      "type": "backend",
+      "label": "检索工具与决策",
+      "sublabel": "tools.py · decision.py",
+      "tag": "三态条件 · 排序 · 放宽诊断",
+      "row": 1,
+      "col": 3,
+      "sources": [
+        {
+          "path": "tools.py"
+        },
+        {
+          "path": "decision.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "query-store",
+      "type": "database",
+      "label": "内存 SQLite",
+      "sublabel": "mock_db.py · 统一查询视图",
+      "tag": "统一房源 / 通勤 / 衍生排名",
+      "row": 1,
+      "col": 4,
+      "sources": [
+        {
+          "path": "mock_db.py"
+        },
+        {
+          "path": "group_db.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "user-state",
+      "type": "security",
+      "label": "账号、会话与长期档案",
+      "sublabel": "accounts · sessions · profiles",
+      "tag": "同意后记忆 · 学院 · checkpoint",
+      "row": 0,
+      "col": 1,
+      "sources": [
+        {
+          "path": "accounts.py"
+        },
+        {
+          "path": "sessions.py"
+        },
+        {
+          "path": "profiles.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "language-model",
+      "type": "external",
+      "label": "OpenAI 模型",
+      "sublabel": "ChatOpenAI · Responses API",
+      "tag": "工具调用与自然语言回复",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "server.py"
+        },
+        {
+          "path": "agent.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "online-services",
+      "type": "external",
+      "label": "在线辅助服务",
+      "sublabel": "OneMap · Frankfurter · 房源网页",
+      "tag": "地理编码 / MRT · 汇率 · 链接",
+      "row": 0,
+      "col": 3,
+      "sources": [
+        {
+          "path": "onemap.py"
+        },
+        {
+          "path": "exchange.py"
+        },
+        {
+          "path": "tools.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "data-preparation",
+      "type": "backend",
+      "label": "离线数据整理 / 导入",
+      "sublabel": "prepare / export · load / sync",
+      "tag": "V1 元数据 · V2 房源与 POI",
+      "row": 2,
+      "col": 0,
+      "sources": [
+        {
+          "path": "prepare_agent_data.py"
+        },
+        {
+          "path": "src/dss5105/data/load_data.py"
+        },
+        {
+          "path": "src/dss5105/data/sync_v2.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "commute-build",
+      "type": "backend",
+      "label": "学院通勤预计算",
+      "sublabel": "build_commutes.py · 学院坐标",
+      "tag": "OneMap · Google 异常路线修正",
+      "row": 2,
+      "col": 1,
+      "sources": [
+        {
+          "path": "build_commutes.py"
+        },
+        {
+          "path": "faculties.py"
+        },
+        {
+          "path": "fix_transit_google.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "durable-state",
+      "type": "database",
+      "label": "用户数据持久化",
+      "sublabel": "SQLite 或 PostgreSQL.agent",
+      "tag": "账号 / 令牌 / 对话 / 档案",
+      "row": 0,
+      "col": 0,
+      "sources": [
+        {
+          "path": "sessions.py"
+        },
+        {
+          "path": "accounts.py"
+        },
+        {
+          "path": "profiles.py"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    },
+    {
+      "id": "listing-source",
+      "type": "database",
+      "label": "房源与通勤数据源",
+      "sublabel": "PostgreSQL.public 或 CSV / JSON",
+      "tag": "group_db.py · 每 5 分钟检查更新",
+      "row": 2,
+      "col": 4,
+      "sources": [
+        {
+          "path": "group_db.py"
+        },
+        {
+          "path": "mock_db.py"
+        },
+        {
+          "path": "src/dss5105/database/schema.sql"
+        }
+      ],
+      "size": [
+        190,
+        100
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "frontend-api",
+      "from": "web-client",
+      "to": "web-api",
+      "label": "REST / SSE",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-agent",
+      "from": "web-api",
+      "to": "rental-agent",
+      "label": "消息 / 进度 / 回复",
+      "variant": "emphasis",
+      "labelAt": [
+        548,
+        454
+      ]
+    },
+    {
+      "id": "agent-tools",
+      "from": "rental-agent",
+      "to": "decision-tools",
+      "label": "调用 / 工具结果",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tools-query",
+      "from": "decision-tools",
+      "to": "query-store",
+      "label": "搜索 / 排序",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-auth",
+      "from": "web-api",
+      "to": "user-state",
+      "label": "Cookie / Bearer",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "agent-memory",
+      "from": "rental-agent",
+      "to": "user-state",
+      "label": "状态 / 同意后记忆",
+      "fromSide": "top",
+      "toSide": "right"
+    },
+    {
+      "id": "agent-model",
+      "from": "rental-agent",
+      "to": "language-model",
+      "label": "上下文 / tool calling",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -75
+    },
+    {
+      "id": "tools-online",
+      "from": "decision-tools",
+      "to": "online-services",
+      "label": "按需请求",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "state-persistence",
+      "from": "user-state",
+      "to": "durable-state",
+      "label": "读写 / checkpoint",
+      "fromSide": "left",
+      "toSide": "right",
+      "labelAt": [
+        273,
+        204
+      ]
+    },
+    {
+      "id": "source-snapshot",
+      "from": "listing-source",
+      "to": "query-store",
+      "label": "加载 / 变化时重建",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "data-import",
+      "from": "data-preparation",
+      "to": "listing-source",
+      "label": "写入 public / 文件交付",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "id": "commute-import",
+      "from": "commute-build",
+      "to": "listing-source",
+      "label": "学院坐标 / 通勤分钟",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "一次对话如何完成",
+      "items": [
+        "消息 → Agent ↔ 工具；失败信息返回模型调整下一次调用。",
+        "finalize 核对编号、金额与分钟数；重写一次后仍失败则使用 response.py 模板。",
+        "SSE 只推送处理进度，核对后的最终回复与房源卡片一起返回。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两种存储模式",
+      "items": [
+        "默认：V2 CSV + V1 JSON + commute_faculty.csv → 内存 SQLite；用户数据存 sessions.sqlite。",
+        "AGENT_DB=postgres：public 存房源和通勤；agent 存用户状态及链接检查缓存。",
+        "两种模式共用检索和排序；PostgreSQL 变化时重建内存副本，启动失败会明确报错。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "开发入口与历史模块",
+      "items": [
+        "demo.py 直接调用 Agent；--workflow 选择 graph.py 固定流程，parser.py 解析条件作对照。",
+        "src/dss5105/data 与 database 仍用于数据层；旧 api / backend / decision / commute 未接入当前主服务。",
+        "正式 Streamlit 前端未在此仓库发现；当前仓库提供接入接口及 static/index.html 测试网页。"
+      ]
+    }
+  ]
+}

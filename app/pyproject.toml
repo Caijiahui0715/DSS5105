@@ -3,7 +3,14 @@ name = "nus-rental-demo"
 version = "0.1.0"
 description = "Streamlit demonstration of the NUS Rental Decision Agent"
 requires-python = ">=3.12"
-dependencies = ["streamlit>=1.45,<2", "folium>=0.19,<1", "streamlit-folium>=0.25,<1", "pandas>=2.2,<4", "pytest>=8,<10"]
+dependencies = [
+    "streamlit>=1.45,<2",
+    "folium>=0.19,<1",
+    "streamlit-folium>=0.25,<1",
+    "pandas>=2.2,<4",
+    "pytest>=8,<10",
+    "extra-streamlit-components>=0.1.81",
+]
 
 [tool.uv]
 package = false

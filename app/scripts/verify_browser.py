@@ -112,7 +112,7 @@ def main():
             if marker_clicked:
                 wait('document.body.innerText.includes("Recommended listings")')
             print('MAP_MARKER_CLICK',marker_clicked)
-            assert evaluate('document.body.innerText.includes("V2 data locations") && document.body.innerText.includes("checked 2026-10-04")'), 'V2 source and snapshot date must be visible.'
+            assert evaluate('!!document.querySelector(".st-key-map-panel iframe") && document.body.innerText.includes("checked 2026-10-04")'), 'The map and the snapshot date must be visible.'
             print('CHAT_DESKTOP',capture('chat-desktop.png',1440,900))
             print('CHAT_MOBILE',capture('chat-mobile.png',390,844))
             # Restore desktop for navigation, then inspect all remaining pages.

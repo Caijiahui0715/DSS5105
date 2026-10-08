@@ -1,108 +1,80 @@
-# Draft API Contract v0.1 — Pending Backend and Agent Confirmation
+# API contract — what this app calls on the agent backend
 
-There is currently **no HTTP API** in the inspected repository. Everything
-below is a proposal. Python repository/service functions are not HTTP endpoints.
-HttpRentalApi/HttpAgentApi are safe placeholders and never send requests.
+The backend is `server.py` at the repository root (FastAPI). The repository
+README's "给前端的接口" section is the full description; this is the frontend's
+view of it. Every call goes through `adapters/backend_client.py`, and
+`tests/test_frontend_client.py` (repository root) runs that client against the
+server, so a change on either side that breaks the other fails there.
 
-## Shared response conventions
+## Conventions
 
-IDs are strings. Decimal rent/area become JSON numbers with an agreed precision.
-SQL NULL becomes JSON null; unknown categories remain `"unknown"`. Dates are
-YYYY-MM-DD. Collection timestamps have no confirmed timezone; do not append Z.
-Review flags are arrays, including empty arrays. Source evidence is associated
-by listing ID. Errors: `{ "error": { "code": "...", "message": "..." } }`.
-UI mapping is centralized in BackendMapper, not pages.
+- Base URL: `BACKEND_URL`, default `http://127.0.0.1:8000`.
+- After signing in, every request sends `Authorization: Bearer <token>`. A 401
+  means the token expired or was revoked: the app signs out and asks to sign in.
+- Errors are `{"detail": "..."}` with a 4xx status; the messages are Chinese and
+  the app shows English ones for the known messages (`content/i18n.py`).
+- IDs are strings. Missing values are `null`; unknown categories stay `"unknown"`.
+- Listing fields are the backend's snake_case names; `BackendMapper` turns them
+  into the camelCase facts the views use. `rent_monthly_sgd` is the rechecked
+  rent and `rent_monthly_sgd_card` the advertised one.
 
-The current static adapter uses V2 active-at-snapshot records, excludes removed
-IDs and joins historical V1 evidence/metadata. Future responses must include
-original and refreshed monthly rent separately, snapshot status and checked_at,
-coordinate source and error, and evidence timestamps. The UI uses an explicit
-effective price for budget checks; it does not overwrite the original value.
-V2 cooking/pets aliases are normalized while original fields remain available.
-Missing route data is not filled from listing-to-MRT walking times.
+## Calls
 
-## Proposed endpoints
-
-| Method and path | Request | Response |
+| Method and path | Used for | Response |
 |---|---|---|
-| GET /listings | max_budget, district_code, rental_scope, property_type, min_bedrooms, limit, cursor | listings array plus optional next_cursor |
-| GET /listings/{id} | text listing ID | listing, district, metadata, source_evidence; 404 if absent |
-| POST /candidates | hard requirements | pass / needs_confirmation / fail arrays of listing + evaluation |
-| POST /recommendations | requirements, preferences, priorities | recommendation array plus unknown factors and provenance |
-| POST /chat | conversation_id, message, requirements, preferences | message, extracted requirements, clarification, recommendations |
-| GET/PUT /profile | authenticated user / editable requirements and preferences | user profile, requirements, preferences |
-| GET/POST/DELETE /favorites | user context / listing_id | saved listing IDs and saved timestamps |
-| GET/POST /conversations | user context / optional title | conversation IDs, messages and timestamps |
-| GET /conversations/{id} | user context | conversation and recommendation snapshot |
-| POST /commute | listing_id, verified origin, specific NUS destination, mode, departure_time | duration, route, checked_at, source, verification status |
+| GET /api/faculties | sign-up and Profile faculty choice, map anchor (no sign-in) | `[{name, zh, campus, code, latitude, longitude}]` |
+| GET /api/options | sign-up and Profile districts and property types (no sign-in) | `{districts: [{code, name}], property_types}` |
+| POST /api/register | create an account `{username, password, faculty}` | account; then POST /api/token |
+| POST /api/token | sign in `{username, password}` | `{token, token_type, username, faculty}` |
+| GET /api/me | sign in from the remember-me cookie | `{username, faculty}` |
+| PUT /api/me/faculty | Profile `{faculty}` (null clears it) | `{username, faculty}` |
+| POST /api/logout | sign out; revokes the token | `{ok}` |
+| GET /api/listings?limit=200&offset=N | map and selectors, in pages | `{total, listings}` |
+| GET /api/listings/{id} | listing details with photos and page text | `{listing, source_evidence}`; 404 when gone |
+| GET /api/conversations | the conversation panel after sign-in | `[{id, title, created_at, updated_at}]` |
+| POST /api/conversations | at a conversation's first message | `{id, title}` |
+| GET /api/conversations/{id} | reopening a conversation | `{id, preferences, recommendations, shortlist}` |
+| GET /api/conversations/{id}/messages | reopening a conversation | `[{role, text, steps?}]` |
+| POST /api/conversations/{id}/messages | a message `{message, language}`; `language` is the interface language, used when the message shows none | Server-Sent Events, below |
+| POST /api/conversations/{id}/shortlist | Save `{listing_id}` | `{shortlist}` |
+| DELETE /api/conversations/{id}/shortlist/{listing_id} | Unsave | `{shortlist}` |
 
-No identity, route or persistence endpoints exist today. Server authentication,
-authorization, pagination, endpoint versioning and transport security must be
-agreed before integration; no client-side demo identity is authoritative.
+## A reply
 
-## Candidate request / response example
-
-```json
-{"max_budget":2500,"rental_scope":"room","min_bedrooms":1,"limit":200}
-```
-
-```json
-{
-  "pass": [],
-  "needs_confirmation": [{
-    "listing": {"listing_id":"500253628","bedrooms":null},
-    "evaluation": {
-      "listing_id":"500253628",
-      "status":"needs_confirmation",
-      "checks":{"min_bedrooms":{"status":"needs_confirmation","reason":"Bedroom count is not confirmed."}}
-    }
-  }],
-  "fail": []
-}
-```
-
-The listing example is intentionally abbreviated; actual details must carry the
-full 30-field V1 record, district name and metadata. Existing services prefilter
-by budget and limit before classifying, so their fail bucket is not a complete
-inventory of all rejected listings. Search SQL excludes unknown matching values;
-candidate classification is the appropriate contract for three-state UX.
-
-## Proposed recommendation / Agent payloads
+`POST .../messages` answers with Server-Sent Events: any number of
+`event: progress` with `data: {"zh": ..., "en": ...}` while the agent works,
+then one `event: reply` (or `event: error` with `{"message"}`):
 
 ```json
 {
-  "conversation_id":"session-id",
-  "message":"Find a room under SGD 2500 near NUS.",
-  "requirements":{"max_budget":2500,"rental_scope":"room","min_bedrooms":null},
-  "preferences":{"districts":["D05"],"max_commute_minutes":40}
+  "text": "the reply, in the message's language (the interface language when the message shows none)",
+  "steps": ["how the reply was made", "..."],
+  "preferences": {"max_price_sgd": 1800, "rental_scope": "room"},
+  "shortlist": ["500253628"],
+  "recommendations": {
+    "preview": false,
+    "listings": [{
+      "status": "match",
+      "position": 1,
+      "listing_id": "500253628",
+      "title": "Chwee Chian View",
+      "rent_monthly_sgd": 1850,
+      "mrt_station": "CC26 Pasir Panjang MRT",
+      "mrt_minutes": 9,
+      "commute_minutes_to_faculty": 23,
+      "commute_mode": "transit",
+      "link_status": "active",
+      "link_note": "active",
+      "unknown_conditions": [],
+      "unknown_condition_labels": []
+    }]
+  }
 }
 ```
 
-```json
-{
-  "message":"Candidate summary grounded in returned data.",
-  "extracted_requirements":{"max_budget":2500,"rental_scope":"room"},
-  "clarification":null,
-  "recommendations":[{
-    "listing_id":"500253628","rank":1,"suitability_score":45,
-    "constraint_status":"pass","match_level":"Potential demo match",
-    "match_reasons":[],"tradeoffs":[],"unknown_factors":[],
-    "is_demo_score":true,"provenance":{"score":"mock"}
-  }]
-}
-```
-
-This is a schema illustration, not a verified score or API result. Agent facts
-must come from retrieval/route tools, not free-text invention. B's Backend must
-own authoritative constraints, including the agreed handling of contradictory
-evidence. C's Agent must cite evidence and ask for missing requirements. Review
-flags remain distinct from requirement status until a specific policy is agreed.
-
-## Integration sequence
-
-1. B confirms listing, joins, nullable values and candidate semantics.
-2. C confirms chat context, extraction and recommendations.
-3. Implement HTTP transport and mapper against fixtures, with explicit errors.
-4. Configure endpoints outside code; never expose DB credentials.
-5. Replace the adapter factory without rewriting view components.
-6. Validate unknown/contradictory facts, serialization and route provenance.
+`recommendations` is `null` when the turn did not search; the app then keeps
+the listings it already shows. `status` is `match` (meets every condition) or
+`needs_confirmation` (the listing does not state some conditions, named in
+`unknown_condition_labels`). `preview: true` means a what-if search that left
+the saved criteria unchanged. `preferences` holds only the criteria that are
+set; `domain/criteria.py` maps them onto the Profile form.

@@ -1,7 +1,7 @@
 [project]
 name = "dss5105"
 version = "0.1.0"
-description = "Add your description here"
+description = "NUS rental decision agent: data pipeline, recommendation backend and web demo"
 readme = "README.md"
 authors = [
     { name = "pizza379", email = "linyushan613@outlook.com" }
@@ -9,6 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.142.2",
+    "langchain-openai",
+    "langgraph",
+    "langgraph-checkpoint-postgres>=3.1.2",
+    "langgraph-checkpoint-sqlite>=3.1.1",
     "openpyxl>=3.1.5",
     "pandas>=3.0.5",
     "psycopg[binary]>=3.3.5",

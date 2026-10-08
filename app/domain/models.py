@@ -42,7 +42,8 @@ class ConstraintEvaluation:
 class Recommendation:
     listing_id: str
     rank: int
-    score: int
+    # The agent ranks without a 0-100 score; only the offline demo has one.
+    score: int | None
     match_level: str
     evaluation: ConstraintEvaluation
     reasons: list[str]
@@ -50,14 +51,22 @@ class Recommendation:
     unknown_factors: list[str]
     breakdown: dict[str, float | None]
     is_demo_score: bool = True
+    # The agent's facts for this listing (commute, MRT, link check), as the backend sent them.
+    facts: dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class AgentResponse:
     text: str
     requirements: RentalRequirements
     preferences: RentalPreferences
-    recommendations: list[Recommendation]
+    # None when the turn did not search, so the listing panel keeps the earlier results.
+    recommendations: list[Recommendation] | None
     clarification: str | None = None
+    # From the agent backend: how the reply was made, the conversation's shortlist, and
+    # whether the listings are only a preview that left the saved criteria unchanged.
+    steps: list[str] = field(default_factory=list)
+    shortlist: list[str] | None = None
+    preview: bool = False
 
 class ApiError(RuntimeError):
     """A safe, user-displayable adapter failure."""

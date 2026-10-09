@@ -1,30 +1,47 @@
 import sys
+
 from pathlib import Path
+
 import streamlit as st
 
+
+
 # The first Streamlit command, before imports that load cached source data.
+
 st.set_page_config(page_title='NUS Rental Decision Agent',page_icon=':material/home:',layout='wide',initial_sidebar_state='collapsed')
+
 APP_ROOT = Path(__file__).resolve().parent
+
 if str(APP_ROOT) not in sys.path:
+
     sys.path.insert(0,str(APP_ROOT))
 
+
+
 from state.session_store import initialize, refresh_snapshot, start_session, live, load, current, logout
+
 from state import cookies
+
 from adapters.configuration import create_adapters, offline, backend_url
+
 from adapters.backend_client import BackendClient, BackendError, SessionExpired
+
 from domain.models import ApiError
+
 from content.i18n import t, describe
+
 from components.navigation import navigation
+
 from views import auth, home, profile, favorites
 
+
+
 st.markdown('''<style>
-:root {color-scheme:light;}
-.stApp {background:#f7f8fa;color:#142c43;}
-header[data-testid="stHeader"] {display:none;}
-[data-testid="stSidebar"] {display:none;}
-.stMainBlockContainer {padding:24px 24px 24px 96px;max-width:none;}
-h1,h2,h3 {color:#122f4d;letter-spacing:-.025em;}
-button[kind="primary"] {background:#173c5b;border-color:#173c5b;color:white;}
+:root { color-scheme: light; }
+.stApp { background: #f7f8fa; color: #142c43; }
+header[data-testid="stHeader"], [data-testid="stSidebar"] { display: none; }
+.stMainBlockContainer { padding:24px 24px 24px 96px; max-width:none; }
+h1,h2,h3 { color:#122f4d; letter-spacing:-.025em; }
 button:focus-visible,a:focus-visible {outline:3px solid #107a72!important;outline-offset:3px;}
 [data-testid="stCaptionContainer"] {color:#516477;}
 .st-key-global-rail {position:fixed;left:0;top:0;bottom:0;width:64px!important;padding:20px 9px;background:#edf2f5;border-right:1px solid #dce3e9;z-index:999;gap:14px!important;}
@@ -73,61 +90,145 @@ body:has(.st-key-chat-thread) [data-testid="stMain"] {height:auto;overflow:auto;
 }
 [data-testid="stLayoutWrapper"]:has(> .st-key-cookie-writer), .st-key-cookie-writer {position:absolute;width:0;height:0;overflow:hidden;}
 @media (prefers-reduced-motion:reduce) {* {animation:none!important;transition:none!important;}}
+/* Target only the dark navigation rail, not every secondary button. */
+.st-key-global-rail button {background:#151c28!important;color:#fff!important;}
+.st-key-global-rail button[kind="primary"] {background:#173c5b!important;}
+.st-key-global-rail button svg, .st-key-global-rail button [data-testid="stIconMaterial"] {color:#fff!important;stroke:#fff!important;}
+.st-key-global-rail button:hover {background:#284b6b!important;}
+/* History actions use dark surfaces. */
+.st-key-chat-history button[kind="primary"], .st-key-chat-history button[kind="secondary"] {background:#173c5b!important;color:#fff!important;border-color:#173c5b!important;}
+.st-key-chat-history button[kind="primary"] *, .st-key-chat-history button[kind="secondary"] * {color:#fff!important;}
+/* Other buttons: use the light Streamlit theme, with accessible foregrounds. */
+.stApp button[kind="primary"] {background:#173c5b!important;color:#fff!important;border-color:#173c5b!important;}
+.stApp button[kind="primary"] p, .stApp button[kind="primary"] span {color:#fff!important;}
+.stApp button[kind="secondary"] {color:#142c43;}
+.stApp button[kind="secondary"] p, .stApp button[kind="secondary"] span {color:inherit;}
+/* Chat controls use a white field with dark text and caret. */
+.stApp [data-testid="stChatInput"] {background:#fff!important;}
+.stApp [data-testid="stChatInput"] textarea {color:#142c43!important;caret-color:#142c43!important;}
+.stApp [data-testid="stChatInput"] textarea::placeholder {color:#516477!important;opacity:1;}
+.stApp input, .stApp textarea {caret-color:#142c43;}
+/* Expanders and link buttons should be legible on the light theme. */
+.stApp [data-testid="stExpander"] summary {background:#e9eef3!important;color:#142c43!important;border-radius:8px;}
+.stApp [data-testid="stExpander"] summary p, .stApp [data-testid="stExpander"] summary span {color:#142c43!important;}
+.stApp [data-testid="stExpander"] summary svg {color:#142c43!important;stroke:#142c43!important;}
+.stApp [data-testid="stLinkButton"] a {background:#173c5b!important;color:#fff!important;}
+.stApp [data-testid="stLinkButton"] a * {color:#fff!important;}
+/* Captions, including image captions, use the same readable dark gray. */
+.stApp [data-testid="stCaptionContainer"], .stApp [data-testid="stCaptionContainer"] p, .stApp [data-testid="stImageCaption"], .stApp [data-testid="stImageCaption"] * {color:#516477!important;}
+/* Streamlit's image expand icon is version-dependent; do not force all SVG icons. */
 </style>''',unsafe_allow_html=True)
+
 initialize()
 
 
+
+
+
 def sign_in_from_cookie():
+
     """Remember me: a token saved in this browser signs in without the form, once per session."""
+
     token = cookies.saved_token()
+
     if not token:
+
         return
+
     client = BackendClient(backend_url(), token)
+
     try:
+
         start_session(client, client.me())
+
     except SessionExpired:
+
         st.session_state['cookie-action'] = 'delete'
+
     except BackendError as error:
+
         st.session_state['auth-error'] = describe(error)
 
 
+
+
+
 try:
+
     if not st.session_state.authenticated and not offline():
+
         sign_in_from_cookie()
+
     cookies.apply()
+
     if not st.session_state.authenticated:
+
         auth.render()
+
         st.stop()
+
     rental_api,agent_api = create_adapters(st.session_state.client)
+
     # The rail first, so a failure below still leaves a way to another page or to log out.
+
     navigation()
+
     if live():
+
         load(current())
+
     else:
+
         refresh_snapshot(rental_api)
+
     if st.session_state.notice:
+
         st.toast(st.session_state.notice)
+
         st.session_state.notice = None
+
     page = st.session_state.page
+
     if page == 'Home':
+
         home.render(rental_api,agent_api)
+
     elif page == 'Profile':
+
         profile.render(rental_api)
+
     elif page == 'Favorites':
+
         favorites.render(rental_api)
+
     elif offline() and page in ('Recommendations', 'Rental Map', 'Conversation History', 'Evaluation'):
+
         # Secondary views kept for later work; they run on the offline demo's own scoring, so
+
         # they are not loaded with the agent backend.
+
         from views import recommendations, rental_map, history, evaluation
+
         if page == 'Recommendations': recommendations.render(rental_api)
+
         elif page == 'Rental Map': rental_map.render(rental_api)
+
         elif page == 'Conversation History': history.render()
+
         else: evaluation.render(rental_api)
+
     else:
+
         st.error(t('Page not found. Use the navigation to return Home.', '找不到这个页面，请用左侧导航回到首页。'))
+
 except SessionExpired:
+
     logout(expired=True)
+
 except (ValueError,ApiError) as exc:
+
     st.error(describe(exc))
+
     if offline():
+
         st.info(t('Check source data or select static/mock adapters. No source files were changed.', '请检查数据文件。没有改动任何源文件。'))

@@ -7,7 +7,7 @@ NUS_POSITION = (1.2966, 103.7764)
 MAP_NOTICE = 'Map positions come from V2 data. Inferred locations are approximate. The NUS anchor and commute estimates remain illustrative.'
 DEMO = {
     '500250282': {'commute': 25},
-    '500253628': {'commute': 28},
+    '500252277': {'commute': 28},
     '25039291': {'commute': 36},
     '60151196': {'commute': 45},
 }

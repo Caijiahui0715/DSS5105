@@ -20,6 +20,8 @@ class RentalRequirements:
     max_budget: float | None = 2500
     rental_scope: str | None = 'room'
     min_bedrooms: int | None = None
+    # How many months the user will sign for; the agent filters by each advert's minimum lease.
+    lease_months: int | None = None
 
 @dataclass
 class RentalPreferences:

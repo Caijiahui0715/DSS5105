@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from accounts import AccountError, Accounts
-from sessions import memory_storage
+from mock_db import empty_storage
 
 
 class Clock:
@@ -16,7 +16,7 @@ class Clock:
 class AccountsTest(unittest.TestCase):
     def setUp(self):
         self.clock = Clock()
-        self.storage = memory_storage()
+        self.storage = empty_storage()
         self.accounts = Accounts(self.storage, clock=self.clock)
 
     def test_registration_rules(self):

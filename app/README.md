@@ -29,8 +29,8 @@ Open http://localhost:8501, then sign in or create an account (username of 3–2
 letters, digits or underscores, not already taken, case-insensitive; password
 of at least 8 characters, typed twice at sign-up; optionally your NUS faculty,
 which commute times are measured to). Registration still asks
-for the monthly budget, rental scope and minimum bedroom choice, and optional
-soft preferences; they are sent to the agent as the first message, so its reply
+for the monthly budget, rental scope and minimum bedroom choice, the lease
+length you will sign (any by default), and optional soft preferences; they are sent to the agent as the first message, so its reply
 shows what it understood. **Remember me on this device** keeps the sign-in token
 in a browser cookie for 7 days (readable by page scripts, unlike the backend
 page's HttpOnly cookie); signing out deletes it and revokes the token.
@@ -78,7 +78,8 @@ empty with suggested prompts. Its content scrolls internally without pagination.
 The map's graduation cap is the user's faculty (the NUS anchor without one).
 Listing cards show the agent's rank, whether the listing meets every condition
 or needs confirmation (and which conditions the listing does not state), rent,
-MRT, the commute to the user's faculty and the link check; there is no 0–100
+MRT, the commute to the user's faculty, the advert's lease term (the shortest
+lease the landlord accepts) and the link check; there is no 0–100
 score with the backend. Favorites are the agent's shortlist for the current
 conversation, so the agent can compare them in chat; the comparison table is
 display-only. Profile changes are sent to the agent as a message listing only
@@ -107,7 +108,7 @@ Six existing files are read directly using paths resolved from the loader:
 
 - `output-final-delivery/rental_data_v2.csv`: authoritative current listing
   fields, refreshed prices, snapshot status, coordinates and nearby features.
-- `removed_listings.csv`: explicit exclusion set, including 217 removed records
+- `removed_listings.csv`: explicit exclusion set, including 266 removed records
   at the current snapshot. IDs outside V2 are never offered as current listings.
 - `rental_data_v1.json`: historical metadata and 28 district names, joined by
   listing ID. Its 600 historical listings do not populate recommendations.
@@ -141,7 +142,7 @@ Details provide a compact legend and an expanded provenance audit.
 All mock estimates and templates are isolated in `data/demo_enrichment.py`:
 an illustrative campus anchor, four demo commute estimates, scoring
 weights/calculations and response templates. Listing markers use V2 coordinates.
-Of 376 positions, 16 are inferred from POI evidence and labelled approximate,
+Of 327 positions, 11 are inferred from POI evidence and labelled approximate,
 with recorded errors (including approximate `~500` values) preserved. Other
 positions are provided geocodes, not independently verified door locations.
 No synthetic listing or MRT positions are added. Selecting an unpositioned

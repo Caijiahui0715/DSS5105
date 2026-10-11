@@ -5,7 +5,6 @@ graph.py stays as the fixed-workflow baseline (python demo.py --workflow).
 
 import json
 import re
-import sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -38,6 +37,7 @@ from decision import (
     search_with_unknowns,
     whole,
 )
+from costs import lease_costs
 from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
 from faculties import FACULTIES, find_faculty
 from graph import (
@@ -52,6 +52,7 @@ from graph import (
     _search_exclusions,
     _text,
 )
+from group_db import Database
 from models import ResponseLanguage, SearchPreferences
 from onemap import OneMapError
 from parser import PREFERENCE_GUIDANCE
@@ -67,9 +68,11 @@ from response import (
     render_budget_ladder,
     render_commutes,
     render_comparison,
+    render_costs,
     render_decision_context,
     render_faculty_change,
     render_listing_details,
+    render_lease_minimum,
     render_link_checks,
     render_listing_explanation,
     render_needs_confirmation,
@@ -88,6 +91,7 @@ from tools import (
     commute_minutes,
     extract_restrictions,
     get_listings_by_ids,
+    lease_term,
     mrt_distance_m,
     rank_listings,
     location_distance_m,
@@ -120,7 +124,7 @@ Facts
   unverified link does not mean the listing is gone.
 - You cannot contact landlords or agents, confirm availability, reserve rooms or arrange
   viewings, so never offer to. Only offer what the tools do: search, preview a change, show
-  details, explain a ranking, compare, shortlist, exclude or restore listings.
+  details, explain a ranking, compare, estimate costs, shortlist, exclude or restore listings.
 
 Using tools
 - When a tool returns an error that says how to fix the call, fix the arguments and call it
@@ -167,7 +171,8 @@ Using tools
   required. When the user accepts any room type, clear room_type and set room_type_flexible.
 - In search_listings, put only the fields that change in set; never echo saved or empty fields.
   To drop a saved condition (any district, cooking no longer needed, back to balanced ranking),
-  name it in clear. A ranking_priority in set replaces the saved list, so include the saved
+  name it in clear. To replace a saved value, give only the new one in set or budget; clear is
+  never needed for that. A ranking_priority in set replaces the saved list, so include the saved
   priorities the user keeps, for example ["space", "food_places"] when 也想要餐厅多 follows a
   saved space priority.
 - Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
@@ -175,6 +180,16 @@ Using tools
   gender from a name or writing style.
 - 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
   furnished_required; 要空调 or aircon sets air_conditioning_required.
+- 只租 6 个月, 租一年 or 签两年 sets lease_months to 6, 12 or 24: the lease the user will sign. A
+  listing's lease term is the shortest lease its landlord accepts, so a 2-year listing does not
+  fit a 1-year lease. A move-in date alone is not a lease length.
+- For what renting costs (一共要花多少, 印花税, 押金, 要先付多少, total cost, stamp duty, deposit,
+  upfront), call estimate_costs; for 这套 resolve the listing as for any reference. Do not ask
+  about the lease, deposit or agent first: the tool states its assumptions and offers to
+  recalculate. Its breakdown is shown to the user word for word, so answer in one or two
+  sentences without repeating it. Pass lease_months, deposit_months, uses_agent or agent_fee_sgd
+  only when the user states them, with user_quote; a stated lease length is saved as the lease
+  criterion, the rest are kept for this conversation.
 - Commute times are minutes from each listing to the user's NUS faculty (faculty in the
   conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
   is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 sets
@@ -286,6 +301,9 @@ class AgentState(TypedDict, total=False):
     budget_statement: dict | None
     remembered_profile: dict | None
     memory_asked: bool
+    # What the user said about the deposit and an agent, used by later cost estimates in this
+    # conversation only: deposit_months, uses_agent, agent_fee_sgd.
+    cost_assumptions: dict
     # Each final reply's trace by message id, so the processing steps can be shown again later.
     reply_traces: dict
     # Reset at the start of every turn.
@@ -387,12 +405,30 @@ class FacultyArgs(BaseModel):
     user_quote: str = Field("", description="For set: the user's words in the latest message that state or confirm the faculty.")
 
 
+class Rent(BaseModel):
+    amount: int = Field(gt=0)
+    currency: str = Field("SGD", pattern=r"^[A-Z]{3}$", description="ISO 4217 code such as SGD or CNY.")
+
+
+class CostArgs(BaseModel):
+    """Work out what renting costs: total rent over the lease, stamp duty, the security deposit, what is paid at signing, and the agent fee when the user uses an agent. The breakdown is shown to the user word for word."""
+
+    listing_ids: list[str] = Field(default_factory=list, description="Up to 3 listings; empty means the listing last viewed, or the only listing shown.")
+    shortlist: bool = Field(False, description="True to cost the shortlisted listings (up to 3).")
+    rent: Rent | None = Field(None, description="A monthly rent the user names instead of a listing.")
+    lease_months: int | None = Field(None, ge=1, le=60, description="Only when the user states the lease length now; it is saved as their lease criterion. Otherwise leave empty: the saved lease, then the listing's minimum term, then 12 months are used.")
+    deposit_months: int | None = Field(None, ge=0, le=6, description="Only when the user states how many months of deposit.")
+    uses_agent: bool | None = Field(None, description="true when the user says they use an agent, false when they say they do not; otherwise leave empty.")
+    agent_fee_sgd: float | None = Field(None, ge=0, description="The agent fee in SGD when the user states an amount.")
+    user_quote: str = Field("", description="The user's words in the latest message behind lease_months, deposit_months, uses_agent or agent_fee_sgd.")
+
+
 class ToolError(ValueError):
     """An expected problem the model should read and act on."""
 
 
 def build_agent(
-    connection: sqlite3.Connection,
+    connection: Database,
     model: Any,
     checkpointer=None,
     listing_checker=check_listing_url,
@@ -453,16 +489,20 @@ def build_agent(
         defaults = SearchPreferences()
         # Defaults in `set` are ignored: models often echo every field, which would wipe saved
         # criteria. Dropping a criterion goes through `clear`.
-        changes = {
+        given = {
             field: value
             for field, value in args.set.model_dump(exclude_unset=True).items()
-            if value != getattr(defaults, field) and getattr(current, field) != value
+            if value != getattr(defaults, field)
         }
+        changes = {field: value for field, value in given.items() if getattr(current, field) != value}
+        # Models sometimes also clear what they give a new value, meaning "replace": the new value
+        # stands, and a budget stated with its currency replaces the saved one only if it is used.
+        replaced = set(given) | ({"max_price_sgd"} if args.budget else set())
         changes.update(
             {
                 field: getattr(defaults, field)
                 for field in args.clear
-                if getattr(current, field) != getattr(defaults, field)
+                if field not in replaced and getattr(current, field) != getattr(defaults, field)
             }
         )
         conversion = None
@@ -565,6 +605,8 @@ def build_agent(
         if not preview:
             if changes:
                 work["notes"].append(render_preference_changes(current, changes, language))
+                if "lease_months" in changes and (note := render_lease_minimum(preferences.lease_months, language)):
+                    work["notes"].append(note)
                 work["preferences"] = preferences
                 # The user's words behind each saved field, kept with the profile if they agree.
                 sources = dict(work["preference_sources"])
@@ -982,6 +1024,129 @@ def build_agent(
             "listings": rows,
         }
 
+    def costs(work, args: CostArgs):
+        language = work["response_language"]
+        stated = {
+            field: value
+            for field in ("lease_months", "deposit_months", "uses_agent", "agent_fee_sgd")
+            if (value := getattr(args, field)) is not None
+        }
+        if stated and not _quotes(args.user_quote, work["message"]):
+            raise ToolError(
+                "lease_months, deposit_months, uses_agent and agent_fee_sgd are only for what the user "
+                "states: copy their words from the latest message into user_quote, or leave these out."
+            )
+        assumptions = {**(work["cost_assumptions"] or {}), **{field: value for field, value in stated.items() if field != "lease_months"}}
+        if args.uses_agent is False:
+            assumptions.pop("agent_fee_sgd", None)
+        elif args.agent_fee_sgd is not None:
+            assumptions["uses_agent"] = True
+        work["cost_assumptions"] = assumptions
+        preferences = work["preferences"]
+        conversion, listings, left_out = None, [], []
+        if args.rent:
+            amount = args.rent.amount
+            if args.rent.currency != "SGD":
+                try:
+                    _progress("正在换算汇率", "Converting the currency")
+                    conversion = convert_to_sgd(amount, args.rent.currency)
+                except UnknownCurrencyError as error:
+                    raise ToolError(f"{error}: call again with the ISO 4217 code of the currency the user named, or ask them.") from error
+                except (CurrencyConversionError, ValueError) as error:
+                    raise ToolError(f"{error}. The rent cannot be converted right now: tell the user and ask for it in SGD.") from error
+                amount = conversion["amount_sgd"]
+                work["trace"].append(
+                    f"[fx] {conversion['original_amount']} {conversion['original_currency']} -> "
+                    f"S${amount} (rate {conversion['rate_to_sgd']}, {conversion['rate_date']})"
+                )
+            targets = [(None, amount, "stated")]
+        else:
+            ids = _clean_ids(args.listing_ids) or (list(work["shortlisted_listing_ids"]) if args.shortlist else [])
+            if args.shortlist and not ids:
+                raise ToolError("The shortlist is empty; tell the user.")
+            # The listing just opened, unless a later search or comparison showed others; then the
+            # only listing shown; with several shown and none opened among them, ask.
+            viewed, shown = work.get("viewed_listing_id"), work["shown_listing_ids"]
+            if not ids and viewed and (not shown or viewed in shown):
+                ids = [viewed]
+            elif not ids and len(shown) == 1:
+                ids = list(shown)
+            elif not ids and shown:
+                raise ToolError("Several listings were shown and none was opened: ask the user which listing they mean.")
+            ids, left_out = ids[:3], ids[3:]
+            listings = get_listings_by_ids(connection, ids)
+            if ids and not listings:
+                raise ToolError("None of these listings was found. Use listing_ids from shown_listings_in_display_order or the shortlist.")
+            targets = [(listing, listing["rent_monthly_sgd"], "listing") for listing in listings]
+            if not ids:
+                if preferences.max_price_sgd is None:
+                    raise ToolError("There is no listing or rent to work from: ask which listing they mean or what monthly rent to use.")
+                targets = [(None, preferences.max_price_sgd, "budget")]
+        if "lease_months" in stated and stated["lease_months"] != preferences.lease_months:
+            # A stated lease length is a search criterion, saved as search_listings saves them.
+            change = {"lease_months": stated["lease_months"]}
+            work["notes"].append(render_preference_changes(preferences, change, language))
+            if note := render_lease_minimum(stated["lease_months"], language):
+                work["notes"].append(note)
+            work["preferences"] = preferences = preferences.model_copy(update=change)
+            work["preference_sources"] = {
+                **work["preference_sources"],
+                "lease_months": {"quote": args.user_quote, "date": date.today().isoformat()},
+            }
+            # Suggestions and counts from the last search rest on the old criteria.
+            work["relaxations"], work["last_search"] = [], None
+            work["remembered_profile"] = None
+            work["memory_dirty"] = True
+            user_id = work.get("user_id")
+            if profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
+                work["footers"].append(_text(work, *_MEMORY_ASK))
+                work["memory_asked"] = True
+        rows = []
+        wanted = preferences.lease_months
+        for listing, rent, source in targets:
+            term = lease_term(listing) if listing else None
+            minimum = term if isinstance(term, int) else None
+            # The user's lease, unless the landlord asks for longer; then the listing's term; else a year.
+            if wanted is not None and minimum is not None and minimum > wanted:
+                months, reason = minimum, "listing_over_yours"
+            elif wanted is not None:
+                months, reason = wanted, "yours"
+            elif minimum is not None:
+                months, reason = minimum, "listing"
+            else:
+                months, reason = 12, "default" if listing else "default_no_listing"
+            rows.append({
+                "listing_id": listing and listing["listing_id"],
+                "title": listing and listing.get("title"),
+                "rent_source": source,
+                "lease_reason": reason,
+                "listing_minimum_months": minimum,
+                "your_lease_months": wanted,
+                "costs": lease_costs(
+                    rent,
+                    months,
+                    deposit_months=assumptions.get("deposit_months"),
+                    agent=bool(assumptions.get("uses_agent")),
+                    agent_fee=assumptions.get("agent_fee_sgd"),
+                ),
+            })
+        work["notes"].append(render_costs(rows, language, conversion))
+        work["drafts"].append(_text(work, "费用明细见上。", "The cost breakdown is above."))
+        if len(rows) == 1 and rows[0]["listing_id"]:
+            work["viewed_listing_id"] = rows[0]["listing_id"]
+        return {
+            "shown_to_user": "The breakdown is already shown to the user word for word; answer in one or two sentences without repeating it.",
+            "rent_conversion": conversion,
+            "estimates": [
+                {**{key: row[key] for key in ("listing_id", "title", "rent_source", "lease_reason", "listing_minimum_months") if row[key] is not None}, **row["costs"]}
+                for row in rows
+            ],
+            "not_costed": left_out or None,
+            "saved_lease_months": stated.get("lease_months") if "lease_months" in stated else None,
+            "shown_listings_found_before_this_lease": bool("lease_months" in stated and work["shown_listing_ids"]) or None,
+            "not_found": [listing_id for listing_id in ids if listing_id not in {row["listing_id"] for row in rows}] if listings else None,
+        }
+
     tools = {
         "search_listings": (SearchArgs, search),
         "explore_budgets": (BudgetArgs, budgets),
@@ -990,6 +1155,7 @@ def build_agent(
         "compare_listings": (CompareArgs, compare),
         "shortlist": (ShortlistArgs, shortlist),
         "exclude_listings": (ExcludeArgs, exclude),
+        "estimate_costs": (CostArgs, costs),
     }
     if profiles:
         tools["user_memory"] = (MemoryArgs, user_memory)
@@ -1035,6 +1201,7 @@ def build_agent(
                 {key: suggestion[key] for key in ("field", "current", "suggested", "match_count")}
                 for suggestion in state["relaxations"]
             ],
+            "cost_assumptions_from_user": state.get("cost_assumptions") or None,
         }
 
     def begin_turn(state: AgentState):
@@ -1093,6 +1260,7 @@ def build_agent(
             "budget_statement": state.get("budget_statement"),
             "remembered_profile": remembered,
             "memory_asked": state.get("memory_asked", False),
+            "cost_assumptions": state.get("cost_assumptions", {}),
             "memory_dirty": False,
             "tool_rounds": 0,
             "drafts": [],
@@ -1152,6 +1320,7 @@ def build_agent(
                 "budget_statement",
                 "remembered_profile",
                 "memory_asked",
+                "cost_assumptions",
                 "memory_dirty",
                 "drafts",
                 "notes",
@@ -1339,7 +1508,7 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
         "rank_value": item.get("rank_value"),
     }
     facts.update({field: listing.get(field) for field in (
-        "bathrooms", "private_bathroom", "pets_policy", "rent_price_type", "address", "street_name", "postcode",
+        "bathrooms", "private_bathroom", "pets_policy", "rent_price_type", "lease_term", "address", "street_name", "postcode",
         "latitude", "longitude", "coord_source", "coord_error_m", "listed_date", "gender_preference",
         "pg_school_count", "pg_school_nearest_walk_m", "pg_school_nearest_walk_min", "pg_mrt_count", "pg_mrt_nearest_walk_m",
     )})

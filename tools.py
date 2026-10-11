@@ -1,6 +1,4 @@
-import json
 import re
-import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from math import asin, cos, isfinite, radians, sin, sqrt
@@ -19,6 +17,7 @@ from models import (
     SearchPreferences,
 )
 from faculties import find_faculty
+from group_db import Database
 from onemap import OneMapNotFound, calculate_mrt_walk, geocode_location, load_token
 
 
@@ -94,6 +93,7 @@ EXTRA_CONDITION_LABELS = {
     "furnishing_types": ("家具程度", "furnishing levels"),
     "cooking_level": ("烹饪强度", "cooking level"),
     "gender_preference": ("房东明确偏好的租客性别", "advertised preferred tenant gender"),
+    "lease_months": ("签约租期（月）", "lease length (months)"),
 }
 _MINIMUM_COLUMNS = {
     "min_bathrooms": "bathrooms", "min_mrt_stations": "pg_mrt_count",
@@ -107,6 +107,13 @@ _MAXIMUM_COLUMNS = {"max_school_walk_m": "pg_school_nearest_walk_m", "max_school
 
 def extra_condition_status(field: str, listing: Listing, preferences: SearchPreferences) -> str:
     wanted = getattr(preferences, field)
+    if field == "lease_months":
+        # Whether the user can sign a lease of this many months: a stated term is the shortest the
+        # landlord accepts, and a longer lease fits it. A short-term listing may not take a long lease.
+        term = lease_term(listing)
+        if term is None or (term == "short_term" and wanted >= 12):
+            return "unknown"
+        return "pass" if term in ("flexible", "short_term") or term <= wanted else "fail"
     if field in _MINIMUM_COLUMNS:
         value = listing.get(_MINIMUM_COLUMNS[field])
         matches = value is not None and value >= wanted
@@ -154,6 +161,16 @@ def _stated_value(value):
     return None if value in (None, "", "unknown") else value
 
 
+def lease_term(listing: Listing) -> int | str | None:
+    """The advert's lease term: months for a fixed term ("2 years" is 24), "flexible", "short_term",
+    or None when not stated ("Prefer not to say" included)."""
+    text = (_stated_value(listing.get("lease_term")) or "").strip().casefold()
+    if text in ("flexible", "short term"):
+        return text.replace(" ", "_")
+    match = re.fullmatch(r"(\d+)\s*(year|month)s?", text)
+    return int(match[1]) * (12 if match[2] == "year" else 1) if match else None
+
+
 @lru_cache(maxsize=128)
 def _location_coordinates(query: str) -> tuple[float, float]:
     # A recorded NUS faculty needs no lookup; OneMap would find several buildings for most of them.
@@ -190,41 +207,36 @@ def coordinate_error_m(listing: Listing) -> float | None:
     return error if isfinite(error) and error >= 0 else None
 
 
-def rent_percentile_sgd(connection: sqlite3.Connection, share: float) -> float | None:
+def rent_percentile_sgd(connection: Database, share: float) -> float | None:
     """The monthly rent that this share of listings stays at or below."""
-    rents = [row[0] for row in connection.execute(
+    rents = [row["rent_monthly_sgd"] for row in connection.query(
         "SELECT rent_monthly_sgd FROM agent_listings WHERE rent_monthly_sgd IS NOT NULL ORDER BY rent_monthly_sgd"
     )]
     return rents[min(int(len(rents) * share), len(rents) - 1)] if rents else None
 
 
-def load_listings(connection: sqlite3.Connection) -> list[Listing]:
+def load_listings(connection: Database) -> list[Listing]:
     """Load the joined Agent view using the frozen V1 field names."""
-    return _query(connection, "SELECT * FROM agent_listings")
+    return _query(connection, "TRUE")
 
 
 def get_listings_by_ids(
-    connection: sqlite3.Connection,
+    connection: Database,
     listing_ids: list[str],
 ) -> list[Listing]:
     """Load listings in the same order as the supplied IDs."""
     listing_ids = list(dict.fromkeys(listing_ids))
     if not listing_ids:
         return []
-    placeholders = ", ".join("?" for _ in listing_ids)
     by_id = {
         listing["listing_id"]: listing
-        for listing in _query(
-            connection,
-            f"SELECT * FROM agent_listings WHERE listing_id IN ({placeholders})",
-            listing_ids,
-        )
+        for listing in _query(connection, "listing_id = ANY(%s)", [listing_ids])
     }
     return [by_id[listing_id] for listing_id in listing_ids if listing_id in by_id]
 
 
 def search_listings(
-    connection: sqlite3.Connection,
+    connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
 ) -> list[Listing]:
@@ -232,23 +244,23 @@ def search_listings(
     preferences = resolve_search_location(preferences)
     clauses = [
         "(live_status <> 'inactive' OR live_checked_at IS NULL "
-        "OR julianday(live_checked_at) < julianday('now', '-24 hours'))",
-        "instr(review_flags, '\"negative_numeric\"') = 0",
+        "OR live_checked_at::timestamptz < now() - interval '24 hours')",
+        "NOT 'negative_numeric' = ANY(review_flags)",
     ]
     params: list[object] = []
     filters = (
-        ("rent_monthly_sgd <= ?", preferences.max_price_sgd),
-        ("room_type = ?", _enum(preferences.room_type)),
-        ("rental_scope = ?", preferences.rental_scope),
-        ("district_code = ? COLLATE NOCASE", _clean(preferences.district_code)),
+        ("rent_monthly_sgd <= %s", preferences.max_price_sgd),
+        ("room_type = %s", _enum(preferences.room_type)),
+        ("rental_scope = %s", preferences.rental_scope),
+        ("lower(district_code) = lower(%s)", _clean(preferences.district_code)),
         (
-            "COALESCE(mrt_walk_minutes, mrt_minutes_reported) <= ? "
+            "COALESCE(mrt_walk_minutes, mrt_minutes_reported) <= %s "
             "AND mrt_operation_status <> 'under_construction'",
             preferences.max_mrt_minutes,
         ),
-        ("bedrooms >= ? AND rental_scope <> 'room'", preferences.min_bedrooms),
-        ("area_sqm >= ? AND space_rank IS NOT NULL", preferences.min_area_sqm),
-        ("tenant_count_reported >= ?", preferences.occupant_count),
+        ("bedrooms >= %s AND rental_scope <> 'room'", preferences.min_bedrooms),
+        ("area_sqm >= %s AND space_rank IS NOT NULL", preferences.min_area_sqm),
+        ("tenant_count_reported >= %s", preferences.occupant_count),
     )
     for clause, value in filters:
         if value is not None:
@@ -257,14 +269,12 @@ def search_listings(
 
     excluded_listing_ids = list(dict.fromkeys(excluded_listing_ids or []))
     if excluded_listing_ids:
-        placeholders = ", ".join("?" for _ in excluded_listing_ids)
-        clauses.append(f"listing_id NOT IN ({placeholders})")
-        params.extend(excluded_listing_ids)
+        clauses.append("listing_id <> ALL(%s)")
+        params.append(excluded_listing_ids)
 
     if preferences.property_types:
-        placeholders = ", ".join("?" for _ in preferences.property_types)
-        clauses.append(f"property_type IN ({placeholders})")
-        params.extend(preferences.property_types)
+        clauses.append("property_type = ANY(%s)")
+        params.append(list(preferences.property_types))
 
     accepted = (
         ("gender_restriction", TENANT_GENDER_ACCEPTS.get(preferences.tenant_gender)),
@@ -275,8 +285,8 @@ def search_listings(
     )
     for column, values in accepted:
         if values:
-            clauses.append(f"{column} IN ({', '.join('?' for _ in values)})")
-            params.extend(values)
+            clauses.append(f"{column} = ANY(%s)")
+            params.append(list(values))
     # Each named ranking priority needs its data, as in decision.search_with_unknowns().
     priority_data = {
         "mrt": "COALESCE(mrt_walk_distance_m, mrt_distance_m) IS NOT NULL "
@@ -288,11 +298,7 @@ def search_listings(
     }
     clauses.extend(priority_data[name] for name in preferences.ranking_priority if name in priority_data)
 
-    candidates = _query(
-        connection,
-        f"SELECT * FROM agent_listings WHERE {' AND '.join(clauses)}",
-        params,
-    )
+    candidates = _query(connection, " AND ".join(clauses), params)
     active = [field for field in EXTRA_CONDITION_LABELS if getattr(preferences, field) != SearchPreferences.model_fields[field].default]
     # ponytail: Python filtering is sufficient for this 519-row prototype; use SQL at larger scale.
     candidates = [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
@@ -319,11 +325,11 @@ def commute_minutes(listing: Listing, preferences: SearchPreferences) -> float |
 
 
 def refresh_mrt_walk_data(
-    connection: sqlite3.Connection,
+    connection: Database,
     token: str | None = None,
 ) -> dict[str, list[str]]:
     """Calculate missing OneMap routes without changing the frozen listings table."""
-    rows = connection.execute(
+    rows = connection.query(
         """
         SELECT listing_id, address, mrt_station
         FROM agent_listings
@@ -331,8 +337,9 @@ def refresh_mrt_walk_data(
           AND address IS NOT NULL AND trim(address) <> ''
           AND mrt_station <> 'unknown' AND trim(mrt_station) <> ''
           AND mrt_walk_minutes IS NULL
+        ORDER BY listing_id
         """
-    ).fetchall()
+    )
     if not rows:
         return {"updated": [], "not_found": []}
 
@@ -340,9 +347,10 @@ def refresh_mrt_walk_data(
     updates = []
     not_found = []
     checked_at = datetime.now(timezone.utc).isoformat()
-    for listing_id, address, mrt_station in rows:
+    for row in rows:
+        listing_id = row["listing_id"]
         try:
-            result = calculate_mrt_walk(address, mrt_station, token)
+            result = calculate_mrt_walk(row["address"], row["mrt_station"], token)
         except OneMapNotFound:
             not_found.append(listing_id)
             continue
@@ -356,17 +364,17 @@ def refresh_mrt_walk_data(
             )
         )
 
-    with connection:
-        connection.executemany(
+    for update in updates:
+        connection.run(
             """
-            INSERT INTO listing_route_enrichment VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(listing_id) DO UPDATE SET
-                mrt_walk_distance_m = excluded.mrt_walk_distance_m,
-                mrt_walk_seconds = excluded.mrt_walk_seconds,
-                mrt_walk_minutes = excluded.mrt_walk_minutes,
-                checked_at = excluded.checked_at
+            INSERT INTO listing_route_enrichment VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (listing_id) DO UPDATE SET
+                mrt_walk_distance_m = EXCLUDED.mrt_walk_distance_m,
+                mrt_walk_seconds = EXCLUDED.mrt_walk_seconds,
+                mrt_walk_minutes = EXCLUDED.mrt_walk_minutes,
+                checked_at = EXCLUDED.checked_at
             """,
-            updates,
+            update,
         )
     return {
         "updated": [listing_id for listing_id, *_ in updates],
@@ -375,7 +383,7 @@ def refresh_mrt_walk_data(
 
 
 def analyze_relaxations(
-    connection: sqlite3.Connection,
+    connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
     checker=None,
@@ -396,6 +404,12 @@ def analyze_relaxations(
             None
             if preferences.max_mrt_minutes is None
             else preferences.max_mrt_minutes + 5,
+        ),
+        # Signing for longer: a 1-year lease, then a 2-year one, the terms most listings ask for.
+        *(
+            ("lease_months", months)
+            for months in (12, 24)
+            if preferences.lease_months is not None and preferences.lease_months < months
         ),
     )
     suggestions: list[RelaxationSuggestion] = []
@@ -555,7 +569,7 @@ def check_listing_url(
 
 
 def validate_ranked_listings(
-    connection: sqlite3.Connection,
+    connection: Database,
     ranked: list[RankingResult],
     checker=check_listing_url,
     *,
@@ -612,20 +626,20 @@ def validate_ranked_listings(
 
 
 def _get_listing_health(
-    connection: sqlite3.Connection,
+    connection: Database,
     listing: Listing,
     checker,
     freshness_hours: int,
 ) -> dict[str, object]:
-    row = connection.execute(
+    rows = connection.query(
         """
         SELECT status, checked_at, final_url, http_status, error_reason
-        FROM listing_health WHERE listing_id = ?
+        FROM listing_health WHERE listing_id = %s
         """,
         (listing["listing_id"],),
-    ).fetchone()
-    if row and _is_fresh(row[1], freshness_hours):
-        return dict(zip(("status", "checked_at", "final_url", "http_status", "error_reason"), row))
+    )
+    if rows and _is_fresh(rows[0]["checked_at"], freshness_hours):
+        return rows[0]
 
     checked_at = datetime.now(timezone.utc).isoformat()
     try:
@@ -647,55 +661,42 @@ def _get_listing_health(
         "http_status": result.get("http_status"),
         "error_reason": result.get("error_reason"),
     }
-    try:
-        with connection:
-            connection.execute(
-                """
-                INSERT INTO listing_health
-                    (listing_id, status, checked_at, final_url, http_status, error_reason)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(listing_id) DO UPDATE SET
-                    status = excluded.status,
-                    checked_at = excluded.checked_at,
-                    final_url = excluded.final_url,
-                    http_status = excluded.http_status,
-                    error_reason = excluded.error_reason
-                """,
-                (
-                    listing["listing_id"],
-                    health["status"],
-                    health["checked_at"],
-                    health["final_url"],
-                    health["http_status"],
-                    health["error_reason"],
-                ),
-            )
-    except sqlite3.IntegrityError:
-        # The listing left the data in a reload during this turn (group_db.LiveListings).
-        pass
-    # Listings read from the group's PostgreSQL also keep the check there (group_db.LiveListings).
-    save = getattr(connection, "save_listing_health", None)
-    if save:
-        save(listing["listing_id"], health)
+    # Kept in the database, so later turns and restarts reuse it for 24 hours.
+    connection.run(
+        """
+        INSERT INTO listing_health
+            (listing_id, status, checked_at, final_url, http_status, error_reason)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (listing_id) DO UPDATE SET
+            status = EXCLUDED.status,
+            checked_at = EXCLUDED.checked_at,
+            final_url = EXCLUDED.final_url,
+            http_status = EXCLUDED.http_status,
+            error_reason = EXCLUDED.error_reason
+        """,
+        (
+            listing["listing_id"],
+            health["status"],
+            health["checked_at"],
+            health["final_url"],
+            health["http_status"],
+            health["error_reason"],
+        ),
+    )
     return health
 
 
 def _query(
-    connection: sqlite3.Connection,
-    sql: str,
+    connection: Database,
+    where: str,
     params: list[object] | None = None,
 ) -> list[Listing]:
-    cursor = connection.execute(sql, params or [])
-    columns = [column[0] for column in cursor.description]
-    listings = [dict(zip(columns, row)) for row in cursor.fetchall()]
+    """Listings from the agent_listings view meeting the SQL condition where, in listing_id order."""
+    listings = connection.query(f"SELECT * FROM agent_listings WHERE {where} ORDER BY listing_id", params or [])
     for listing in listings:
-        if isinstance(listing.get("commutes"), str):
-            listing["commutes"] = json.loads(listing["commutes"])
-        flags = listing.get("review_flags") or "[]"
-        parsed_flags = json.loads(flags) if isinstance(flags, str) else flags
         listing["review_flags"] = [
             flag
-            for flag in parsed_flags
+            for flag in listing.get("review_flags") or []
             if _keep_review_flag(listing, flag)
         ]
     return listings

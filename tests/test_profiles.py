@@ -1,12 +1,12 @@
 import unittest
 
+from mock_db import empty_storage
 from profiles import UserProfiles
-from sessions import memory_storage
 
 
 class UserProfilesTest(unittest.TestCase):
     def test_nothing_is_kept_without_consent_and_forget_deletes_it(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         kept = {"preferences": {"max_price_sgd": 1300}, "shortlisted_listing_ids": ["S001"]}
 
         # Undecided: nothing is written.
@@ -31,7 +31,7 @@ class UserProfilesTest(unittest.TestCase):
 
 
     def test_the_faculty_is_an_account_setting_cleared_only_with_all_data(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         profiles.set_faculty("alice", "Faculty of Law")
         profiles.set_faculty("alice", "School of Computing")
         self.assertEqual(profiles.faculty("alice"), "School of Computing")

@@ -2,7 +2,7 @@ import streamlit as st
 from data.demo_enrichment import DEMO
 from data.image_loader import source_image
 from domain.provenance import display
-from content.i18n import t
+from content.i18n import t, lease_term_label
 from state.session_store import toggle_favorite, toggle_compare, favorite_ids, live, current_faculty
 from components.source_notes import source_notes
 
@@ -48,6 +48,11 @@ def mrt_text(listing, rec=None):
     return f"MRT: {display(f['mrtStation'])}{detail}"
 
 
+def lease_text(listing):
+    """The advert's lease term: the shortest lease the landlord accepts."""
+    return t('Lease: ', '租期：') + lease_term_label(listing.facts.get('leaseTerm'))
+
+
 def link_note(rec):
     note = rec and rec.facts.get('link_note')
     if note:
@@ -91,6 +96,7 @@ def card(listing, rec, key):
             st.caption(t('Demo match score · unknown factors reduce evidence coverage', '演示匹配分 · 未知因素会降低证据覆盖'))
         st.write(mrt_text(listing, rec))
         st.caption(commute_text(listing, rec))
+        st.caption(lease_text(listing))
         for reason in (rec.reasons[:2] if rec else []):
             st.write(f'✓ {reason}')
         if rec and rec.tradeoffs:

@@ -8,7 +8,7 @@ from content.labels import VALUE_ZH
 from domain.models import RentalPreferences, RentalRequirements
 
 NO = 'No preference'
-REQUIREMENT_FIELDS = ('max_budget', 'rental_scope', 'min_bedrooms')
+REQUIREMENT_FIELDS = ('max_budget', 'rental_scope', 'min_bedrooms', 'lease_months')
 PREFERENCE_FIELDS = (
     'districts', 'mrt_distance', 'commute_minutes', 'furnishing', 'private_bathroom', 'cooking', 'air_conditioning', 'pets', 'property_type',
 )
@@ -28,7 +28,7 @@ def from_backend(saved):
     furnishing = list(saved.get('furnishing_types') or [])
     property_types = list(saved.get('property_types') or [])
     distance = saved.get('max_mrt_distance_m')
-    requirements = RentalRequirements(saved.get('max_price_sgd'), saved.get('rental_scope'), saved.get('min_bedrooms'))
+    requirements = RentalRequirements(saved.get('max_price_sgd'), saved.get('rental_scope'), saved.get('min_bedrooms'), saved.get('lease_months'))
     preferences = RentalPreferences(
         districts=[saved['district_code']] if saved.get('district_code') else [],
         mrt_distance=None if distance is None else round(distance),
@@ -81,6 +81,7 @@ _PHRASES = {
         'room': ('a room in a shared home', '合租的单间'), 'entire_unit': ('a whole unit', '整租'), NO: ('either a room or a whole unit', '单间或整租都可以'),
     }),
     'min_bedrooms': lambda v: ('any number of bedrooms', '卧室数量不限') if v is None else (f'at least {v} bedroom' + ('s' if v != 1 else ''), f'至少 {v} 间卧室'),
+    'lease_months': lambda v: ('any lease length', '租期不限') if v is None else (f'a {v}-month lease', f'租期 {v} 个月'),
     'districts': lambda v: ('any district', '区域不限') if not v else (f'in district {" or ".join(v)}', f'在 {"、".join(v)} 区'),
     'mrt_distance': lambda v: ('no limit on the walk to MRT', '离地铁站的距离不限') if v is None else (f'within {v} m walking of an MRT station', f'步行到地铁站不超过 {v} 米'),
     'commute_minutes': lambda v: ('no commute limit', '通勤时间不限') if v is None else (f'at most {v} minutes by public transport to my faculty', f'坐公共交通到我的学院不超过 {v} 分钟'),

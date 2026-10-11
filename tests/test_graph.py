@@ -49,7 +49,7 @@ class GraphTest(unittest.TestCase):
             }
 
         with closing(create_mock_database()) as connection:
-            connection.execute(
+            connection.run(
                 "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
             )
             result = build_graph(
@@ -80,7 +80,7 @@ class GraphTest(unittest.TestCase):
             }
 
         with closing(create_mock_database()) as connection:
-            connection.execute("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
+            connection.run("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
             graph = build_graph(connection, model, _memory(), listing_checker=checker)
             config = {"configurable": {"thread_id": "inactive-to-relaxation"}}
             first = graph.invoke({"message": "预算1200，D05 common room"}, config=config)
@@ -109,7 +109,7 @@ class GraphTest(unittest.TestCase):
         model.with_structured_output.return_value = structured_model
 
         with closing(create_mock_database()) as connection, patch("graph.analyze_relaxations") as relax:
-            connection.execute("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
+            connection.run("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
             result = build_graph(
                 connection,
                 model,
@@ -137,7 +137,7 @@ class GraphTest(unittest.TestCase):
             graph = build_graph(connection, model, _memory())
             config = {"configurable": {"thread_id": "changed-preview"}}
             first = graph.invoke({"message": "预算1100，D05 common room"}, config=config)
-            connection.execute("UPDATE listing_health SET status = 'inactive' WHERE listing_id = 'S001'")
+            connection.run("UPDATE listing_health SET status = 'inactive' WHERE listing_id = 'S001'")
             preview = graph.invoke({"message": "给我看看"}, config=config)
 
         self.assertEqual(first["relaxations"][0]["match_count"], 1)

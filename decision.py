@@ -8,11 +8,11 @@ diagnosed by dropping it on its own.
 
 import json
 import math
-import sqlite3
 from collections import Counter
 from functools import cache
 from pathlib import Path
 
+from group_db import Database
 from models import Listing, SearchPreferences
 from tools import (
     EXTRA_CONDITION_LABELS,
@@ -153,7 +153,7 @@ def condition_status(
 
 
 def search_with_unknowns(
-    connection: sqlite3.Connection,
+    connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
 ) -> tuple[list[Listing], list[Listing]]:
@@ -186,7 +186,7 @@ def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list
 
 
 def diagnose_conditions(
-    connection: sqlite3.Connection,
+    connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
 ) -> list[dict]:
@@ -248,7 +248,7 @@ def default_budget_levels(budget: int) -> list[int]:
 
 
 def budget_ladder(
-    connection: sqlite3.Connection,
+    connection: Database,
     preferences: SearchPreferences,
     budgets: list[int | None],
     excluded_listing_ids: list[str] | None = None,

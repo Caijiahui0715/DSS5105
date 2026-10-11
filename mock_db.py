@@ -1,402 +1,234 @@
+"""Test databases: the backend's PostgreSQL code run on known listings.
+
+Tests use the database <DB_NAME>_test on the server in .env, made on first use (the account needs
+the right to create databases). Each set of listings has its own schema there, made with the
+pipeline's own table scripts:
+
+- mock: the 12 made-up listings in tests/fixtures/mock_listings.json, made again for every test,
+  since tests change them;
+- real: the group's data in output-final-delivery, loaded by load_data.py and sync_v2.py, with
+  commute_faculty.csv, once per test run;
+- storage: accounts and conversations (empty_storage()).
+
+Every call also empties what the backend writes there, link checks and accounts, so tests do not
+see each other's. Without a reachable PostgreSQL the tests that need one are skipped with the
+reason; the others still run.
+"""
+
+import atexit
 import csv
 import json
 import re
-import sqlite3
-from bisect import bisect_left
+import sys
+import tempfile
+import unittest
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 
-from models import AMENITY_FIELDS
+import psycopg
+from psycopg_pool import ConnectionPool
 
+from build_commutes import COMMUTE_DATA, import_commutes
+from config import postgres_settings
+from group_db import Database, connect, ensure_database, open_pool, prepare
+from sessions import Storage
+from setup_database import SCRIPT_FOLDER, TABLE_SCRIPTS
 
 ROOT = Path(__file__).parent
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
-DEFAULT_FINAL_DATA = ROOT / "output-final-delivery" / "rental_data_v2.csv"
-# V2 only replaces the listings table; availability, review flags and districts stay in V1.
-V1_DATA = ROOT / "output-final-delivery" / "rental_data_v1.json"
-# Optional: minutes from each listing to each NUS faculty by public transport, or on foot when
-# that is faster (columns listing_id, faculty, minutes, mode, departure), made by
-# build_commutes.py with OneMap. Without the file every commute is unknown.
-COMMUTE_DATA = ROOT / "commute_faculty.csv"
-_SQM_PER_SQFT = 0.09290304
-# Nearby food is ranked on these V2 counts; see _food_ranks().
-_FOOD_FIELDS = ("poi_fnb_1km", "poi_hawker_1km")
-# V2 labels mapped to the V1 values that search filters and reply templates use.
-_V1_LABELS = {
-    "cooking_policy": {
-        "light_cooking": "light_only",
-        "cooking_any_cooking": "allowed",
-        "cooking_not_allowed": "not_allowed",
-        "cooking_prefer_not_to_say": "unknown",
-    },
-    "pets_policy": {"no_pets": "not_allowed", "pets_allowed": "allowed"},
+# The tables the backend writes; emptied for every test.
+_AGENT_TABLES = ("listing_health", "listing_route_enrichment")
+# Listing fields kept in listing_enrichment rather than listings (migration_v2.sql).
+_ENRICHMENT = {
+    "enriched_at", "postcode", "street_name", "latitude", "longitude", "poi_hawker_1km", "poi_library_1km",
+    "poi_sport_1km", "poi_healthcare_1km", "poi_community_1km", "poi_fnb_1km", "pg_school_count",
+    "pg_school_nearest_walk_m", "pg_school_nearest_walk_min", "pg_mrt_count", "pg_mrt_nearest_walk_m",
+    "coord_source", "coord_error_m",
 }
-
-LISTING_FIELDS = (
-    "listing_id",
-    "title",
-    "listing_url",
-    "rent_monthly_sgd",
-    "rent_price_type",
-    "rental_scope",
-    "room_type",
-    "property_type",
-    "bedrooms",
-    "bathrooms",
-    "area_sqm",
-    "area_scope",
-    "district_code",
-    "address",
-    "mrt_station",
-    "mrt_distance_m",
-    "mrt_minutes_reported",
-    "mrt_operation_status",
-    "listed_date",
-    "collected_at",
-    "tenant_count_reported",
-    "tenant_gender_label",
-    "gender_restriction",
-    "gender_preference",
-    "cooking_policy",
-    "furnishing",
-    "landlord_lives_in",
-    "private_bathroom",
-    "air_conditioning",
-    "pets_policy",
-    "rent_monthly_sgd_now",
-    "scrape_status",
-    "enriched_at",
-    "postcode",
-    "street_name",
-    "latitude",
-    "longitude",
-    "poi_hawker_1km",
-    "poi_library_1km",
-    "poi_sport_1km",
-    "poi_healthcare_1km",
-    "poi_community_1km",
-    "pg_school_count",
-    "pg_school_nearest_walk_m",
-    "pg_school_nearest_walk_min",
-    "pg_mrt_count",
-    "pg_mrt_nearest_walk_m",
-    "coord_source",
-    "coord_error_m",
-    "poi_fnb_1km",
-)
-# Not V2 columns: food_rank is derived at load time (see _food_ranks()), the commute comes from COMMUTE_DATA.
-FOOD_RANK_FIELD = "food_rank"
-# Trips to each faculty as JSON, {"School of Computing": {"minutes": 23, "mode": "transit"}, ...};
-# see tools.commute().
-COMMUTE_FIELD = "commutes"
-_AMENITY_RANKS = tuple(f"{name}_rank" for name in AMENITY_FIELDS)
-_COLUMNS = (*LISTING_FIELDS, FOOD_RANK_FIELD, COMMUTE_FIELD)
+_pools: dict[str, ConnectionPool] = {}
+_ready: set[str] = set()
+_unavailable: list[str] = []
 
 
-def create_database(
-    path: Path = DEFAULT_FINAL_DATA,
-    commute_path: Path = COMMUTE_DATA,
-) -> sqlite3.Connection:
-    """Load the V2 listings CSV, with V1 metadata and districts, into in-memory SQLite."""
-    with path.open(encoding="utf-8-sig", newline="") as file:
-        reader = csv.DictReader(file)
-        missing = [field for field in LISTING_FIELDS if field not in (reader.fieldnames or [])]
-        if missing:
-            raise ValueError(f"{path.name} is missing columns: {', '.join(missing)}")
-        # Empty cells become NULL; column affinity turns numeric text into numbers.
-        listings = [
-            {field: value or None for field, value in row.items()}
-            for row in reader
-        ]
-    v1 = json.loads(V1_DATA.read_text(encoding="utf-8"))
-    return listing_database(
-        listings,
-        {row["listing_id"]: row for row in v1["listing_metadata"]},
-        v1["district_lookup"],
-        _commutes(commute_path),
-    )
-
-
-def listing_database(
-    listings: list[dict],
-    metadata: dict[str, dict],
-    districts: list[dict],
-    commutes: dict[str, dict[str, dict]],
-    health: list[tuple] = (),
-) -> sqlite3.Connection:
-    """The agent's in-memory database from V2 listing rows, read from the CSV or the group's PostgreSQL.
-
-    metadata holds each listing's V1 availability_status and review_flags by id, commutes its
-    trips by faculty, and health link checks saved earlier, as listing_health rows.
-    """
-    for listing in listings:
-        for field, labels in _V1_LABELS.items():
-            listing[field] = labels.get(listing[field], listing[field])
-    ranks = _food_ranks(listings)
-    for listing in listings:
-        listing[FOOD_RANK_FIELD] = ranks.get(listing["listing_id"])
-        listing[COMMUTE_FIELD] = json.dumps(commutes.get(listing["listing_id"], {}), ensure_ascii=False)
-    connection = _create_database(
-        {
-            "listings": listings,
-            "listing_metadata": [
-                _v2_metadata(listing, metadata.get(listing["listing_id"]))
-                for listing in listings
-            ],
-            "district_lookup": districts,
-        }
-    )
-    known = {listing["listing_id"] for listing in listings}
-    with connection:
-        connection.executemany(
-            "INSERT INTO listing_health VALUES (?, ?, ?, ?, ?, ?)",
-            [row for row in health if row[0] in known],
-        )
-    return connection
-
-
-def create_mock_database(path: Path = DEFAULT_FIXTURE) -> sqlite3.Connection:
-    """Adapt the small legacy fixture to the frozen V1 schema for fast tests."""
+def create_mock_database(path: Path = DEFAULT_FIXTURE) -> Database:
+    """The made-up listings, as new; their links are already checked (active unless the fixture says not)."""
     source = json.loads(path.read_text(encoding="utf-8"))["listings"]
-    connection = _create_database(_legacy_payload(source))
+    payload = _legacy_payload(source)
+    commutes = [
+        {"listing_id": row["listing_id"], "faculty": faculty, "minutes": trip["minutes"], "mode": trip["mode"], "departure": ""}
+        for row in source
+        for faculty, trip in (row.get("commutes") or {}).items()
+    ]
     checked_at = datetime.now(timezone.utc).isoformat()
-    with connection:
-        connection.executemany(
-            """
-            INSERT INTO listing_health (listing_id, status, checked_at, final_url)
-            VALUES (?, ?, ?, ?)
-            """,
-            [
-                (
-                    row["listing_id"],
-                    "active" if row.get("listing_status_code") == "ACT" else "inactive",
-                    checked_at,
-                    row.get("url"),
-                )
-                for row in source
-            ],
-        )
-    return connection
+    health = [
+        {
+            "listing_id": row["listing_id"],
+            "status": "active" if row.get("listing_status_code") == "ACT" else "inactive",
+            "checked_at": checked_at,
+            "final_url": row.get("url"),
+        }
+        for row in source
+    ]
+    with _new_schema("mock") as pg:
+        for table in ("district_lookup", "listings", "listing_metadata"):
+            _insert(pg, table, payload[table])
+        _import_commutes(pg, commutes)
+        prepare(pg, "mock")
+        _insert(pg, "listing_health", health)
+    return Database(_pool("mock"), owns_pool=False)
 
 
-def _create_database(payload: dict) -> sqlite3.Connection:
-    # Scores are based on the full dataset, so search, comparison and explanation agree.
-    for name, field in AMENITY_FIELDS.items():
-        values = sorted(float(row[field]) for row in payload["listings"] if row.get(field) is not None)
-        for row in payload["listings"]:
-            value = row.get(field)
-            row[f"{name}_rank"] = 1 - bisect_left(values, float(value)) / len(values) if value is not None else None
-    # The web server shares this read-mostly database across its request threads.
-    connection = sqlite3.connect(":memory:", check_same_thread=False)
-    connection.execute("PRAGMA foreign_keys = ON")
-    view_columns = ", ".join(
-        f"l.{field}" for field in _COLUMNS if field != "rent_monthly_sgd"
-    )
-    connection.executescript(
-        f"""
-        CREATE TABLE listings (
-            listing_id TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            listing_url TEXT NOT NULL UNIQUE,
-            rent_monthly_sgd REAL NOT NULL,
-            rent_price_type TEXT NOT NULL,
-            rental_scope TEXT NOT NULL,
-            room_type TEXT NOT NULL,
-            property_type TEXT NOT NULL,
-            bedrooms INTEGER,
-            bathrooms INTEGER,
-            area_sqm REAL,
-            area_scope TEXT NOT NULL,
-            district_code TEXT NOT NULL,
-            address TEXT NOT NULL,
-            mrt_station TEXT NOT NULL,
-            mrt_distance_m REAL,
-            mrt_minutes_reported INTEGER,
-            mrt_operation_status TEXT NOT NULL,
-            listed_date TEXT NOT NULL,
-            collected_at TEXT NOT NULL,
-            tenant_count_reported INTEGER,
-            tenant_gender_label TEXT NOT NULL,
-            gender_restriction TEXT NOT NULL,
-            gender_preference TEXT NOT NULL,
-            cooking_policy TEXT NOT NULL,
-            furnishing TEXT NOT NULL,
-            landlord_lives_in TEXT NOT NULL,
-            private_bathroom TEXT NOT NULL,
-            air_conditioning TEXT NOT NULL,
-            pets_policy TEXT NOT NULL,
-            rent_monthly_sgd_now REAL,
-            scrape_status TEXT,
-            enriched_at TEXT,
-            postcode TEXT,
-            street_name TEXT,
-            latitude REAL,
-            longitude REAL,
-            poi_hawker_1km INTEGER,
-            poi_library_1km INTEGER,
-            poi_sport_1km INTEGER,
-            poi_healthcare_1km INTEGER,
-            poi_community_1km INTEGER,
-            pg_school_count INTEGER,
-            pg_school_nearest_walk_m INTEGER,
-            pg_school_nearest_walk_min INTEGER,
-            pg_mrt_count INTEGER,
-            pg_mrt_nearest_walk_m INTEGER,
-            coord_source TEXT,
-            coord_error_m REAL,
-            poi_fnb_1km INTEGER,
-            food_rank REAL,
-            commutes TEXT
-        );
+def create_database(commute_path: Path = COMMUTE_DATA) -> Database:
+    """The group's V2 listings as the pipeline loads them, with commutes from commute_path."""
+    if "real" not in _ready:
+        with _new_schema("real"):
+            pass
+        # The pipeline's own loaders, writing to this schema.
+        sys.path.insert(0, str(ROOT / "src"))
+        from dss5105.data import load_data, sync_v2
 
-        CREATE TABLE listing_amenity_ranks (
-            listing_id TEXT PRIMARY KEY REFERENCES listings(listing_id),
-            {', '.join(f'{field} REAL' for field in _AMENITY_RANKS)}
-        );
+        for module in (load_data, sync_v2):
+            module.get_connection = lambda: connect("real", dbname=database_name(), autocommit=False)
+            with redirect_stdout(StringIO()):
+                module.main()
+        with connect("real", dbname=database_name()) as pg, pg.transaction():
+            import_commutes(pg, COMMUTE_DATA)
+            prepare(pg, "real")
+            _analyze(pg)
+        _ready.add("real")
+    if commute_path == COMMUTE_DATA:
+        with _pool("real").connection() as pg:
+            pg.execute(f"TRUNCATE {', '.join(_AGENT_TABLES)}")
+        return Database(_pool("real"), owns_pool=False)
+    # Other commutes: the same listings in a schema of their own.
+    with _new_schema("commutes") as pg:
+        for table in ("district_lookup", "listings", "listing_enrichment", "listing_metadata"):
+            pg.execute(f"INSERT INTO {table} SELECT * FROM real.{table}")
+        if commute_path.exists():
+            import_commutes(pg, commute_path)
+        prepare(pg, "commutes")
+    return Database(_pool("commutes"), owns_pool=False)
 
-        CREATE TABLE listing_metadata (
-            listing_id TEXT PRIMARY KEY REFERENCES listings(listing_id),
-            availability_status TEXT NOT NULL,
-            review_flags TEXT NOT NULL
-        );
 
-        CREATE TABLE district_lookup (
-            district_code TEXT PRIMARY KEY,
-            district TEXT NOT NULL
-        );
+def empty_storage() -> Storage:
+    """Accounts, conversations, kept profiles and LangGraph checkpoints, all empty."""
+    pool = _pool("storage")
+    with pool.connection() as pg:
+        tables = [row["tablename"] for row in pg.execute(
+            # Which LangGraph migrations ran stays, so its tables are not made again.
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'storage' AND tablename <> 'checkpoint_migrations'"
+        )]
+        if tables:
+            pg.execute(f"TRUNCATE {', '.join(tables)}")
+    return Storage(Database(pool, owns_pool=False))
 
-        CREATE TABLE listing_health (
-            listing_id TEXT PRIMARY KEY REFERENCES listings(listing_id),
-            status TEXT NOT NULL CHECK (status IN ('active', 'inactive', 'unknown')),
-            checked_at TEXT NOT NULL,
-            final_url TEXT,
-            http_status INTEGER,
-            error_reason TEXT
-        );
 
-        CREATE TABLE listing_route_enrichment (
-            listing_id TEXT PRIMARY KEY REFERENCES listings(listing_id),
-            mrt_walk_distance_m INTEGER,
-            mrt_walk_seconds INTEGER,
-            mrt_walk_minutes INTEGER,
-            checked_at TEXT NOT NULL
-        );
+def reopened(schema: str) -> Database:
+    """A new pool on a test schema, as a restarted server makes; close it after use."""
+    _pool(schema)
+    return Database(open_pool(schema, dbname=database_name()))
 
-        CREATE VIEW agent_listings AS
-        SELECT
-            {view_columns},
-            a.space_rank,
-            {', '.join(f'q.{field}' for field in _AMENITY_RANKS)},
-            -- The agent uses the rechecked rent when V2 has one; the card rent stays for evidence.
-            COALESCE(l.rent_monthly_sgd_now, l.rent_monthly_sgd) AS rent_monthly_sgd,
-            l.rent_monthly_sgd AS rent_monthly_sgd_card,
-            d.district,
-            m.availability_status,
-            m.review_flags,
-            COALESCE(h.status, 'unknown') AS live_status,
-            h.checked_at AS live_checked_at,
-            h.final_url,
-            h.http_status,
-            h.error_reason AS live_error_reason,
-            r.mrt_walk_distance_m,
-            r.mrt_walk_seconds,
-            r.mrt_walk_minutes
-        FROM listings l
-        -- Compute area ranks separately so the view keeps its existing listing order.
-        LEFT JOIN (
-            SELECT listing_id, PERCENT_RANK() OVER (
-                PARTITION BY rental_scope, area_scope ORDER BY area_sqm DESC
-            ) AS space_rank
-            FROM listings
-            WHERE area_sqm > 0 AND (
-                (rental_scope = 'entire_unit' AND area_scope = 'floor_reported') OR
-                (rental_scope = 'room' AND area_scope = 'room_reported')
+
+def plain_connection(schema: str) -> psycopg.Connection:
+    """A connection with rows as tuples, as scripts such as build_commutes.py use."""
+    _pool(schema)
+    return connect(schema, dbname=database_name())
+
+
+def set_listing(database: Database, listing_id: str, **fields) -> None:
+    """Change a test listing's fields in whichever pipeline table holds each."""
+    for field, value in fields.items():
+        if field in _ENRICHMENT:
+            database.run(
+                f"INSERT INTO listing_enrichment (listing_id, {field}) VALUES (%s, %s) "
+                f"ON CONFLICT (listing_id) DO UPDATE SET {field} = EXCLUDED.{field}",
+                (listing_id, value),
             )
-        ) a USING (listing_id)
-        LEFT JOIN listing_amenity_ranks q USING (listing_id)
-        LEFT JOIN listing_metadata m USING (listing_id)
-        LEFT JOIN district_lookup d USING (district_code)
-        LEFT JOIN listing_health h USING (listing_id)
-        LEFT JOIN listing_route_enrichment r USING (listing_id);
-        """
-    )
-    placeholders = ", ".join("?" for _ in _COLUMNS)
-    with connection:
-        connection.executemany(
-            f"INSERT INTO listings ({', '.join(_COLUMNS)}) VALUES ({placeholders})",
-            [[row.get(field) for field in _COLUMNS] for row in payload["listings"]],
+        else:
+            database.run(f"UPDATE listings SET {field} = %s WHERE listing_id = %s", (value, listing_id))
+
+
+def database_name() -> str:
+    """The test database: DB_NAME in .env with _test after it."""
+    name = postgres_settings()["dbname"]
+    if not name:
+        _skip("没有在 .env 里配置 DB_NAME 等数据库连接")
+    return f"{name}_test"
+
+
+def _skip(reason: str):
+    _unavailable.append(reason)
+    raise unittest.SkipTest(reason)
+
+
+def _pool(schema: str) -> ConnectionPool:
+    if _unavailable:
+        raise unittest.SkipTest(_unavailable[0])
+    if schema not in _pools:
+        name = database_name()
+        try:
+            ensure_database(name)
+            with connect("public", dbname=name) as pg:
+                pg.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            _pools[schema] = open_pool(schema, dbname=name)
+        except psycopg.Error as error:
+            _skip(f"测试数据库 {name} 用不了：{error}")
+    return _pools[schema]
+
+
+@contextmanager
+def _new_schema(schema: str):
+    """schema emptied and given the pipeline's tables; yields a plain connection to it, committed at the end."""
+    _pool(schema)
+    with connect(schema, dbname=database_name()) as pg, pg.transaction():
+        pg.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        pg.execute(f"CREATE SCHEMA {schema}")
+        for script, _, _ in TABLE_SCRIPTS:
+            pg.execute((SCRIPT_FOLDER / script).read_text(encoding="utf-8"))
+        yield pg
+        _analyze(pg)
+
+
+def _analyze(pg: psycopg.Connection) -> None:
+    """Statistics for the schema's new rows, so the planner does not guess (as setup_database.py does)."""
+    for (table,) in pg.execute("SELECT tablename FROM pg_tables WHERE schemaname = current_schema()").fetchall():
+        pg.execute(f"ANALYZE {table}")
+
+
+def _insert(pg: psycopg.Connection, table: str, rows: list[dict]) -> None:
+    """Rows into table, with the columns it has."""
+    if not rows:
+        return
+    columns = [name for (name,) in pg.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = %s "
+        "ORDER BY ordinal_position",
+        (table,),
+    )]
+    columns = [column for column in columns if column in rows[0]]
+    with pg.cursor() as cursor:
+        cursor.executemany(
+            f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join('%s' for _ in columns)})",
+            [[row.get(column) for column in columns] for row in rows],
         )
-        connection.executemany(
-            f"INSERT INTO listing_amenity_ranks VALUES ({', '.join('?' for _ in range(1 + len(_AMENITY_RANKS)))})",
-            [[row["listing_id"], *(row[field] for field in _AMENITY_RANKS)] for row in payload["listings"]],
-        )
-        connection.executemany(
-            "INSERT INTO listing_metadata VALUES (?, ?, ?)",
-            [
-                (
-                    row["listing_id"],
-                    row["availability_status"],
-                    json.dumps(row["review_flags"]),
-                )
-                for row in payload["listing_metadata"]
-            ],
-        )
-        connection.executemany(
-            "INSERT INTO district_lookup VALUES (?, ?)",
-            [
-                (row["district_code"], row["district"])
-                for row in payload["district_lookup"]
-            ],
-        )
-    return connection
 
 
-def _food_ranks(listings: list[dict]) -> dict[str, float]:
-    """Rank listings by nearby food: 0 has the most choice, 1 the least.
-
-    Counts of very different size (F&B 3-1395, hawker centres 0-8) are compared
-    by position among the listings that state them, then averaged.
-    """
-    positions: dict[str, list[float]] = {}
-    for field in _FOOD_FIELDS:
-        counts = sorted(float(row[field]) for row in listings if row.get(field) is not None)
-        for row in listings:
-            value = row.get(field)
-            if value is not None:
-                share = bisect_left(counts, float(value)) / len(counts)
-                positions.setdefault(row["listing_id"], []).append(1 - share)
-    return {
-        listing_id: round(sum(shares) / len(shares), 3)
-        for listing_id, shares in positions.items()
-    }
+def _import_commutes(pg: psycopg.Connection, rows: list[dict]) -> None:
+    """Commutes through build_commutes.import_commutes, from a CSV like commute_faculty.csv."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "commute_faculty.csv"
+        with path.open("w", encoding="utf-8", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=("listing_id", "faculty", "minutes", "mode", "departure"))
+            writer.writeheader()
+            writer.writerows(rows)
+        import_commutes(pg, path)
 
 
-def _commutes(path: Path) -> dict[str, dict[str, dict]]:
-    commutes: dict[str, dict[str, dict]] = {}
-    try:
-        with path.open(encoding="utf-8-sig", newline="") as file:
-            for row in csv.DictReader(file):
-                if row["minutes"]:
-                    # Files from before walking checks have no mode: every time is by public transport.
-                    trip = {"minutes": float(row["minutes"]), "mode": row.get("mode") or "transit"}
-                    commutes.setdefault(row["listing_id"], {})[row["faculty"]] = trip
-    except FileNotFoundError:
-        pass
-    return commutes
-
-
-def _v2_metadata(listing: dict, metadata: dict | None) -> dict:
-    metadata = metadata or {"availability_status": "unknown", "review_flags": []}
-    # V1 area flags predate the V2 room areas; re-check only the under-80 sqft rule.
-    flags = [flag for flag in metadata["review_flags"] if flag != "area_outside_review_range"]
-    area = listing["area_sqm"]
-    if area is not None and round(float(area) / _SQM_PER_SQFT) < 80:
-        flags.append("area_outside_review_range")
-    return {
-        "listing_id": listing["listing_id"],
-        "availability_status": metadata["availability_status"],
-        "review_flags": flags,
-    }
+@atexit.register
+def _close() -> None:
+    for pool in _pools.values():
+        pool.close()
 
 
 def _legacy_payload(rows: list[dict]) -> dict:
@@ -451,10 +283,8 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 "air_conditioning": "unknown",
                 "pets_policy": "unknown",
                 "rent_monthly_sgd_now": None,
-                "scrape_status": None,
-                "enriched_at": None,
-                # Made-up commute minutes for tests.
-                "commutes": json.dumps(row.get("commutes") or {}, ensure_ascii=False),
+                "scrape_status": "active",
+                "lease_term": row.get("lease_term"),
             }
         )
         metadata.append(
@@ -468,7 +298,6 @@ def _legacy_payload(rows: list[dict]) -> dict:
         )
         districts[row["district_code"]] = row["district"]
     return {
-        "schema_version": "1.0-test-adapter",
         "listings": listings,
         "listing_metadata": metadata,
         "district_lookup": [

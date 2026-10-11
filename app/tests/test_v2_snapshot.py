@@ -16,7 +16,7 @@ def test_removed_listings_never_recommended(sources):
         removed = {row['listing_id'] for row in csv.DictReader(handle)}
     assert not removed & {listing.id for listing in sources['listings']}
     recs = recommend(sources['listings'], RentalRequirements(None, None, None), RentalPreferences())
-    assert len(recs) == 376
+    assert len(recs) == 327
     assert not removed & {rec.listing_id for rec in recs}
 
 

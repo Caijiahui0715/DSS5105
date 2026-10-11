@@ -85,8 +85,8 @@ def test_compare_limit_and_hidden_pages(monkeypatch):
     assert len(app.session_state.compare)==3
     app.session_state.page='Rental Map'
     app.run()
-    app.selectbox(key='all-listing-selector').select('500253628').run()
-    assert app.session_state.selected_listing=='500253628'
+    app.selectbox(key='all-listing-selector').select('500252277').run()
+    assert app.session_state.selected_listing=='500252277'
     assert not app.exception
 
 

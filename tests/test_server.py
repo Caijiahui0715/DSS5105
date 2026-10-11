@@ -1,13 +1,16 @@
 import importlib.util
 import json
 import unittest
+from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
+from psycopg import OperationalError
 
-from mock_db import create_mock_database
+from group_db import UNAVAILABLE
+from mock_db import create_mock_database, empty_storage
 from profiles import UserProfiles
-from sessions import memory_storage, serializer
+from sessions import serializer
 from tests.test_agent import ScriptedModel, active_links, tool_calls
 
 PASSWORD = "password123"
@@ -31,7 +34,7 @@ class ServerTest(unittest.TestCase):
 
         self.listings = create_mock_database()
         self.model = ScriptedModel()
-        self.storage = memory_storage()
+        self.storage = empty_storage()
         self.checkpointer = MemorySaver(serde=serializer())
         self.app = create_app(self.listings, self.model, self.storage, self.checkpointer, listing_checker=active_links)
         self.client = lambda: TestClient(self.app)
@@ -39,7 +42,6 @@ class ServerTest(unittest.TestCase):
 
     def tearDown(self):
         self.listings.close()
-        self.storage.close()
 
     def sign_up(self, client, name):
         response = client.post("/api/register", json={"username": name, "password": PASSWORD})
@@ -246,6 +248,21 @@ class ServerTest(unittest.TestCase):
         refused = self.bob.post("/api/register", json={"username": "bob", "password": PASSWORD, "faculty": "Yale-NUS College"})
         self.assertEqual(refused.status_code, 400)
         self.assertEqual(self.bob.post("/api/login", json={"username": "bob", "password": PASSWORD}).status_code, 400)
+
+    def test_a_lost_database_connection_asks_to_try_again(self):
+        self.sign_up(self.alice, "alice")
+        thread_id = self.alice.post("/api/conversations").json()["id"]
+        lost = OperationalError("server closed the connection unexpectedly")
+
+        with patch("server.load_listings", side_effect=lost):
+            page = self.alice.get("/api/listings")
+        with patch.object(self.storage, "touch", side_effect=lost):
+            found = self.send(self.alice, thread_id, "预算1300")
+
+        self.assertEqual((page.status_code, page.json()), (503, {"detail": UNAVAILABLE}))
+        self.assertEqual(found, [("error", {"message": UNAVAILABLE})])
+        # Nothing is left broken: the next request works.
+        self.assertEqual(self.alice.get("/api/listings").status_code, 200)
 
 
 if __name__ == "__main__":

@@ -29,3 +29,11 @@ def test_sign_up_criteria_become_the_first_message():
     assert criteria_message(empty(), stated, 'en', first=True) == (
         "I'm looking for a place to rent: a monthly rent of at most SGD 2,500; a whole unit; at least 2 bedrooms; "
         'at most 30 minutes by public transport to my faculty; property type: condominium.')
+
+
+def test_the_lease_length_is_a_criterion():
+    shown = from_backend({'max_price_sgd': 1800, 'lease_months': 12})
+    assert shown[0].lease_months == 12
+    req, pref = shown
+    assert criteria_message(shown, (replace(req, lease_months=6), pref), 'en') == 'Please update my search criteria: a 6-month lease.'
+    assert criteria_message(shown, (replace(req, lease_months=None), pref), 'zh') == '请更新我的找房条件：租期不限。'

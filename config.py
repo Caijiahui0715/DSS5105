@@ -7,13 +7,8 @@ def env(name: str) -> str | None:
     return os.environ.get(name) or _dotenv().get(name)
 
 
-def use_postgres() -> bool:
-    """AGENT_DB=postgres: listings, accounts and conversations all live in the group's PostgreSQL."""
-    return (env("AGENT_DB") or "sqlite").strip().lower() == "postgres"
-
-
 def postgres_settings() -> dict[str, str | None]:
-    """Connection settings shared with the data pipeline."""
+    """Connection settings for the project's PostgreSQL, shared with the data pipeline."""
     return {
         "host": env("DB_HOST"),
         "port": env("DB_PORT"),

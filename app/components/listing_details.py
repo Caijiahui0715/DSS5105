@@ -1,7 +1,7 @@
 import streamlit as st
 import json
 import re
-from components.listing_card import image, actions, heading, commute_text, mrt_text, link_note
+from components.listing_card import image, actions, heading, commute_text, mrt_text, link_note, lease_text
 from components.provenance_badge import fact, explanation
 from content.i18n import t
 from domain.location import coordinates, location_note
@@ -42,6 +42,7 @@ def details(listing, recommendation=None, key='detail'):
         st.caption(t('Bathroom count does not imply private use. Advertised MRT minutes are not NUS commute time; station operation may be unknown.', '浴室数量不代表独用。广告标注的地铁步行时间不是到 NUS 的通勤时间；地铁站是否运营可能未知。'))
         st.markdown(f"**{t('Commute', '通勤')}**")
         st.write(commute_text(listing, recommendation))
+        st.write(lease_text(listing))
         fact(t('Data map coordinates', '数据中的地图坐标'), coordinates(listing), listing.provenance['coordinates'])
         st.caption(location_note(listing))
         fact(t('Postcode', '邮编'), f.get('postcode'))
@@ -102,6 +103,7 @@ def compact_details(listing, recommendation):
         st.write(t(f"**{recommendation.score} / 100** · Demo match score", f"**{recommendation.score} / 100** · 演示匹配分"))
     st.caption(mrt_text(listing, recommendation))
     st.caption(commute_text(listing, recommendation))
+    st.caption(lease_text(listing))
     link_note(recommendation)
     if listing.metadata['reviewFlags']:
         st.caption(t('Data needs review', '数据需要核实'))

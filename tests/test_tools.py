@@ -31,12 +31,11 @@ class ToolsTest(unittest.TestCase):
     def test_imports_the_v2_listings(self):
         with closing(create_database()) as connection:
             listings = load_listings(connection)
-            main_fields = connection.execute("PRAGMA table_info(listings)").fetchall()
         by_id = {listing["listing_id"]: listing for listing in listings}
 
-        self.assertEqual(len(listings), 376)
-        # 50 V2 columns plus the derived food_rank and the optional commutes to each faculty.
-        self.assertEqual(len(main_fields), 52)
+        self.assertEqual(len(listings), 327)
+        # The V2 columns with lease_term, derived ranks and commutes, metadata and link checks.
+        self.assertEqual(len(listings[0]), 73)
         self.assertIn("availability_status", listings[0])
         self.assertEqual(listings[0]["live_status"], "unknown")
         self.assertTrue(all(listing["district"] for listing in listings))
@@ -54,7 +53,10 @@ class ToolsTest(unittest.TestCase):
         self.assertIn("area_outside_review_range", by_id["25107881"]["review_flags"])
         self.assertNotIn("area_outside_review_range", by_id["25558367"]["review_flags"])
         # V2.3 adds coordinates and nearby counts; food_rank is derived at load time.
-        self.assertEqual(by_id["500253628"]["coord_source"], "onemap_postcode")
+        self.assertEqual(by_id["25558367"]["coord_source"], "onemap_postcode")
+        # The lease term the advert states, kept as written; empty cells are NULL.
+        terms = [listing["lease_term"] for listing in listings]
+        self.assertEqual((terms.count("2 years"), terms.count("1 year"), terms.count(None)), (134, 27, 104))
         self.assertTrue(all(listing["poi_fnb_1km"] is not None for listing in listings))
         # food_rank averages the F&B and hawker positions: 0 is the most choice, 1 the least.
         self.assertLess(by_id["24970286"]["food_rank"], 0.05)   # 1282 F&B, 8 hawker centres
@@ -301,7 +303,7 @@ class ToolsTest(unittest.TestCase):
                 district_code="D05",
             )
             ranked = rank_listings(search_listings(connection, preferences), preferences)
-            connection.execute(
+            connection.run(
                 "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
             )
 
@@ -327,7 +329,7 @@ class ToolsTest(unittest.TestCase):
                 district_code="D05",
             )
             ranked = rank_listings(search_listings(connection, preferences), preferences)
-            connection.execute(
+            connection.run(
                 "DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')"
             )
 
@@ -358,7 +360,7 @@ class ToolsTest(unittest.TestCase):
     def test_live_validation_refills_after_the_first_ten_are_inactive(self):
         with closing(create_mock_database()) as connection:
             ranked = [{"listing": listing} for listing in load_listings(connection)]
-            connection.execute("DELETE FROM listing_health")
+            connection.run("DELETE FROM listing_health")
             later_ids = [item["listing"]["listing_id"] for item in ranked[10:]]
             checked_ids = []
 
@@ -389,7 +391,7 @@ class ToolsTest(unittest.TestCase):
     def test_live_validation_stops_when_enough_unknown_or_active_results_exist(self):
         with closing(create_mock_database()) as connection:
             ranked = [{"listing": listing} for listing in load_listings(connection)]
-            connection.execute("DELETE FROM listing_health")
+            connection.run("DELETE FROM listing_health")
             checker = Mock(side_effect=[
                 {"status": "unknown", "error_reason": "timeout"},
                 {"status": "active"},
@@ -415,7 +417,7 @@ class ToolsTest(unittest.TestCase):
     def test_live_validation_reports_unchecked_candidates_at_the_cap(self):
         with closing(create_mock_database()) as connection:
             ranked = [{"listing": listing} for listing in load_listings(connection)]
-            connection.execute("DELETE FROM listing_health")
+            connection.run("DELETE FROM listing_health")
             checker = Mock(return_value={"status": "inactive"})
             validation = validate_ranked_listings(
                 connection, ranked, checker, candidate_limit=3, result_limit=3
@@ -432,7 +434,7 @@ class ToolsTest(unittest.TestCase):
     def test_relaxation_counts_only_displayable_checked_candidates(self):
         preferences = SearchPreferences(max_price_sgd=1_200, room_type="common_room", district_code="D05")
         with closing(create_mock_database()) as connection:
-            connection.execute("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
+            connection.run("DELETE FROM listing_health WHERE listing_id IN ('S001', 'S010')")
 
             def checker(listing_id, url):
                 return {
@@ -456,7 +458,7 @@ class ToolsTest(unittest.TestCase):
     def test_relaxations_do_not_offer_candidates_whose_links_are_all_inactive(self):
         preferences = SearchPreferences(max_price_sgd=1_100, room_type="common_room", district_code="D05")
         with closing(create_mock_database()) as connection:
-            connection.execute("DELETE FROM listing_health WHERE listing_id = 'S001'")
+            connection.run("DELETE FROM listing_health WHERE listing_id = 'S001'")
             suggestions = analyze_relaxations(
                 connection, preferences, checker=lambda *_: {"status": "inactive"}
             )
@@ -465,21 +467,21 @@ class ToolsTest(unittest.TestCase):
 
     def test_only_keeps_small_area_review_warnings(self):
         with closing(create_mock_database()) as connection:
-            connection.execute(
-                "UPDATE listings SET area_sqm = ? WHERE listing_id = ?",
+            connection.run(
+                "UPDATE listings SET area_sqm = %s WHERE listing_id = %s",
                 (930.42, "S010"),
             )
-            connection.execute(
-                "UPDATE listing_metadata SET review_flags = ? WHERE listing_id = ?",
-                ('["area_outside_review_range", "tenant_count_scope_unconfirmed"]', "S010"),
+            connection.run(
+                "UPDATE listing_metadata SET review_flags = %s WHERE listing_id = %s",
+                (["area_outside_review_range", "tenant_count_scope_unconfirmed"], "S010"),
             )
-            connection.execute(
-                "UPDATE listings SET area_sqm = ? WHERE listing_id = ?",
+            connection.run(
+                "UPDATE listings SET area_sqm = %s WHERE listing_id = %s",
                 (4.09, "S009"),
             )
-            connection.execute(
-                "UPDATE listing_metadata SET review_flags = ? WHERE listing_id = ?",
-                ('["area_outside_review_range"]', "S009"),
+            connection.run(
+                "UPDATE listing_metadata SET review_flags = %s WHERE listing_id = %s",
+                (["area_outside_review_range"], "S009"),
             )
             by_id = {
                 listing["listing_id"]: listing
@@ -592,14 +594,14 @@ class ToolsTest(unittest.TestCase):
 
     def test_mrt_walk_refresh_is_persisted_and_reused(self):
         with closing(create_mock_database()) as connection:
-            pending = connection.execute(
+            pending = connection.query(
                 """
-                SELECT count(*) FROM agent_listings
+                SELECT count(*) AS n FROM agent_listings
                 WHERE live_status <> 'inactive'
                   AND address IS NOT NULL AND trim(address) <> ''
                   AND mrt_station <> 'unknown' AND trim(mrt_station) <> ''
                 """
-            ).fetchone()[0]
+            )[0]["n"]
             route = {
                 "mrt_station": "Test MRT",
                 "mrt_walk_distance_m": 886,

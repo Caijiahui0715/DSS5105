@@ -58,6 +58,8 @@ LISTING_COLUMNS = [
     "pets_policy",
     "rent_monthly_sgd_now",
     "scrape_status",
+    # Added by migration_lease_term.sql; run it before this script.
+    "lease_term",
 ]
 
 

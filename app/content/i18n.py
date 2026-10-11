@@ -34,6 +34,26 @@ def value_label(value):
     return str(value).replace('_', ' ').capitalize()
 
 
+def lease_label(months):
+    """A lease length the forms offer: None for any, otherwise months."""
+    if months is None:
+        return t('Any lease length', '租期不限')
+    if months % 12 == 0:
+        years = months // 12
+        return t(f'{years} year' + ('s' if years > 1 else ''), f'{years} 年')
+    return t(f'{months} month' + ('s' if months > 1 else ''), f'{months} 个月')
+
+
+def lease_term_label(term):
+    """An advert's lease term ('1 year', 'Flexible'...), which the landlord treats as the shortest lease."""
+    term = (term or '').strip()
+    known = {'1 year': t('at least 1 year', '至少 1 年'), '2 years': t('at least 2 years', '至少 2 年'),
+             'Flexible': t('flexible', '灵活'), 'Short Term': t('short term', '短租')}
+    if term in ('', 'Prefer not to say'):
+        return t('not stated', '未注明')
+    return known.get(term, term)
+
+
 def language_switch(key):
     """English / 中文. The choice lives in st.session_state.language, so pages without the
     switch keep it."""

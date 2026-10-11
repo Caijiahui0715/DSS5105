@@ -147,6 +147,12 @@ class SearchPreferences(BaseModel):
         default=False,
         description="True when the user explicitly says the move-in date is flexible.",
     )
+    lease_months: int | None = Field(
+        default=None,
+        ge=1,
+        le=60,
+        description="How many months the user will sign the lease for (只租6个月 is 6, 租一年 12, 签两年 24); null when not stated.",
+    )
     cooking_required: bool = Field(
         default=False,
         description="True only when the listing must allow at least limited cooking.",

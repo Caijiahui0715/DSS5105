@@ -11,11 +11,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from agent import build_agent
-from mock_db import create_database, create_mock_database
+from mock_db import create_database, create_mock_database, empty_storage, set_listing
 from exchange import CurrencyConversionError, UnknownCurrencyError
 from models import SearchPreferences
 from profiles import UserProfiles
-from sessions import memory_storage
 
 
 class ScriptedModel:
@@ -96,6 +95,7 @@ class AgentTest(unittest.TestCase):
                 "compare_listings",
                 "shortlist",
                 "exclude_listings",
+                "estimate_costs",
             ],
         )
         self.assertEqual(result["response"], "你好，请告诉我你的租房要求。")
@@ -409,7 +409,7 @@ class AgentTest(unittest.TestCase):
         observation = json.loads(result["observations"][0])
         self.assertEqual(observation["rental_scope_mix"]["shown_scopes"], ["room"])
         self.assertTrue(result["response"].endswith(
-            "提示：展示的都是合租房间；数据库里符合条件的整租有 88 套，最低 S$2,000。想只看一种，告诉我要整租还是合租即可。"
+            "提示：展示的都是合租房间；数据库里符合条件的整租有 65 套，最低 S$1,900。想只看一种，告诉我要整租还是合租即可。"
         ))
         # The note already asks the question, so the draft does not repeat it.
         self.assertNotIn("rental_scope", observation["missing_refinements"])
@@ -468,11 +468,11 @@ class AgentTest(unittest.TestCase):
 
     def test_explain_listing_quotes_the_source_text(self):
         model = ScriptedModel(
-            tool_calls(("explain_listing", {"listing_id": "500253628"})),
+            tool_calls(("explain_listing", {"listing_id": "25558367"})),
             AIMessage(content=""),
         )
         with closing(create_database()) as connection:
-            (result,) = run_agent(connection, model, "为什么推荐 500253628？")
+            (result,) = run_agent(connection, model, "为什么推荐 25558367？")
 
         observation = json.loads(result["observations"][0])
         self.assertIn("card_text", observation["evidence"])
@@ -627,6 +627,31 @@ class AgentTest(unittest.TestCase):
         self.assertTrue(stopped["response"].startswith("提醒：每月 S$13 的上限远低于数据中最便宜房源的月租（S$850）"))
         self.assertIn("far below every rent", stopped["observations"][0])
 
+    def test_a_criterion_both_set_and_cleared_takes_the_new_value(self):
+        # From a real conversation: the model "replaced" the saved budget and ranking by also naming
+        # them in clear. 60000 SDG (Sudanese pounds, a typo for SGD) a year is S$10 a month.
+        first = "预算1300，通勤短一点"
+        again = "I change my budget to 60000 SDG per year, again, I want some apartments with short commute time"
+        sudanese = {"original_amount": 60000, "original_currency": "SDG", "rate_to_sgd": "0.00214", "rate_date": "2026-10-11", "amount_sgd": 128}
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300, "ranking_priority": ["commute"]}, "user_quote": first})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {
+                "set": {"property_types": ["apartment"], "ranking_priority": ["commute"]},
+                "clear": ["max_price_sgd", "ranking_priority"],
+                "budget": {"amount": 60000, "currency": "SDG", "months": 12},
+                "user_quote": again,
+            })),
+            AIMessage(content=""),
+        )
+        with patch("agent.convert_to_sgd", return_value=sudanese), closing(create_mock_database()) as connection:
+            _, result = run_agent(connection, model, first, again)
+
+        self.assertEqual(result["preferences"].ranking_priority, ("commute",))
+        self.assertEqual(list(result["preferences"].property_types), ["apartment"])
+        # The stated budget was far below every rent, so it was not used and the saved one stays.
+        self.assertEqual(result["preferences"].max_price_sgd, 1300)
+
     def test_a_resumed_conversation_drops_delisted_shortlist_entries(self):
         memory = MemorySaver(
             serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])
@@ -637,8 +662,7 @@ class AgentTest(unittest.TestCase):
         with closing(create_mock_database()) as before, closing(create_mock_database()) as after:
             build_agent(before, first, memory, listing_checker=active_links).invoke({"message": "收藏 S001 和 S010"}, config=config)
             # A data refresh delisted S010 before the user came back.
-            after.execute("PRAGMA foreign_keys = OFF")
-            after.execute("DELETE FROM listings WHERE listing_id = 'S010'")
+            after.run("DELETE FROM listings WHERE listing_id = 'S010'")
             result = build_agent(after, later, memory, listing_checker=active_links).invoke({"message": "我的候选清单还在吗"}, config=config)
 
         self.assertEqual(result["shortlisted_listing_ids"], ["S001"])
@@ -678,7 +702,7 @@ class AgentTest(unittest.TestCase):
             AIMessage(content="预算已保存。"),
         )
         with closing(create_mock_database()) as connection:
-            asked = say(memory_agent(connection, model, UserProfiles(memory_storage())), "first", "预算1300")
+            asked = say(memory_agent(connection, model, UserProfiles(empty_storage())), "first", "预算1300")
 
         # The model's own question is sent back once; the system's fixed question ends the reply.
         self.assertEqual(asked["response"].count("要我记住"), 1)
@@ -686,7 +710,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("预算已保存。", asked["response"])
 
     def test_consent_is_asked_once_and_allow_keeps_criteria_with_the_users_words(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         model = ScriptedModel(
             tool_calls(("search_listings", {"set": {"max_price_sgd": 1300, "rental_scope": "room"}, "user_quote": "预算1300，合租"})),
             AIMessage(content=""),
@@ -714,7 +738,7 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("messages", kept)
 
     def test_a_new_conversation_offers_the_kept_profile_and_reuses_it_at_todays_rate(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         profiles.set_consent("alice", True)
         profiles.save("alice", {
             "preferences": {"max_price_sgd": 4773, "rental_scope": "room"},
@@ -750,7 +774,7 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(profiles.profile("alice")["preferences"]["max_price_sgd"], 5000)
 
     def test_an_offered_profile_is_kept_until_new_criteria_replace_it(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         profiles.set_consent("alice", True)
         earlier = {"preferences": {"max_price_sgd": 1300}, "shortlisted_listing_ids": ["S002"], "saved_on": "2026-10-05"}
         profiles.save("alice", earlier)
@@ -775,7 +799,7 @@ class AgentTest(unittest.TestCase):
         self.assertTrue(forgotten["response"].startswith("已删除为你长期保存的条件、候选和排除，之后也不会再保存。"))
 
     def test_the_faculty_is_saved_from_the_users_answer_and_used_for_commutes(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         model = ScriptedModel(
             tool_calls(("search_listings", {"set": {"max_price_sgd": 1500, "max_commute_minutes": 30}, "user_quote": "预算1500，到学校30分钟以内"})),
             AIMessage(content="你在哪个学院？"),
@@ -811,7 +835,7 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(json.loads(fourth["observations"][0])["listings"][0]["commute_mode"], "walk")
 
     def test_a_faculty_changed_on_the_settings_page_applies_from_the_next_message(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         profiles.set_consent("alice", True)
         model = ScriptedModel(
             tool_calls(("search_listings", {"set": {"max_price_sgd": 1500, "ranking_priority": "commute"}, "user_quote": "预算1500，通勤近一点"})),
@@ -833,7 +857,7 @@ class AgentTest(unittest.TestCase):
         self.assertNotIn("faculty", profiles.profile("alice")["preferences"])
 
     def test_saving_a_faculty_needs_the_users_words_and_a_recorded_faculty(self):
-        profiles = UserProfiles(memory_storage())
+        profiles = UserProfiles(empty_storage())
         model = ScriptedModel(
             tool_calls(
                 ("faculty", {"action": "set", "faculty": "School of Computing"}),
@@ -1039,17 +1063,17 @@ class AgentTest(unittest.TestCase):
         for reply in ("S004 更便宜，S001 链接暂时无法确认。", ""):
             model = ScriptedModel(tool_calls(("search_listings", search)), AIMessage(content=reply))
             with self.subTest(reply=reply), closing(create_mock_database()) as connection:
-                connection.execute("DELETE FROM listing_health")
+                connection.run("DELETE FROM listing_health")
                 graph = build_agent(connection, model, listing_checker=checker)
                 result = graph.invoke({"message": "预算1300 D05"})
-                health = connection.execute(
+                (health,) = connection.query(
                     "SELECT status, error_reason FROM listing_health WHERE listing_id = 'S001'"
-                ).fetchone()
+                )
 
                 facts = json.loads(result["observations"][0])["strict_matches"]["listings"]
                 # S001 is nearer MRT than S004, so it keeps first place with an unverified link.
                 self.assertEqual(result["shown_listing_ids"], ["S001", "S004"])
-                self.assertEqual(health, ("unknown", "http_403"))
+                self.assertEqual(health, {"status": "unknown", "error_reason": "http_403"})
                 self.assertEqual(facts[0]["link_note"], note)
                 self.assertIn("[links] S001 unknown (http_403); S004 active; 1 inactive skipped", result["trace"])
                 self.assertEqual(result["response"].count(note), 1)
@@ -1068,6 +1092,143 @@ class AgentTest(unittest.TestCase):
             (result,) = run_agent(connection, model, "S010 的详情")
 
         self.assertTrue(result["response"].startswith("房源详情"))
+
+
+
+class CostAndLeaseTest(unittest.TestCase):
+    @staticmethod
+    def lease(connection, terms):
+        for listing_id, term in terms.items():
+            set_listing(connection, listing_id, lease_term=term)
+
+    def test_costs_use_the_listings_lease_and_are_shown_word_for_word(self):
+        model = ScriptedModel(
+            tool_calls(("estimate_costs", {"listing_ids": ["S001"]})),
+            AIMessage(content="签约时要先付 S$3,715。"),
+        )
+        with closing(create_mock_database()) as connection:
+            self.lease(connection, {"S001": "2 years"})
+            (result,) = run_agent(connection, model, "S001 一共要花多少钱")
+
+        estimate = json.loads(result["observations"][0])["estimates"][0]
+        # S$1,200 a month for 24 months: S$28,800 rent, S$115 stamp duty, two months' deposit.
+        self.assertEqual(
+            (estimate["lease_months"], estimate["stamp_duty_sgd"], estimate["deposit_sgd"], estimate["upfront_sgd"]),
+            (24, 115, 2400, 3715),
+        )
+        self.assertTrue(result["response"].startswith(
+            "费用估算：Synthetic Clementi Common Room（S001）\n假设：租期 24 个月（房源要求至少签 2 年）"
+        ))
+        self.assertTrue(result["response"].endswith("签约时要先付 S$3,715。"))
+        self.assertEqual(result["viewed_listing_id"], "S001")
+
+    def test_a_stated_lease_is_saved_and_a_longer_listing_term_wins(self):
+        request = "我只租 5 个月，帮我算 S001"
+        model = ScriptedModel(
+            tool_calls(("estimate_costs", {"listing_ids": ["S001"], "lease_months": 5, "user_quote": "我只租 5 个月"})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            self.lease(connection, {"S001": "1 year"})
+            (result,) = run_agent(connection, model, request)
+
+        self.assertEqual(result["preferences"].lease_months, 5)
+        self.assertEqual(result["preference_sources"]["lease_months"]["quote"], "我只租 5 个月")
+        response = result["response"]
+        self.assertTrue(response.startswith("已保存条件变更：签约租期（月） 不限 → 5\n\n提示：新加坡规定私人住宅最短租期 3 个月"))
+        self.assertIn("租期 12 个月（这套房源要求至少签 1 年，比你说的 5 个月更长）", response)
+        self.assertTrue(response.endswith("费用明细见上。"))
+
+    def test_this_one_among_several_shown_listings_is_asked_about(self):
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content="找到几套。"),
+            tool_calls(("estimate_costs", {})),
+            AIMessage(content="你想算哪一套？"),
+        )
+        with closing(create_mock_database()) as connection:
+            _, result = run_agent(connection, model, "预算1300", "算一下这套的费用")
+
+        self.assertIn("ask the user which listing they mean", result["observations"][0])
+        self.assertEqual(result["response"], "你想算哪一套？")
+
+    def test_a_listing_opened_before_a_new_search_is_not_assumed(self):
+        model = ScriptedModel(
+            tool_calls(("get_listing_details", {"listing_id": "S003"})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content=""),
+            tool_calls(("estimate_costs", {})),
+            AIMessage(content="你想算哪一套？"),
+        )
+        with closing(create_mock_database()) as connection:
+            *_, result = run_agent(connection, model, "看看 S003", "预算1300", "这套要花多少")
+
+        self.assertIn("ask the user which listing they mean", result["observations"][0])
+
+    def test_nothing_to_cost_is_asked_about(self):
+        model = ScriptedModel(tool_calls(("estimate_costs", {})), AIMessage(content="你想算哪一套，或者月租是多少？"))
+        with closing(create_mock_database()) as connection:
+            (result,) = run_agent(connection, model, "租房要花多少钱")
+
+        self.assertIn("no listing or rent to work from", result["observations"][0])
+
+    def test_agent_and_deposit_answers_are_kept_for_the_conversation(self):
+        quote = "我找了中介，押金一个月"
+        model = ScriptedModel(
+            tool_calls(("estimate_costs", {"listing_ids": ["S001"], "uses_agent": True, "deposit_months": 1, "user_quote": quote})),
+            AIMessage(content=""),
+            tool_calls(("estimate_costs", {"listing_ids": ["S002"]})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            self.lease(connection, {"S001": "1 year", "S002": "1 year"})
+            _, second = run_agent(connection, model, f"{quote}，S001 要多少钱", "那 S002 呢")
+
+        estimate = json.loads(second["observations"][0])["estimates"][0]
+        # Half a month's rent for a one-year lease, plus 9% GST.
+        self.assertEqual((estimate["deposit_months"], estimate["agent_fee_sgd"], estimate["agent_fee_gst_sgd"]), (1, 525, 47.25))
+        self.assertEqual(second["cost_assumptions"], {"uses_agent": True, "deposit_months": 1})
+        self.assertIn("押金 1 个月（按你说的）；包含中介费（按惯例估算）", second["response"])
+
+    def test_stated_values_need_the_users_words(self):
+        model = ScriptedModel(
+            tool_calls(("estimate_costs", {"listing_ids": ["S001"], "uses_agent": True})),
+            AIMessage(content="你有找中介吗？"),
+        )
+        with closing(create_mock_database()) as connection:
+            (result,) = run_agent(connection, model, "S001 要多少钱")
+
+        self.assertIn("user_quote", result["observations"][0])
+        self.assertEqual(result.get("cost_assumptions"), {})
+
+    def test_a_rent_in_another_currency_is_converted_first(self):
+        conversion = {"original_amount": 5000, "original_currency": "CNY", "rate_to_sgd": "0.18", "rate_date": "2026-10-02", "amount_sgd": 900}
+        model = ScriptedModel(tool_calls(("estimate_costs", {"rent": {"amount": 5000, "currency": "CNY"}})), AIMessage(content=""))
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=conversion):
+            (result,) = run_agent(connection, model, "月租 5000 人民币要先付多少")
+
+        lines = result["response"].splitlines()
+        self.assertEqual(lines[0], "月租换算：5,000 CNY × 0.18 = S$900（汇率日期 2026-10-02）。")
+        self.assertEqual(lines[1], "费用估算：按你给的月租")
+        self.assertIn("- 月租：S$900（按你说的）", lines)
+        self.assertIn("- 签约时预付：押金 S$900 + 第一个月租金 S$900 + 印花税 S$43 = S$1,843", lines)
+
+    def test_a_short_lease_search_mentions_the_legal_minimums(self):
+        request = "只租2个月，预算1300"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"lease_months": 2, "max_price_sgd": 1300}, "user_quote": request})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            self.lease(connection, {"S001": "Flexible", "S002": "1 year"})
+            (result,) = run_agent(connection, model, request)
+
+        strict = json.loads(result["observations"][0])["strict_matches"]["listings"]
+        self.assertEqual([(item["listing_id"], item["lease_term"]) for item in strict], [("S001", "Flexible")])
+        self.assertNotIn("S002", result["shown_listing_ids"])
+        self.assertIn("提示：新加坡规定私人住宅最短租期 3 个月", result["response"])
+        self.assertIn("   租期：灵活", result["response"])
 
 
 if __name__ == "__main__":

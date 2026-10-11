@@ -55,3 +55,21 @@ uv run --project app pytest app/tests                      # 测试（离线模�
 - 聊天消息显示前会把 `$` 转义（否则 Streamlit 会把 “S$2,999 … S$3,100” 当成数学公式），并保留换行（agent 的回复每套房源的月租、MRT、通勤各占一行）。
 - 卡片上的“待确认的条件”和链接说明是 agent 搜索那一轮的语言，切换语言后要等下一次搜索才会变。
 - 我这边装不了真的 Streamlit，页面流程是用一个简化的替身跑过的；请在本地跑一遍 `uv run --project app pytest app/tests`，再连后端实际点一遍。
+
+## 2026-10-10：租期和费用
+
+房源数据换成了 10/9 的新版 `rental_data_v2.csv`（327 套，多了 `lease_term` 租期一列；`removed_listings.csv` 266 条）。
+
+- **注册 / 个人资料**：连后端时多了一个 “Lease length you will sign / 打算签多久的租约” 下拉（不限、6 个月、1 年、2 年），和其他条件一样，改动作为一条消息发给 agent（例如 “Please update my search criteria: a 6-month lease.”）。`RentalRequirements` 加了 `lease_months`（默认 `None`），`domain/criteria.py` 加了对应的文字。离线演示不显示这个字段，因为演示打分不按租期筛选。
+- **卡片 / 详情**：显示 “Lease: at least 2 years / 租期：至少 2 年”（`components/listing_card.py` 的 `lease_text()`，文字在 `content/i18n.py` 的 `lease_term_label()`），没写租期的显示“未注明”。
+- **聊天**：用户问费用时，agent 的回复里会有一段固定格式的费用明细，不需要前端处理。
+- **因为数据更新改的测试**：`test_source_loader.py`（327 套、移除 266 条、推断坐标 11 个）、`test_v2_snapshot.py`（327）、`test_data_contract.py`（家具未注明 1 套）、`test_recommendation.py`（改为找一套家具未注明的房源，而不是固定用第一套）。离线演示的 `data/demo_enrichment.py` 里 500253628 已下架，换成 500252277，`test_app_smoke.py` 里选这套房源的地方同步改了。
+- 我这边只跑了不需要真 Streamlit 的测试（40 个里 39 个通过，剩下一个缺 `folium`）；`test_app_smoke.py` 请在本地跑一遍。
+
+## 2026-10-10：后端只用 PostgreSQL
+
+前端代码没有改，离线演示（`AGENT_MODE=mock`）也不受影响。连后端时要注意：
+
+- 后端的房源、账号和对话现在都在 PostgreSQL 里，第一次要在根目录运行一次 `.\.venv\Scripts\python.exe .\setup_database.py`，再启动 `server.py`。PostgreSQL 没开时后端启动不了，会直接说明要检查什么。
+- 以前的 `sessions.sqlite` 不再使用，里面的账号没有搬过来：演示账号（例如 `demo_user`）要在应用里用同样的用户名和密码重新注册一次，`app/.env` 不用改。
+- 聊天中途数据库断开时，这一轮的错误消息是“数据库暂时连不上，请稍后再试。”（流里的 `error` 事件），其他接口返回 HTTP 503 和同样的 `detail`；前端照原来的方式显示错误即可，下一条消息会自动重连。

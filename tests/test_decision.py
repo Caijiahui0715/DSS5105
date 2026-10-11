@@ -13,7 +13,7 @@ from decision import (
     rental_scope_mix,
     search_with_unknowns,
 )
-from mock_db import create_database, create_mock_database
+from mock_db import create_database, create_mock_database, set_listing
 from models import SearchPreferences
 from response import render_listing_details, render_listing_explanation
 from tools import get_listings_by_ids, rank_listings, search_listings
@@ -336,17 +336,15 @@ class DecisionTest(unittest.TestCase):
 
     def test_area_filters_and_space_ranking_respect_rental_scope(self):
         with closing(create_mock_database()) as connection:
-            connection.execute("UPDATE listings SET area_sqm = NULL, area_scope = 'unknown', mrt_distance_m = 425")
-            connection.executemany(
-                "UPDATE listings SET area_sqm = ?, rental_scope = ?, area_scope = ? WHERE listing_id = ?",
-                [
-                    (200, "room", "floor_reported", "S001"),  # The room's own size is unknown.
-                    (20, "room", "room_reported", "S002"),
-                    (10, "room", "room_reported", "S004"),
-                    (200, "entire_unit", "floor_reported", "S009"),
-                    (100, "entire_unit", "floor_reported", "S010"),
-                ],
-            )
+            connection.run("UPDATE listings SET area_sqm = NULL, area_scope = 'unknown', mrt_distance_m = 425")
+            for area, scope, area_scope, listing_id in [
+                (200, "room", "floor_reported", "S001"),  # The room's own size is unknown.
+                (20, "room", "room_reported", "S002"),
+                (10, "room", "room_reported", "S004"),
+                (200, "entire_unit", "floor_reported", "S009"),
+                (100, "entire_unit", "floor_reported", "S010"),
+            ]:
+                set_listing(connection, listing_id, area_sqm=area, rental_scope=scope, area_scope=area_scope)
             for scope, minimum, priority in product((None, "room", "entire_unit"), (None, 15, 150), ("balanced", "space")):
                 preferences = SearchPreferences(rental_scope=scope, min_area_sqm=minimum, ranking_priority=priority)
                 with self.subTest(preferences=preferences):
@@ -383,7 +381,7 @@ class DecisionTest(unittest.TestCase):
 
         mix = rental_scope_mix(preferences, strict, shown)
         self.assertEqual(mix["shown_scopes"], ["room"])
-        self.assertEqual(mix["entire_unit"], {"database_count": 88, "cheapest_sgd": 2000})
+        self.assertEqual(mix["entire_unit"], {"database_count": 65, "cheapest_sgd": 1900})
         self.assertIsNone(rental_scope_mix(preferences.model_copy(update={"rental_scope": "room"}), strict, shown))
         # Under S$1,500 every match is a room, so there is no mix to mention.
         self.assertIsNone(rental_scope_mix(preferences, room_only, room_only[:3]))

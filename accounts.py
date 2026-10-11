@@ -44,7 +44,7 @@ class Accounts:
         if len(password) < MIN_PASSWORD_LENGTH:
             raise AccountError(f"密码至少 {MIN_PASSWORD_LENGTH} 位。")
         added = self.storage.run(
-            "INSERT INTO users (user_id, password_hash, created_at) VALUES (?, ?, ?) ON CONFLICT (user_id) DO NOTHING",
+            "INSERT INTO users (user_id, password_hash, created_at) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO NOTHING",
             (user_id, _hash_password(password), self._now()),
         )
         if not added:
@@ -54,7 +54,7 @@ class Accounts:
     def login(self, username: str, password: str) -> tuple[str, str]:
         """The user id and a new session token."""
         user_id = username.strip().lower()
-        rows = self.storage.rows("SELECT password_hash, failed_logins, locked_until FROM users WHERE user_id = ?", (user_id,))
+        rows = self.storage.rows("SELECT password_hash, failed_logins, locked_until FROM users WHERE user_id = %s", (user_id,))
         if rows and rows[0][2] and rows[0][2] > self._now():
             raise AccountError("密码错误次数过多，请 1 分钟后再试。")
         if not rows or not _check_password(password, rows[0][0]):
@@ -62,14 +62,14 @@ class Accounts:
                 failures = rows[0][1] + 1
                 locked = failures >= MAX_FAILED_LOGINS
                 self.storage.run(
-                    "UPDATE users SET failed_logins = ?, locked_until = ? WHERE user_id = ?",
+                    "UPDATE users SET failed_logins = %s, locked_until = %s WHERE user_id = %s",
                     (0 if locked else failures, self._now(LOCKOUT) if locked else None, user_id),
                 )
             raise AccountError("用户名或密码不正确。")
-        self.storage.run("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE user_id = ?", (user_id,))
+        self.storage.run("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE user_id = %s", (user_id,))
         token = secrets.token_urlsafe(32)
         self.storage.run(
-            "INSERT INTO auth_tokens VALUES (?, ?, ?)",
+            "INSERT INTO auth_tokens VALUES (%s, %s, %s)",
             (_token_hash(token), user_id, self._now(TOKEN_LIFETIME)),
         )
         return user_id, token
@@ -77,19 +77,19 @@ class Accounts:
     def user_for(self, token: str | None) -> str | None:
         if not token:
             return None
-        self.storage.run("DELETE FROM auth_tokens WHERE expires_at <= ?", (self._now(),))
-        rows = self.storage.rows("SELECT user_id FROM auth_tokens WHERE token_hash = ?", (_token_hash(token),))
+        self.storage.run("DELETE FROM auth_tokens WHERE expires_at <= %s", (self._now(),))
+        rows = self.storage.rows("SELECT user_id FROM auth_tokens WHERE token_hash = %s", (_token_hash(token),))
         return rows[0][0] if rows else None
 
     def logout(self, token: str | None) -> None:
         if token:
-            self.storage.run("DELETE FROM auth_tokens WHERE token_hash = ?", (_token_hash(token),))
+            self.storage.run("DELETE FROM auth_tokens WHERE token_hash = %s", (_token_hash(token),))
 
     def sign_out_everywhere(self, user_id: str) -> None:
-        self.storage.run("DELETE FROM auth_tokens WHERE user_id = ?", (user_id,))
+        self.storage.run("DELETE FROM auth_tokens WHERE user_id = %s", (user_id,))
 
     def exists(self, user_id: str) -> bool:
-        return bool(self.storage.rows("SELECT 1 FROM users WHERE user_id = ?", (user_id,)))
+        return bool(self.storage.rows("SELECT 1 FROM users WHERE user_id = %s", (user_id,)))
 
     def _now(self, later: timedelta = timedelta()) -> str:
         return (self.clock() + later).isoformat(timespec="seconds")

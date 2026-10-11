@@ -10,8 +10,8 @@ from urllib.error import HTTPError, URLError
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from mock_db import create_mock_database
-from sessions import memory_storage, serializer
+from mock_db import create_mock_database, empty_storage
+from sessions import serializer
 from tests.test_agent import ScriptedModel, active_links, tool_calls
 
 APP = Path(__file__).resolve().parents[1] / "app"
@@ -30,7 +30,7 @@ class FrontendClientTest(unittest.TestCase):
         self.addCleanup(sys.path.remove, str(APP))
         from adapters.backend_client import BackendClient
 
-        self.listings, self.storage = create_mock_database(), memory_storage()
+        self.listings, self.storage = create_mock_database(), empty_storage()
         self.model = ScriptedModel()
         app = create_app(self.listings, self.model, self.storage, MemorySaver(serde=serializer()), listing_checker=active_links)
         self.http = TestClient(app)
@@ -38,7 +38,6 @@ class FrontendClientTest(unittest.TestCase):
 
     def tearDown(self):
         self.listings.close()
-        self.storage.close()
 
     def open(self, request, timeout=None):
         """urlopen, answered by the app; only the Authorization header signs in, never a cookie."""

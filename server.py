@@ -20,14 +20,16 @@ from queue import Queue
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
+from psycopg import OperationalError
 from pydantic import BaseModel
 
 from accounts import TOKEN_LIFETIME, AccountError, Accounts
 from agent import build_agent, kept_profile
 from decision import EVIDENCE_PATH
 from faculties import FACULTIES, find_faculty
+from group_db import UNAVAILABLE
 from profiles import UserProfiles
 from response import render_steps
 from sessions import Storage
@@ -65,12 +67,17 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     accounts = Accounts(storage)
     profiles = UserProfiles(storage)
     agent = build_agent(listings, model, checkpointer, listing_checker=listing_checker, profiles=profiles)
-    # Listings read from the group's PostgreSQL are rebuilt when the data there changes.
-    refresh = getattr(listings, "refresh", None) or (lambda: False)
     # One turn at a time per conversation; a second message waits for the first.
     locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
     locks_guard = threading.Lock()
     app = FastAPI(title="Singapore Rental Decision Agent")
+
+    @app.exception_handler(OperationalError)
+    def database_unavailable(request: Request, error: OperationalError):
+        # The pool connects again for the next request. QueryCanceled (a query over the time limit)
+        # and PoolTimeout (no free connection) arrive here too; the class name tells them apart.
+        logging.warning("database unavailable (%s): %s", type(error).__name__, error)
+        return JSONResponse({"detail": UNAVAILABLE}, status_code=503)
 
     def lock_for(thread_id: str) -> threading.Lock:
         with locks_guard:
@@ -115,7 +122,6 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     @app.get("/api/options")
     def options():
         """Choices for a frontend's sign-up and criteria forms: the districts that have listings, and property types."""
-        refresh()
         rows = load_listings(listings)
         districts = sorted({(row["district_code"], row["district"]) for row in rows if row.get("district_code")})
         return {
@@ -176,14 +182,12 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         user_id: str = Depends(current_user),
     ):
         """Every listing in the data, in pages; the same fields the agent ranks with."""
-        refresh()
         rows = load_listings(listings)
         return {"total": len(rows), "listings": rows[offset:offset + limit]}
 
     @app.get("/api/listings/{listing_id}")
     def listing_details(listing_id: str, user_id: str = Depends(current_user)):
         """One listing with its full source record (page text, photos, field evidence), where recorded."""
-        refresh()
         found = get_listings_by_ids(listings, [listing_id])
         if not found:
             raise HTTPException(404, "找不到这套房源。")
@@ -271,7 +275,6 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
                 events.put(("progress", _WAITING))
                 lock.acquire()
             try:
-                refresh()
                 storage.touch(thread_id, text)
                 final = {}
                 turn = {"message": text, "user_id": user_id, "reply_language": body.language}
@@ -295,6 +298,9 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
                     },
                 ))
                 storage.touch(thread_id, text)
+            except OperationalError as error:
+                logging.warning("database unavailable in %s (%s): %s", thread_id, type(error).__name__, error)
+                events.put(("error", {"message": UNAVAILABLE}))
             except Exception:
                 logging.exception("turn failed in %s", thread_id)
                 events.put(("error", {"message": _FAILED}))
@@ -359,7 +365,7 @@ def main() -> None:
     from langchain_openai import ChatOpenAI
 
     from config import env
-    from group_db import open_listings
+    from group_db import open_database
     from sessions import open_storage
 
     sys.stdout.reconfigure(encoding="utf-8")
@@ -370,17 +376,20 @@ def main() -> None:
     if not env("OPENAI_API_KEY") or not env("OPENAI_MODEL"):
         raise SystemExit("Set OPENAI_API_KEY and OPENAI_MODEL in .env first")
 
-    # Listings first: with AGENT_DB=postgres an unreachable database stops here with a clear message.
-    listings = open_listings()
-    storage, checkpointer = open_storage()
+    # An unreachable database stops here with what to fix.
+    database = open_database()
+    storage, checkpointer = open_storage(database)
     # Reasoning models such as gpt-5.x only accept function tools on the Responses API.
     model = ChatOpenAI(model=env("OPENAI_MODEL"), api_key=env("OPENAI_API_KEY"), use_responses_api=True)
-    app = create_app(listings, model, storage, checkpointer)
+    app = create_app(database, model, storage, checkpointer)
     host = "0.0.0.0" if "--lan" in flags else "127.0.0.1"
     print(f"打开 http://127.0.0.1:{port}")
     if "--lan" in flags:
         print(f"同一 Wi-Fi 下可访问 http://{_lan_address()}:{port}（明文 HTTP，只在信任的网络里使用）")
-    uvicorn.run(app, host=host, port=port)
+    try:
+        uvicorn.run(app, host=host, port=port)
+    finally:
+        database.close()
 
 
 if __name__ == "__main__":

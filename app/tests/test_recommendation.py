@@ -55,8 +55,7 @@ def test_review_flags_do_not_change_constraints(sources):
 
 def test_unknown_requested_preference_cannot_get_full_points(sources):
     from data.demo_enrichment import demo_score
-    listing=sources['listings'][0]
-    assert listing.facts['furnishing']=='unknown'
+    listing=next(l for l in sources['listings'] if l.facts['furnishing']=='unknown')
     pref=RentalPreferences(districts=[listing.facts['districtCode']],furnishing='fully_furnished')
     _,breakdown,_,_,_=demo_score(listing,RentalRequirements(),pref)
     assert breakdown['Other known preferences']==0.5

@@ -1,14 +1,12 @@
-import tempfile
 import unittest
 from contextlib import closing
-from pathlib import Path
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
 from agent import build_agent
-from mock_db import create_mock_database
-from sessions import memory_storage, open_sqlite
+from mock_db import create_mock_database, empty_storage, reopened
+from sessions import open_storage
 from tests.test_agent import ScriptedModel, active_links, tool_calls
 
 
@@ -23,22 +21,20 @@ class SessionTest(unittest.TestCase):
             AIMessage(content="好的。"),
         )
         later = ScriptedModel(AIMessage(content="好的，我们接着看。"))
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "sessions.sqlite"
-            storage, memory = open_sqlite(path)
-            with closing(storage), closing(memory.conn), closing(create_mock_database()) as listings:
-                thread_id = storage.new_thread("alice")
-                storage.touch(thread_id, request)
-                config = {"configurable": {"thread_id": thread_id}}
-                build_agent(listings, first, memory, listing_checker=active_links).invoke({"message": request}, config=config)
+        storage, memory = open_storage(empty_storage().database)
+        with closing(create_mock_database()) as listings:
+            thread_id = storage.new_thread("alice")
+            storage.touch(thread_id, request)
+            config = {"configurable": {"thread_id": thread_id}}
+            build_agent(listings, first, memory, listing_checker=active_links).invoke({"message": request}, config=config)
 
-            # Next day, new process: new connections to the same file.
-            storage, memory = open_sqlite(path)
-            with closing(storage), closing(memory.conn), closing(create_mock_database()) as listings:
-                again = storage.latest_thread("alice")
-                result = build_agent(listings, later, memory, listing_checker=active_links).invoke(
-                    {"message": "我回来了"}, config={"configurable": {"thread_id": again}}
-                )
+        # Next day, new process: new connections to the same database.
+        with closing(reopened("storage")) as database, closing(create_mock_database()) as listings:
+            storage, memory = open_storage(database)
+            again = storage.latest_thread("alice")
+            result = build_agent(listings, later, memory, listing_checker=active_links).invoke(
+                {"message": "我回来了"}, config={"configurable": {"thread_id": again}}
+            )
 
         self.assertEqual(again, thread_id)
         self.assertEqual(result["preferences"].max_price_sgd, 1300)
@@ -46,8 +42,7 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(result["messages"][0].content, request)
 
     def test_each_user_sees_only_their_own_conversations(self):
-        storage = memory_storage()
-        self.addCleanup(storage.close)
+        storage = empty_storage()
         clock = (f"2026-10-06T10:00:0{tick}.000" for tick in range(9))
         with patch("sessions._now", side_effect=clock):
             first = storage.new_thread("alice")

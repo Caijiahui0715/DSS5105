@@ -11,7 +11,7 @@ from models import (
     UserIntent,
 )
 from faculties import faculty_label
-from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, mrt_minutes
+from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, lease_term, mrt_minutes
 
 
 _FACTOR_LABELS = {
@@ -286,6 +286,7 @@ def render_response(
         lines.append(_text(language, f"   面积：{_area_text(listing, language)}", f"   Area: {_area_text(listing, language)}"))
         if listing.get("bathrooms") is not None:
             lines.append(_text(language, f"   卫生间：{listing['bathrooms']} 个", f"   Bathrooms: {listing['bathrooms']}"))
+        lines.append(_text(language, f"   租期：{lease_text(listing, language)}", f"   Lease: {lease_text(listing, language)}"))
 
         factors = item.get("factors", {})
         weights = [
@@ -444,6 +445,7 @@ def render_listing_details(
         _text(language, f"- 卧室/卫生间：{bedrooms if bedrooms is not None else '未知'} / {bathrooms if bathrooms is not None else '未知'}", f"- Bedrooms/bathrooms: {bedrooms if bedrooms is not None else 'unknown'} / {bathrooms if bathrooms is not None else 'unknown'}"),
         _text(language, f"- 面积：{_area_text(listing, language)}", f"- Area: {_area_text(listing, language)}"),
         _text(language, f"- 最大入住人数：{occupants if occupants is not None else '未注明'}", f"- Maximum occupants: {occupants if occupants is not None else 'not stated'}"),
+        _text(language, f"- 租期：{lease_text(listing, language)}", f"- Lease: {lease_text(listing, language)}"),
         _text(language, f"- 地区：{listing.get('district_code') or '未知'}", f"- District: {listing.get('district_code') or 'unknown'}"),
         _text(language, f"- 地址：{listing.get('address') or '未知'}", f"- Address: {listing.get('address') or 'unknown'}"),
         _text(language, f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing, language)}", f"- MRT: {listing.get('mrt_station') or 'unknown station'}, {_mrt_text(listing, language)}"),
@@ -706,6 +708,7 @@ TOOL_LABELS = {
     "exclude_listings": ("排除或恢复房源", "Excluding or restoring listings"),
     "user_memory": ("处理长期记忆", "Handling long-term memory"),
     "faculty": ("查看学院和通勤时间", "Checking your faculty and commute times"),
+    "estimate_costs": ("计算租房费用", "Working out rental costs"),
 }
 
 
@@ -1049,6 +1052,12 @@ def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLangu
         return _text(language, f"将最高预算从 {_sgd(suggestion['current'])} 提高到 {_sgd(suggestion['suggested'])}", f"raising the maximum budget from {_sgd(suggestion['current'])} to {_sgd(suggestion['suggested'])}")
     if field == "max_mrt_minutes":
         return _text(language, f"将 MRT 步行上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the MRT walking limit from {suggestion['current']} to {suggestion['suggested']} minutes")
+    if field == "lease_months":
+        return _text(
+            language,
+            f"签 {lease_length(suggestion['suggested'], language)}的约（原来 {lease_length(suggestion['current'], language)}）",
+            f"signing for {lease_length(suggestion['suggested'], language)} instead of {lease_length(suggestion['current'], language)}",
+        )
     return _text(language, f"调整 {field}", f"changing {field}")
 
 
@@ -1123,3 +1132,237 @@ def _sgd(amount) -> str:
 
 def _text(language: ResponseLanguage, zh: str, en: str) -> str:
     return en if language == "en" else zh
+
+
+def lease_length(months: int, language: ResponseLanguage) -> str:
+    """12 months as 1 年 / 1 year; other lengths in months."""
+    if months % 12 == 0:
+        years = months // 12
+        return _text(language, f"{years} 年", f"{years} year" + ("s" if years > 1 else ""))
+    return _text(language, f"{months} 个月", f"{months} month" + ("s" if months > 1 else ""))
+
+
+def lease_text(listing: Listing, language: ResponseLanguage) -> str:
+    """The advert's lease term, which the landlord treats as the shortest lease."""
+    term = lease_term(listing)
+    if term is None:
+        return _text(language, "未注明", "not stated")
+    if term == "flexible":
+        return _text(language, "灵活", "flexible")
+    if term == "short_term":
+        return _text(language, "短租", "short term")
+    return _text(language, f"至少 {lease_length(term, 'zh')}", f"at least {lease_length(term, 'en')}")
+
+
+def render_lease_minimum(months: int | None, language: ResponseLanguage = "zh") -> str:
+    """Shown verbatim when the lease the user wants is shorter than Singapore allows for some homes."""
+    if months is None or months >= 6:
+        return ""
+    return _text(
+        language,
+        "提示：新加坡规定私人住宅最短租期 3 个月，HDB 组屋（包括组屋房间）最短 6 个月，短于这个期限的租约不合规；房源仍按你说的租期筛选。",
+        "Note: in Singapore a private home can be let for no less than 3 months, and an HDB flat or HDB room for no less than 6 months; shorter leases are not allowed. Listings are still filtered by the lease you gave.",
+    )
+
+
+def _money(amount) -> str:
+    return f"S${amount:,}" if isinstance(amount, int) else f"S${amount:,.2f}"
+
+
+# Why the lease length used for one listing's costs is what it is.
+_LEASE_REASONS = {
+    "yours": ("按你说的", "as you said"),
+    "listing": ("房源要求至少签 {term}", "the listing asks for at least {term}"),
+    "listing_over_yours": ("这套房源要求至少签 {term}，比你说的 {yours}更长", "this listing asks for at least {term}, longer than the {yours} you gave"),
+    "default": ("你没说租多久，房源也没有固定租期", "you have not said how long, and the listing has no fixed term"),
+    "default_no_listing": ("你没说租多久", "you have not said how long"),
+}
+
+
+def _lease_reason(row: dict, language: ResponseLanguage) -> str:
+    zh, en = _LEASE_REASONS[row["lease_reason"]]
+    term = row.get("listing_minimum_months")
+    yours = row.get("your_lease_months")
+    values = {
+        "term": lease_length(term, language) if term else "",
+        "yours": lease_length(yours, language) if yours else "",
+    }
+    reason = _text(language, zh, en).format(**values)
+    months = row["costs"]["lease_months"]
+    return _text(language, f"租期 {months} 个月（{reason}）", f"a {months}-month lease ({reason})")
+
+
+def _cost_assumptions(costs: dict, language: ResponseLanguage, several: bool = False) -> list[str]:
+    """The deposit and agent assumptions, shared by every listing in one estimate; with several
+    listings on leases of different lengths the deposit is given as the rule, not a count."""
+    deposit = costs["deposit_months"]
+    if costs["deposit_months_stated"]:
+        parts = [_text(language, f"押金 {deposit} 个月（按你说的）", f"a {deposit}-month deposit (as you said)")]
+    elif several:
+        parts = [_text(language, "押金每年租期 1 个月", "a deposit of one month per year of lease")]
+    else:
+        parts = [_text(language, f"押金 {deposit} 个月（每年租期 1 个月）", f"a {deposit}-month deposit (one month per year of lease)")]
+    if costs["agent_fee_sgd"] is None:
+        parts.append(_text(language, "未包含中介费", "no agent fee"))
+    elif costs["agent_fee_stated"]:
+        parts.append(_text(language, "中介费按你说的金额", "the agent fee you gave"))
+    else:
+        parts.append(_text(language, "包含中介费（按惯例估算）", "an agent fee estimated from common practice"))
+    return parts
+
+
+_GOOD_FAITH = (
+    "- 定金（good faith deposit）：递交意向书时通常先付，签约后转为押金，不另外计入。",
+    "- Good-faith deposit: usually paid with the letter of intent and turned into the security deposit at signing, so it is not extra.",
+)
+_STAMP_DUTY_NOTE = (
+    "- 说明：印花税由 IRAS 按合同租金和市场租金中较高的计算，这里用的是{rent}。",
+    "- Note: IRAS charges stamp duty on the higher of the contract and market rent; this uses {rent}.",
+)
+_COSTS_CLOSING = (
+    "如果你打算签别的租期、押金月数不同或用了中介，告诉我，我重新算。",
+    "If you will sign for a different length, pay a different deposit or use an agent, tell me and I will recalculate.",
+)
+
+
+def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion: dict | None = None) -> str:
+    """Shown verbatim: each lease's costs, the assumptions first and an offer to recalculate last.
+
+    rows hold costs.lease_costs() results with the listing (title, listing_id, or neither for a
+    stated rent), the rent's source and why the lease length was chosen.
+    """
+    separator = "；" if language == "zh" else "; "
+    lines = []
+    if conversion:
+        amount, currency, sgd = f"{conversion['original_amount']:,}", conversion["original_currency"], _money(conversion["amount_sgd"])
+        lines.append(_text(
+            language,
+            f"月租换算：{amount} {currency} × {conversion['rate_to_sgd']} = {sgd}（汇率日期 {conversion['rate_date']}）。",
+            f"Rent conversion: {amount} {currency} × {conversion['rate_to_sgd']} = {sgd} (rate date {conversion['rate_date']}).",
+        ))
+    if len(rows) == 1:
+        row, costs = rows[0], rows[0]["costs"]
+        rent, months = costs["rent_monthly_sgd"], costs["lease_months"]
+        name = _cost_target(row, language)
+        assumptions = [_lease_reason(row, language), *_cost_assumptions(costs, language)]
+        lines += [
+            _text(language, f"费用估算：{name}", f"Cost estimate: {name}"),
+            _text(language, f"假设：{separator.join(assumptions)}。", f"Assumptions: {separator.join(assumptions)}."),
+            _text(language, f"- 月租：{_money(rent)}{_rent_source(row, 'zh')}", f"- Monthly rent: {_money(rent)}{_rent_source(row, 'en')}"),
+            _text(
+                language,
+                f"- 整个租期总租金：{_money(rent)} × {months} = {_money(costs['total_rent_sgd'])}",
+                f"- Total rent for the lease: {_money(rent)} × {months} = {_money(costs['total_rent_sgd'])}",
+            ),
+            _stamp_duty_line(costs, language),
+            _text(
+                language,
+                f"- 押金：{_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])}（退租时退还）",
+                f"- Security deposit: {_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])} (refunded when you move out)",
+            ),
+        ]
+        if costs["agent_fee_sgd"] is not None:
+            lines.append(_agent_line(costs, language))
+        upfront = [
+            _text(language, f"押金 {_money(costs['deposit_sgd'])}", f"deposit {_money(costs['deposit_sgd'])}"),
+            _text(language, f"第一个月租金 {_money(rent)}", f"first month's rent {_money(rent)}"),
+            _text(language, f"印花税 {_money(costs['stamp_duty_sgd'])}", f"stamp duty {_money(costs['stamp_duty_sgd'])}"),
+        ]
+        if costs["agent_fee_sgd"] is not None:
+            upfront.append(_text(language, f"中介费 {_money(costs['agent_fee_sgd'])}", f"agent fee {_money(costs['agent_fee_sgd'])}"))
+        if costs["agent_fee_gst_sgd"] is not None:
+            upfront.append(f"GST {_money(costs['agent_fee_gst_sgd'])}")
+        lines += [
+            _text(language, f"- 签约时预付：{' + '.join(upfront)} = {_money(costs['upfront_sgd'])}", f"- Paid at signing: {' + '.join(upfront)} = {_money(costs['upfront_sgd'])}"),
+            _text(
+                language,
+                f"- 整个租期总花费（不含会退还的押金）：{_money(costs['total_cost_sgd'])}",
+                f"- Spent over the whole lease (not counting the refundable deposit): {_money(costs['total_cost_sgd'])}",
+            ),
+        ]
+    else:
+        lines += [
+            _text(language, f"费用对比（{len(rows)} 套，各按自己的租期计算）：", f"Cost comparison ({len(rows)} listings, each for its own lease):"),
+            _text(language, f"假设：{separator.join(_cost_assumptions(rows[0]['costs'], language, True))}。", f"Assumptions: {separator.join(_cost_assumptions(rows[0]['costs'], language, True))}."),
+        ]
+        for position, row in enumerate(rows, 1):
+            costs = row["costs"]
+            items = [
+                _lease_reason(row, language),
+                _text(language, f"月租 {_money(costs['rent_monthly_sgd'])}", f"rent {_money(costs['rent_monthly_sgd'])} a month"),
+                _text(language, f"总租金 {_money(costs['total_rent_sgd'])}", f"total rent {_money(costs['total_rent_sgd'])}"),
+                _text(language, f"印花税 {_money(costs['stamp_duty_sgd'])}", f"stamp duty {_money(costs['stamp_duty_sgd'])}"),
+                _text(language, f"押金 {_money(costs['deposit_sgd'])}", f"deposit {_money(costs['deposit_sgd'])}"),
+            ]
+            if costs["agent_fee_sgd"] is not None:
+                fee = _money(costs["agent_fee_total_sgd"])
+                with_gst = costs["agent_fee_gst_sgd"] is not None
+                items.append(_text(language, f"中介费{'（含 GST）' if with_gst else ''} {fee}", f"agent fee{' incl. GST' if with_gst else ''} {fee}"))
+            items += [
+                _text(language, f"签约时预付 {_money(costs['upfront_sgd'])}", f"paid at signing {_money(costs['upfront_sgd'])}"),
+                _text(language, f"总花费 {_money(costs['total_cost_sgd'])}", f"spent over the lease {_money(costs['total_cost_sgd'])}"),
+            ]
+            lines.append(f"{position}. {_cost_target(row, language)}{_text(language, '：', ': ')}{separator.join(items)}")
+        upfront = min(rows, key=lambda row: row["costs"]["upfront_sgd"])
+        same_lease = len({row["costs"]["lease_months"] for row in rows}) == 1
+        key = "total_cost_sgd" if same_lease else "average_monthly_cost_sgd"
+        cheapest = min(rows, key=lambda row: row["costs"][key])
+        spent = _money(cheapest["costs"][key])
+        lines.append(_text(
+            language,
+            f"签约时预付最少：{upfront['listing_id']}（{_money(upfront['costs']['upfront_sgd'])}）；"
+            + (f"整个租期总花费最少：{cheapest['listing_id']}（{spent}）。" if same_lease
+               else f"租期不同，按平均每月花费比较，最少的是 {cheapest['listing_id']}（每月 {spent}）。"),
+            f"Least to pay at signing: {upfront['listing_id']} ({_money(upfront['costs']['upfront_sgd'])}); "
+            + (f"least spent over the lease: {cheapest['listing_id']} ({spent})." if same_lease
+               else f"the leases differ, so by the average spent a month the least is {cheapest['listing_id']} ({spent} a month)."),
+        ))
+        lines.append(_text(
+            language,
+            "- 印花税：租期 4 年以内为总租金 × 0.4%，向下取整到元，最少 S$1；平均年租 S$1,000 以下免征。",
+            "- Stamp duty: 0.4% of the total rent for a lease of up to 4 years, rounded down to the dollar, at least S$1; exempt when the annual rent is S$1,000 or less.",
+        ))
+    advertised = any(row["rent_source"] == "listing" for row in rows)
+    rent = _text(language, "广告租金" if advertised else "上面的月租", "the advertised rent" if advertised else "the rent above")
+    lines += [_text(language, *_GOOD_FAITH), _text(language, *_STAMP_DUTY_NOTE).format(rent=rent), _text(language, *_COSTS_CLOSING)]
+    return "\n".join(lines)
+
+
+def _cost_target(row: dict, language: ResponseLanguage) -> str:
+    if row.get("listing_id"):
+        title = row.get("title") or _text(language, "未命名房源", "Untitled listing")
+        return _text(language, f"{title}（{row['listing_id']}）", f"{title} ({row['listing_id']})")
+    return _text(language, "按你给的月租", "the rent you gave") if row["rent_source"] == "stated" else _text(language, "按你的预算上限", "your budget limit")
+
+
+def _rent_source(row: dict, language: ResponseLanguage) -> str:
+    if row["rent_source"] == "budget":
+        return _text(language, "（你的每月预算上限）", " (your monthly budget limit)")
+    if row["rent_source"] == "stated":
+        return _text(language, "（按你说的）", " (as you said)")
+    return ""
+
+
+def _stamp_duty_line(costs: dict, language: ResponseLanguage) -> str:
+    if costs["stamp_duty_exempt"]:
+        return _text(language, "- 印花税：S$0（年租不超过 S$1,000，免征）", "- Stamp duty: S$0 (exempt: the annual rent is S$1,000 or less)")
+    base, months = costs["stamp_duty_base_sgd"], costs["lease_months"]
+    over = _text(language, "（超过 4 年的租约按 4 年租金计）", " (a lease over 4 years pays on 4 years' rent)") if months > 48 else ""
+    return _text(
+        language,
+        f"- 印花税：{_money(base)} × 0.4% = {_money(costs['stamp_duty_sgd'])}（向下取整到元，最少 S$1）{over}",
+        f"- Stamp duty: {_money(base)} × 0.4% = {_money(costs['stamp_duty_sgd'])} (rounded down to the dollar, at least S$1){over}",
+    )
+
+
+def _agent_line(costs: dict, language: ResponseLanguage) -> str:
+    fee = _money(costs["agent_fee_sgd"])
+    if costs["agent_fee_stated"]:
+        return _text(language, f"- 中介费：{fee}（按你说的金额）", f"- Agent fee: {fee} (the amount you gave)")
+    rent, years = _money(costs["rent_monthly_sgd"]), max(1, -(-costs["lease_months"] // 12))
+    gst = _money(costs["agent_fee_gst_sgd"])
+    return _text(
+        language,
+        f"- 中介费：{rent} × 0.5 × {years} = {fee}，另加 9% GST {gst}（每年租期半个月租金是惯例，可协商，以中介报价为准）",
+        f"- Agent fee: {rent} × 0.5 × {years} = {fee}, plus 9% GST {gst} (half a month's rent per year of lease is common practice; it is negotiable, so go by your agent's quote)",
+    )

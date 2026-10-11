@@ -1,10 +1,10 @@
 import re
-import sqlite3
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from exchange import CurrencyConversionError, convert_to_sgd
+from group_db import Database
 from models import (
     Listing,
     ListingCheckSummary,
@@ -126,7 +126,7 @@ _REFINEMENT_LABELS = {
 
 
 def build_graph(
-    connection: sqlite3.Connection,
+    connection: Database,
     model: Any,
     checkpointer=None,
     listing_checker=check_listing_url,

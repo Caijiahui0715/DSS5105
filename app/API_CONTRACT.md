@@ -16,7 +16,9 @@ server, so a change on either side that breaks the other fails there.
 - IDs are strings. Missing values are `null`; unknown categories stay `"unknown"`.
 - Listing fields are the backend's snake_case names; `BackendMapper` turns them
   into the camelCase facts the views use. `rent_monthly_sgd` is the rechecked
-  rent and `rent_monthly_sgd_card` the advertised one.
+  rent and `rent_monthly_sgd_card` the advertised one. `lease_term` is the
+  advert's lease term as written ("1 year", "2 years", "Flexible", "Short
+  Term", "Prefer not to say" or `null`), the shortest lease the landlord accepts.
 
 ## Calls
 
@@ -49,7 +51,7 @@ then one `event: reply` (or `event: error` with `{"message"}`):
 {
   "text": "the reply, in the message's language (the interface language when the message shows none)",
   "steps": ["how the reply was made", "..."],
-  "preferences": {"max_price_sgd": 1800, "rental_scope": "room"},
+  "preferences": {"max_price_sgd": 1800, "rental_scope": "room", "lease_months": 12},
   "shortlist": ["500253628"],
   "recommendations": {
     "preview": false,
@@ -63,6 +65,7 @@ then one `event: reply` (or `event: error` with `{"message"}`):
       "mrt_minutes": 9,
       "commute_minutes_to_faculty": 23,
       "commute_mode": "transit",
+      "lease_term": "1 year",
       "link_status": "active",
       "link_note": "active",
       "unknown_conditions": [],
@@ -77,4 +80,6 @@ the listings it already shows. `status` is `match` (meets every condition) or
 `needs_confirmation` (the listing does not state some conditions, named in
 `unknown_condition_labels`). `preview: true` means a what-if search that left
 the saved criteria unchanged. `preferences` holds only the criteria that are
-set; `domain/criteria.py` maps them onto the Profile form.
+set; `domain/criteria.py` maps them onto the Profile form (`lease_months` is the
+lease length the user will sign, in months). Cost estimates (total rent, stamp
+duty, deposit, what is paid at signing) arrive as part of `text`.

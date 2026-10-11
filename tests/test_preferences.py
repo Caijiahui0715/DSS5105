@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from decision import condition_status, diagnose_conditions, explain_listing, search_with_unknowns
 from models import AMENITY_FIELDS, ParsedTurn, SearchPreferences
-from mock_db import create_database, create_mock_database
+from mock_db import create_database, create_mock_database, set_listing
 from onemap import OneMapError, OneMapNotFound, geocode_location
 from parser import parse_turn
 from response import render_listing_explanation
@@ -41,15 +41,15 @@ class PreferenceIntegrationTest(unittest.TestCase):
             ("min_schools", 10, "pg_school_count", 20, 5, None),
             ("max_school_walk_m", 500, "pg_school_nearest_walk_m", 400, 600, None),
             ("max_school_walk_minutes", 10, "pg_school_nearest_walk_min", 5, 15, None),
-            ("listed_after", date(2026, 9, 10), "listed_date", "2026-09-12", "2026-09-01", "unknown"),
             ("furnishing_types", ["fully_furnished"], "furnishing", "fully_furnished", "partially_furnished", "furnished_unspecified"),
             ("cooking_level", "full", "cooking_policy", "allowed", "light_only", "unknown"),
             ("gender_preference", "female", "gender_preference", "female", "male", "unknown"),
         ]
         for field, wanted, column, passing, failing, unstated in cases:
             with self.subTest(field=field), closing(create_mock_database()) as db:
-                excluded = [row[0] for row in db.execute("SELECT listing_id FROM listings") if row[0] not in {"S001", "S002", "S004"}]
-                db.executemany(f"UPDATE listings SET {column} = ? WHERE listing_id = ?", [(passing, "S001"), (failing, "S002"), (unstated, "S004")])
+                excluded = [row["listing_id"] for row in db.query("SELECT listing_id FROM listings") if row["listing_id"] not in {"S001", "S002", "S004"}]
+                for value, listing_id in ((passing, "S001"), (failing, "S002"), (unstated, "S004")):
+                    set_listing(db, listing_id, **{column: value})
                 preferences = SearchPreferences(**{field: wanted})
                 strict, pending = search_with_unknowns(db, preferences, excluded)
                 self.assertEqual([row["listing_id"] for row in strict], ["S001"])
@@ -58,6 +58,12 @@ class PreferenceIntegrationTest(unittest.TestCase):
                 self.assertEqual([row["listing_id"] for row in search_listings(db, preferences, excluded)], ["S001"])
                 context = diagnose_conditions(db, preferences, excluded)[0]
                 self.assertEqual((context["known_fail"], context["unknown"]), (1, 1))
+        # The database requires a listed date (schema.sql), so an unreadable one is checked here.
+        posted = SearchPreferences(listed_after=date(2026, 9, 10))
+        self.assertEqual(
+            [condition_status("listed_after", {"listed_date": day}, posted) for day in ("2026-09-12", "2026-09-01", "unknown")],
+            ["pass", "fail", "unknown"],
+        )
 
     def test_facility_priorities_rank_the_actual_counts_and_explain_consistently(self):
         with closing(create_database()) as db:

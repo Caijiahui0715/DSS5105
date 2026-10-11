@@ -1,7 +1,7 @@
 import re
 import streamlit as st
 from content.en import PRODUCT, TAGLINE
-from content.i18n import t, language, language_switch, describe, value_label
+from content.i18n import t, language, language_switch, describe, value_label, lease_label
 from domain.models import RentalRequirements, RentalPreferences
 from domain.criteria import criteria_message, empty
 from state.session_store import current, start_session, faculties
@@ -12,6 +12,7 @@ from adapters.http_rental_api import criteria_options
 USERNAME = re.compile(r'[A-Za-z0-9_]{3,20}')  # the backend's rule (accounts.py)
 MIN_PASSWORD = 8
 SOFT_FIELDS = ('furnishing', 'private_bathroom', 'cooking', 'air_conditioning', 'pets', 'property_type')
+LEASE_CHOICES = [None, 6, 12, 24]
 
 
 def criteria_from_form(skip_preferences):
@@ -21,7 +22,7 @@ def criteria_from_form(skip_preferences):
     bedrooms = st.session_state.get('register-bedrooms')
     if budget is None or budget <= 0 or scope not in ('room', 'entire_unit') or bedrooms is None:
         return None
-    requirements = RentalRequirements(float(budget), scope, None if bedrooms == 'No minimum' else int(bedrooms))
+    requirements = RentalRequirements(float(budget), scope, None if bedrooms == 'No minimum' else int(bedrooms), st.session_state.get('register-lease'))
     pref = RentalPreferences(districts=[], mrt_distance=None, commute_minutes=None)
     if not skip_preferences:
         pref.districts = list(st.session_state.get('register-districts', []))
@@ -206,6 +207,9 @@ def criteria_fields(live):
                  format_func=lambda v: {'room':t('Shared accommodation / room', '合租单间'), 'entire_unit':t('Entire unit', '整租')}[v])
     st.selectbox(t('Minimum bedrooms *', '最少卧室数 *'), ['No minimum', *range(1, 21)], index=None, key='register-bedrooms',
                  placeholder=t('Choose a minimum or explicitly select No minimum', '选择数量，或明确选择“不限”'), format_func=lambda v: t('No minimum', '不限') if v == 'No minimum' else str(v))
+    if live:
+        # Adverts state the shortest lease they accept, so a short stay rules many out.
+        st.selectbox(t('Lease length you will sign', '打算签多久的租约'), LEASE_CHOICES, key='register-lease', format_func=lease_label)
     with st.expander(t('Soft preferences · Optional', '偏好 · 选填')):
         st.caption(t('Leave these blank or skip them. You can update them later in Profile.', '可以留空或跳过，以后在个人资料里修改。'))
         try:

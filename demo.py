@@ -2,11 +2,12 @@ import sys
 from contextlib import closing
 
 from langchain_openai import ChatOpenAI
+from psycopg import OperationalError
 
 from agent import build_agent
 from config import env
 from graph import build_graph
-from group_db import open_listings
+from group_db import UNAVAILABLE, open_database
 from profiles import UserProfiles
 from sessions import open_storage
 
@@ -35,10 +36,10 @@ def main() -> None:
     if not model_name:
         raise SystemExit("Set OPENAI_MODEL to a model available to your account")
 
-    # Listings first: with AGENT_DB=postgres an unreachable database stops here with a clear message.
-    listings = open_listings()
-    storage, memory = open_storage()
-    with closing(listings) as connection, closing(storage):
+    # An unreachable database stops here with what to fix.
+    database = open_database()
+    with closing(database) as connection:
+        storage, memory = open_storage(database)
         # Reasoning models such as gpt-5.x only accept function tools on the Responses API.
         model = ChatOpenAI(
             model=model_name,
@@ -79,7 +80,11 @@ def main() -> None:
                 if message.casefold() in {"exit", "quit"}:
                     break
                 if message:
-                    print(f"Agent：{reply(message)}")
+                    try:
+                        print(f"Agent：{reply(message)}")
+                    except OperationalError:
+                        # The next message connects again.
+                        print(f"Agent：{UNAVAILABLE}")
             return
 
         print(reply(message))

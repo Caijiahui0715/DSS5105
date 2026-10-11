@@ -8,7 +8,7 @@ It runs in one of two modes:
 - **With the agent backend** (default): accounts, listings, the agent's replies
   and recommendations, commute times to the user's faculty, conversations and
   favorites all come from `server.py` at the repository root, which reads the
-  group's database (or the delivery files without one).
+  project's PostgreSQL (set it up as in the root `README.md`, 第一次启动).
 - **Offline demo** (`AGENT_MODE=mock`): the original demonstration with static
   V2 files, a scripted demo Agent, demo scores and demo commute estimates. No
   backend and no real accounts. The tests run in this mode.

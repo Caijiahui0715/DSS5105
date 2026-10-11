@@ -1,8 +1,59 @@
 # DSS5105 — Singapore Rental Decision Agent
 
-第一次使用（安装、两个 `.env` 文件要填什么、启动和常见问题）见 [使用说明.md](使用说明.md)。
+## 第一次启动（给组员）
 
-## 运行
+照着下面做一遍，就能在自己电脑上跑起来。命令都在仓库根目录的 PowerShell 里执行；用 macOS 的话，把 `.\.venv\Scripts\python.exe` 换成 `.venv/bin/python`，`Copy-Item` 换成 `cp`，路径里的 `\` 换成 `/`。每个设置项的说明、怎么用和常见问题见 [使用说明.md](使用说明.md)。
+
+1. **装工具**（每台电脑一次）
+   - [Git](https://git-scm.com/downloads)。
+   - [uv](https://docs.astral.sh/uv/getting-started/installation/)：`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`，装完重开终端。项目用的 Python 3.12 由 uv 自动下载，不用另外装。
+   - [PostgreSQL](https://www.postgresql.org/download/windows/)：用安装程序装，端口用默认的 5432，记住安装时给 `postgres` 用户设的密码；最后的 Stack Builder 可以跳过。装好后它是 Windows 服务，开机自动运行。
+2. **拿代码和数据**
+   ```powershell
+   git clone <仓库地址>
+   cd DSS5105
+   ```
+   再向组里要 `output-final-delivery` 整个文件夹（最终数据，不在 Git 里），放进仓库根目录。导入数据库用其中的 `rental_data_v1.json`、`rental_data_v2.csv` 和 `removed_listings.csv`，房源详情里的原文依据来自 `source_evidence_v1.json`。
+3. **装依赖**
+   ```powershell
+   uv sync                    # 后端，装到 .venv
+   uv sync --project app      # 前端，装到 app/.venv
+   ```
+4. **填 `.env`**
+   ```powershell
+   Copy-Item .env.example .env
+   Copy-Item app\.env.example app\.env
+   ```
+   根目录的 `.env` 至少填这几行（每行一个 `KEY=value`，注释不要写在值后面）：
+   ```
+   OPENAI_API_KEY=你的 key
+   OPENAI_MODEL=支持 tool calling 的模型名
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=dss5105
+   DB_USER=postgres
+   DB_PASSWORD=装 PostgreSQL 时设的密码
+   ```
+   `DB_NAME` 随便取，下一步会自动建这个库。`app/.env` 不用改。两个 `.env` 都不提交到 Git，key 也不要贴进群聊。
+5. **准备数据库**
+   ```powershell
+   .\.venv\Scripts\python.exe .\setup_database.py
+   ```
+   它会建库、建表，导入房源和通勤时间，最后打印“完成：N 套可用房源……”。可以重复运行。
+6. **启动**：开两个终端，先启动后端，再启动前端。
+   ```powershell
+   .\.venv\Scripts\python.exe .\server.py                     # 终端 1：后端
+   uv run --project app streamlit run app/streamlit_app.py    # 终端 2：前端
+   ```
+   浏览器打开 http://localhost:8501，注册一个账号（用户名 3–20 个字母、数字或下划线，密码至少 8 位），选好学院就可以开始聊天。账号存在你自己的数据库里，组员之间不通用。
+
+**以后再用**：PostgreSQL 开机就在运行，只需要第 6 步。拉了新代码后先运行 `uv sync` 和 `uv sync --project app`；组里发了新版本的数据，就换掉 `output-final-delivery`，再运行一次 `setup_database.py`。改了 `.env` 要重启对应的程序。
+
+**以前跑过旧版本的组员**：后端现在只用 PostgreSQL。在 `.env` 里删掉 `AGENT_DB`，补上 `DB_*`，再运行一次 `setup_database.py`。旧的 `sessions.sqlite` 不再使用，账号要重新注册（演示账号也一样，`app/.env` 不用改），确认不需要后可以删除。
+
+启动失败时先看终端里的提示：后端会写明要检查什么，常见情况见 [使用说明.md](使用说明.md) 的“常见问题”。
+
+## 常用命令
 
 ```powershell
 .\.venv\Scripts\python.exe .\setup_database.py          # 首次（或数据换版本后）：建库、建表、导入房源和通勤，可以重复运行
@@ -19,7 +70,7 @@
 .\.venv\Scripts\python.exe -m unittest discover -s tests   # 需要 PostgreSQL，用 <DB_NAME>_test，见“数据和存储位置”
 ```
 
-需要 `.env` 中的 `OPENAI_API_KEY`、`OPENAI_MODEL`（模型需要支持 tool calling）和数据库连接 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_USER`、`DB_PASSWORD`。房源、账号、对话和用户同意后的长期档案都在项目的 PostgreSQL 里，见下方“数据和存储位置”。以前的 `sessions.sqlite` 不再使用，里面的账号和对话没有迁移（重新注册即可），确认不需要后可以删除。
+房源、账号、对话和用户同意后的长期档案都在项目的 PostgreSQL 里，见下方“数据和存储位置”。
 
 命令行 `demo.py` 是本机开发工具，不需要密码：`--user=NAME` 和网页版用的是同一套用户名（不区分大小写），所以在网页上注册的 alice 和 `--user=alice` 看到的是同样的对话和长期档案。只在自己电脑上用它。
 

@@ -59,12 +59,26 @@ def link_note(rec):
         st.caption(t('Original link: ', '原链接：') + note)
 
 
+
 def image(listing):
     content = source_image(listing.images[0]) if listing.images else None
     if content:
-        st.image(content, width='stretch', caption=t('Historical V1 source listing image', '历史 V1 来源图片'))
+        st.image(
+            content,
+            width=500,
+            caption=t(
+                'Historical V1 source listing image',
+                '历史 V1 来源图片'
+            )
+        )
     else:
-        st.info(t('Listing image unavailable. View the original listing for photos.', '没有图片，可以打开原链接查看。'), icon=':material/image:')
+        st.info(
+            t(
+                'Listing image unavailable. View the original listing for photos.',
+                '没有图片，可以打开原链接查看。'
+            ),
+            icon=':material/image:'
+        )
 
 def actions(listing, key):
     a,b,c = st.columns(3)

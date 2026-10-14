@@ -1,6 +1,6 @@
 import streamlit as st
 from content.i18n import t, language_switch
-from state.session_store import navigate, new_conversation, logout, live, title
+from state.session_store import navigate, new_conversation, logout, title
 
 
 def navigation(compact=False):
@@ -21,7 +21,7 @@ def open_conversation(key):
 
 def conversation_sidebar():
     with st.container(key='chat-history'):
-        if st.button(t('Hide conversation history', '收起对话记录'), icon=':material/left_panel_close:', key='close-history'):
+        if st.button(t('Hide conversation history', '收起对话记录'), icon=':material/left_panel_close:', key='close-history', width='stretch'):
             st.session_state.history_open = False
             st.rerun()
         st.markdown(t('### Your conversations', '### 你的对话'))
@@ -29,15 +29,13 @@ def conversation_sidebar():
             new_conversation()
             st.session_state.selected_listing = None
             st.rerun()
-        st.caption(t('Saved to your account', '已保存到你的账号') if live() else t('Current session', '本次会话'))
+        with st.container(key='history-heading'):
+            st.caption(t('History', '历史对话'))
+            st.divider()
         for key, conv in reversed(list(st.session_state.conversations.items())):
             if st.button(title(conv), key=f'recent-{key}', width='stretch', type='primary' if key == st.session_state.active_conversation else 'secondary'):
                 open_conversation(key)
         st.divider()
-        if live():
-            st.caption(t('Conversations and favorites stay with your account.', '对话和收藏会保存在你的账号里。'))
-        else:
-            st.caption(t('History and saved listings last for this session only.', '对话记录和收藏只在本次会话中保留。'))
         language_switch('language-sidebar')
         st.caption(st.session_state.profile['name'])
         if st.button(t('Log out', '退出登录'), icon=':material/logout:'):

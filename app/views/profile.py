@@ -43,8 +43,10 @@ def render(api):
         budget = a.number_input(t('Maximum advertised monthly budget (SGD)', '最高月租预算（新元）'),min_value=1,value=int(req.max_budget))
         scopes = ['No requirement','room','entire_unit']
         scope = b.selectbox(t('Rental scope', '租住方式'),scopes,index=scopes.index(req.rental_scope or 'No requirement'),format_func=lambda v:{'room':t('Shared accommodation / room', '合租单间'),'entire_unit':t('Entire unit', '整租')}.get(v,t('No requirement', '不限')))
-        bed_required = c.checkbox(t('Require a minimum bedroom count', '要求最少卧室数'),value=req.min_bedrooms is not None)
-        bedrooms = c.number_input(t('Minimum bedrooms', '最少卧室数'),min_value=0,max_value=20,value=req.min_bedrooms or 0)
+        bedroom_options = ['No minimum', *range(1, 21)]
+        bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), bedroom_options,
+                              index=bedroom_options.index(req.min_bedrooms or 'No minimum'),
+                              format_func=lambda v: t('No minimum', '不限') if v == 'No minimum' else str(v))
         if live():
             # The agent filters by each advert's shortest lease; a length saved in chat stays selectable.
             leases = list(dict.fromkeys([None, 6, 12, 24, req.lease_months]))
@@ -65,7 +67,7 @@ def render(api):
         submitted = save.form_submit_button(t('Save profile', '保存'),type='primary')
         canceled = cancel.form_submit_button(t('Cancel changes', '取消修改'))
     if submitted:
-        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=int(bedrooms) if bed_required else None,
+        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=None if bedrooms == 'No minimum' else int(bedrooms),
                           lease_months=lease if live() else req.lease_months)
         new_pref = replace(pref,districts=districts,mrt_distance=int(mrt) if mrt is not None else None,commute_minutes=int(commute) if commute is not None else None,property_type=property_type,**values)
         if live():

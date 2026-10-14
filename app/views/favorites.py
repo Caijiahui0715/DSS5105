@@ -30,12 +30,13 @@ def render(api):
     else:
         st.caption(t('Saved listings persist only during the active Streamlit session.', '收藏只在本次会话中保留。'))
     ids = favorite_ids()
+    # Comparison is independent of saved favorites and must remain visible without them.
+    comparison_ids = list(dict.fromkeys([*ids, *st.session_state.compare]))
+    index = {rec.listing_id: rec for rec in current()['recommendations'] or []} if live() else demo_recommendations(api, comparison_ids)
+    comparison(api,list(index.values()))
     if not ids:
         st.info(t('No saved listings yet. Save an option from the listing panel on Home.', '还没有收藏。可以在首页的房源面板里收藏。'))
         return
-    # The agent's latest results give each favorite its rank and status, where it is among them.
-    index = {rec.listing_id: rec for rec in current()['recommendations'] or []} if live() else demo_recommendations(api, ids)
-    comparison(api,list(index.values()))
     for listing_id in ids:
         saved = None if live() else st.session_state.favorites[listing_id]
         if saved:

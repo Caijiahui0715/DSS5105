@@ -50,6 +50,9 @@ button:focus-visible,a:focus-visible {outline:3px solid #107a72!important;outlin
 .st-key-global-rail button [data-testid="stIconMaterial"] {font-size:25px;}
 .st-key-chat-history {position:fixed;left:64px;top:0;bottom:0;width:240px!important;padding:24px 14px;background:#edf2f5;border-right:1px solid #dce3e9;overflow-y:auto;z-index:100;}
 .st-key-chat-history button {text-align:left;}
+.st-key-history-heading {gap:4px!important;}
+.st-key-history-heading p {margin-bottom:0!important;}
+.st-key-history-heading hr {margin:4px 0!important;}
 body:has(.st-key-chat-history) .stMainBlockContainer {padding-left:328px;}
 body:has(.st-key-chat-thread) [data-testid="stMain"] {height:100dvh;overflow:hidden;}
 .st-key-chat-header button {border:0;background:transparent;}

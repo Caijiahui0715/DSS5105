@@ -81,7 +81,6 @@ def details(listing, recommendation=None, key='detail'):
             else:
                 st.json(evidence)
     actions(listing, key)
-    st.link_button(t('View original listing', '打开原链接'), f['listingUrl'], width='stretch')
     st.caption(t('Historical source links may be unavailable or changed.', '历史来源链接可能已失效或变更。'))
 
 
@@ -124,4 +123,3 @@ def compact_details(listing, recommendation):
         if recommendation.tradeoffs:
             st.write(t('Trade-offs:', '取舍：'), ' · '.join(recommendation.tradeoffs))
         explanation()
-    st.link_button(t('View original listing', '打开原链接'), f['listingUrl'])

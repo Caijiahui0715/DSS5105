@@ -82,14 +82,15 @@ def image(listing):
 
 def actions(listing, key):
     a,b,c = st.columns(3)
-    if a.button(t('Details', '详情'), key=f'details-{key}', width='stretch'):
-        st.session_state.selected_listing = listing.id
-        st.rerun()
+    a.link_button(t('Open ↗', '打开 ↗'), listing.facts['listingUrl'], help=t('Open the original listing in a new tab', '在新标签页打开原始房源'), width='stretch')
     saved = listing.id in favorite_ids()
-    if b.button(t('Unsave', '取消收藏') if saved else t('Save', '收藏'), key=f'save-{key}', width='stretch'):
+    save_help = t('Remove this listing from Favorites', '从收藏夹移除这套房源') if saved else t('Save this listing to view it in Favorites', '收藏这套房源，可在收藏夹中查看')
+    if b.button(t('Unsave', '取消收藏') if saved else t('Save', '收藏'), key=f'save-{key}', help=save_help, width='stretch'):
         toggle_favorite(listing.id)
         st.rerun()
-    if c.button(t('Remove compare', '移出比较') if listing.id in st.session_state.compare else t('Compare', '比较'), key=f'compare-{key}', width='stretch'):
+    comparing = listing.id in st.session_state.compare
+    compare_help = t('Remove this listing from the comparison table in Favorites', '从收藏夹的对比表中移除这套房源') if comparing else t('Add to the comparison table in Favorites (up to 3 listings; no need to save first)', '加入收藏夹中的对比表（最多 3 套，无需先收藏）')
+    if c.button(t('Remove compare', '移出比较') if comparing else t('Compare', '比较'), key=f'compare-{key}', help=compare_help, width='stretch'):
         toggle_compare(listing.id)
         st.rerun()
 
@@ -123,4 +124,3 @@ def card(listing, rec, key):
             st.session_state.selected_listing = listing.id
             st.session_state.page = 'Home'
             st.rerun()
-        st.link_button(t('View original listing', '打开原链接'), f['listingUrl'])

@@ -57,6 +57,10 @@ class Storage:
         )
         return [dict(zip(("id", "title", "created_at", "updated_at"), row)) for row in rows]
 
+    def all_threads(self) -> list[tuple[str, str]]:
+        """(thread_id, user_id) of every conversation, least recently active first."""
+        return self.rows("SELECT thread_id, user_id FROM threads ORDER BY updated_at, created_at")
+
     def owns(self, user_id: str, thread_id: str) -> bool:
         return bool(self.rows("SELECT 1 FROM threads WHERE thread_id = %s AND user_id = %s", (thread_id, user_id)))
 

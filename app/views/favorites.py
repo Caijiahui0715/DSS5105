@@ -25,8 +25,8 @@ def demo_recommendations(api, ids):
 def render(api):
     st.title(t('Favorites', '收藏'))
     if live():
-        st.caption(t('Listings saved in this conversation. The agent sees them too, so you can ask it to compare them.',
-                     '这些是本对话里收藏的房源。agent 也能看到，可以让它帮你比较。'))
+        st.caption(t('Your favorites, the same in every conversation. The agent sees them too, so you can ask it to compare them; new searches leave them out and say when one still matches.',
+                     '这些是你的收藏，所有对话共用。agent 也能看到，可以让它帮你比较；新的搜索不会重复推荐它们，符合条件时会提一句。'))
     else:
         st.caption(t('Saved listings persist only during the active Streamlit session.', '收藏只在本次会话中保留。'))
     ids = favorite_ids()

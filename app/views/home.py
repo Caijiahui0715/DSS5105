@@ -3,9 +3,11 @@ import streamlit as st
 from components.navigation import conversation_sidebar
 from components.map_view import map_view
 from components.listing_details import compact_details
+from components.criteria_panel import criteria_form, drop_message, label, other_criteria
 from content.en import PROMPTS, PROMPTS_ZH
 from content.i18n import t, language, describe
-from state.session_store import current, live, waiting_for_reply, NEW_TITLE
+from domain.criteria import criteria_message
+from state.session_store import current, live, waiting_for_reply, refresh_new_conversations, NEW_TITLE
 from adapters.backend_client import SessionExpired
 from domain.models import ApiError
 
@@ -49,10 +51,77 @@ def send(message, agent, thread):
         conv['recommendations'], conv['preview'] = response.recommendations, response.preview
         st.session_state.selected_listing = response.recommendations[0].listing_id if response.recommendations else None
     if response.shortlist is not None:
-        conv['shortlist'] = response.shortlist
+        st.session_state.shortlist = response.shortlist
+    if response.criteria is not None:
+        conv['criteria'] = response.criteria
     conv['updated'] = datetime.now().isoformat(timespec='seconds')
     conv['loaded'] = True
     st.rerun()
+
+
+def ask(message):
+    """A criteria change from the panel, sent to the agent like a typed message."""
+    if message:
+        st.session_state.pending_message = message
+    else:
+        st.session_state.notice = t('Nothing changed.', '没有改动。')
+    st.rerun()
+
+
+def criteria_panel(api):
+    """This conversation's criteria above its listings. Changes go to the agent as a message and stay
+    in this conversation; saving them to the long-term profile is a separate step."""
+    conv = current()
+    # What this conversation changed that the long-term profile does not have yet, as of the last
+    # reply; shown above the panel so it is seen while the panel is closed.
+    if unsaved := conv['criteria'].get('profile_changes'):
+        names = ('、' if language() == 'zh' else ', ').join(row['label'][language()] for row in unsaved)
+        st.caption(t(f"{len(unsaved)} change{'s' if len(unsaved) > 1 else ''} not saved to your long-term profile ({names}); save it below.",
+                     f"有 {len(unsaved)} 项改动还没存到长期资料（{names}），可以在下面保存。"))
+    with st.expander(t("This conversation's criteria", '本次对话的条件'), icon=':material/tune:'):
+        st.caption(t('Changes here are sent to the agent as a message. They stay in this conversation until you save them to your long-term profile.',
+                     '这里的修改会作为一条消息发给 agent，只改这段对话；存为长期资料后，长期资料才会跟着改。'))
+        busy = waiting_for_reply(conv)
+        criteria_form(api, conv['criteria'], 'conversation', t('Send the changes to the agent', '把修改发给 agent'),
+                      lambda before, after: ask(criteria_message(before, after, language())), disabled=busy)
+        other_criteria(conv['criteria'], 'conversation', lambda item: ask(drop_message(item)), disabled=busy)
+        st.divider()
+        save_controls(conv)
+
+
+def save_controls(conv):
+    """Save this conversation's criteria to the long-term profile, after seeing what that changes."""
+    client = st.session_state.client
+    if conv['thread_id'] is None:
+        st.caption(t('Once the conversation starts, its criteria can be saved to your long-term profile.', '对话开始后，可以把它的条件存为长期资料。'))
+        return
+    key = f"profile-preview-{conv['thread_id']}"
+    if st.button(t('Save to long-term profile', '存为长期资料'), icon=':material/bookmark_add:', key='save-profile-preview'):
+        st.session_state[key] = client.profile_changes(conv['thread_id'])
+    preview = st.session_state.get(key)
+    if not preview:
+        return
+    lang = language()
+    if not preview['changes']:
+        st.info(t('Your long-term profile already has these criteria; nothing to save.', '长期资料里已经是这些条件，没有要保存的改动。'))
+        del st.session_state[key]
+        return
+    st.markdown(t('**Saving changes your long-term profile like this:**', '**保存后，长期资料会这样改：**'))
+    st.markdown('\n'.join(f"- {label(row)}{'：' if lang == 'zh' else ': '}{row['before'][lang]} → {row['after'][lang]}" for row in preview['changes']))
+    off = preview['memory'] == 'off'
+    if off:
+        st.warning(t('Long-term memory is off. Switch it on and save?', '长期记忆已关闭，要打开并保存吗？'))
+    confirm, cancel = st.columns(2)
+    if confirm.button(t('Switch on and save', '打开并保存') if off else t('Save', '确认保存'), type='primary', key='save-profile-confirm'):
+        client.save_profile(conv['thread_id'], switch_on=off)
+        del st.session_state[key]
+        conv['criteria'] = {**conv['criteria'], 'profile_changes': []}
+        refresh_new_conversations()
+        st.session_state.notice = t('Saved to your long-term profile. New conversations start from it.', '已存为长期资料，新对话会按它开始。')
+        st.rerun()
+    if cancel.button(t('Cancel', '取消'), key='save-profile-cancel'):
+        del st.session_state[key]
+        st.rerun()
 
 
 def render(api, agent):
@@ -94,6 +163,8 @@ def render(api, agent):
         elif pending := st.session_state.pop('pending_message', None):
             send(pending, agent, thread)
     with right:
+        if live():
+            criteria_panel(api)
         # The map fills its panel: 350px high with a 1px border (see streamlit_app.py).
         with st.container(height=350, border=True, key='map-panel'):
             map_view(api, key='home-map', height=348, listing_ids=eligible_ids, compact=True)

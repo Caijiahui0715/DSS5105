@@ -19,6 +19,7 @@ from tools import (
     AMENITY_FIELDS,
     _SOFT_MRT_REFERENCE_MINUTES,
     FURNISHED,
+    MAX_LEGAL_OCCUPANTS,
     TENANT_GENDER_ACCEPTS,
     _enum,
     commute,
@@ -134,7 +135,13 @@ def condition_status(
             return "fail"
         return _check(listing.get("bedrooms"), lambda bedrooms: bedrooms >= wanted)
     if field == "occupant_count":
-        return _check(listing.get("tenant_count_reported"), lambda count: count >= wanted)
+        scope = listing.get("rental_scope")
+        if scope == "entire_unit":
+            return "pass" if wanted <= MAX_LEGAL_OCCUPANTS else "unknown"
+        if scope != "room":
+            return "unknown"
+        # A room's "N pax" label may count the whole flat, so it can only rule out sharing.
+        return "pass" if wanted == 1 else "fail" if listing.get("tenant_count_reported") == 1 else "unknown"
     if field == "min_area_sqm":
         return _check(rental_area_sqm(listing), lambda area: area >= wanted)
     if field == "cooking_required":

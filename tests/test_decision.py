@@ -74,6 +74,34 @@ class DecisionTest(unittest.TestCase):
                     if property_types:
                         self.assertTrue({listing["property_type"] for listing in strict + pending} <= set(property_types))
 
+    def test_occupants_fit_a_whole_unit_up_to_the_legal_cap_and_a_room_only_alone(self):
+        def status(people, scope, pax=None):
+            listing = {"rental_scope": scope, "tenant_count_reported": pax}
+            return condition_status("occupant_count", listing, SearchPreferences(occupant_count=people))
+
+        self.assertEqual([status(people, "entire_unit") for people in (1, 3, 6, 7)], ["pass", "pass", "pass", "unknown"])
+        # A room's "N pax" label may count the whole flat, so it only rules out sharing when it says 1.
+        self.assertEqual([status(1, "room", pax) for pax in (None, 1, 8)], ["pass", "pass", "pass"])
+        self.assertEqual([status(2, "room", pax) for pax in (None, 1, 2, 8)], ["unknown", "fail", "unknown", "unknown"])
+        self.assertEqual(status(2, "unknown"), "unknown")
+
+    def test_occupant_matches_are_exactly_the_sql_search(self):
+        with closing(create_database()) as connection:
+            for people, scope in product((1, 2, 3, 7), (None, "entire_unit", "room")):
+                preferences = SearchPreferences(occupant_count=people, rental_scope=scope, max_price_sgd=6500)
+                with self.subTest(preferences=preferences):
+                    strict, pending = search_with_unknowns(connection, preferences)
+                    self.assertEqual(
+                        [listing["listing_id"] for listing in strict],
+                        [listing["listing_id"] for listing in search_listings(connection, preferences)],
+                    )
+                    if people == 3 and scope != "room":
+                        self.assertTrue(strict)
+                    if people == 2 and scope == "room":
+                        self.assertFalse(strict)
+                        self.assertTrue(pending)
+                        self.assertNotIn(1, {listing["tenant_count_reported"] for listing in pending})
+
     def test_budget_ladder_counts_each_budget_with_other_conditions_kept(self):
         preferences = SearchPreferences(max_price_sgd=1300, cooking_required=True)
         levels = [1300, *default_budget_levels(1300), None]

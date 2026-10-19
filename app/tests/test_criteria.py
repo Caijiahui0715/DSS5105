@@ -1,5 +1,5 @@
 from dataclasses import replace
-from domain.criteria import criteria_message, empty, from_backend
+from domain.criteria import criteria_message, empty, form_changes, from_backend, in_form, to_backend
 
 
 def test_saved_criteria_fill_the_form():
@@ -37,3 +37,17 @@ def test_the_lease_length_is_a_criterion():
     req, pref = shown
     assert criteria_message(shown, (replace(req, lease_months=6), pref), 'en') == 'Please update my search criteria: a 6-month lease.'
     assert criteria_message(shown, (replace(req, lease_months=None), pref), 'zh') == '请更新我的找房条件：租期不限。'
+
+
+def test_the_long_term_profile_form_sends_the_agents_criteria():
+    saved = {'max_price_sgd': 1800, 'district_code': 'D05', 'max_mrt_distance_m': 450.0, 'cooking_level': 'light',
+             'property_types': ['hdb_flat', 'condominium'], 'occupant_count': 2}
+    shown = from_backend(saved)
+    # Criteria the form shows as they are; two property types and the occupants are listed apart.
+    assert in_form(saved) == {'max_price_sgd', 'district_code', 'max_mrt_distance_m', 'cooking_level'}
+    assert to_backend(*empty())['max_price_sgd'] is None
+    req, pref = shown
+    # Only the fields changed on the form are sent, each as the agent's criteria; "any" drops one.
+    changed = (replace(req, max_budget=2000), replace(pref, districts=[], cooking='allowed'))
+    assert form_changes(shown, changed) == {'max_price_sgd': 2000, 'district_code': None, 'cooking_level': 'full', 'cooking_required': None}
+    assert form_changes(shown, shown) == {}

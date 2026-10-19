@@ -64,11 +64,13 @@ class AgentResponse:
     # None when the turn did not search, so the listing panel keeps the earlier results.
     recommendations: list[Recommendation] | None
     clarification: str | None = None
-    # From the agent backend: how the reply was made, the conversation's shortlist, and
-    # whether the listings are only a preview that left the saved criteria unchanged.
+    # From the agent backend: how the reply was made, the account's shortlist, whether the
+    # listings are only a preview that left the saved criteria unchanged, and the saved criteria as
+    # the backend sends them ({'preferences', 'sources', 'items', 'profile_changes'}).
     steps: list[str] = field(default_factory=list)
     shortlist: list[str] | None = None
     preview: bool = False
+    criteria: dict | None = None
 
 class ApiError(RuntimeError):
     """A safe, user-displayable adapter failure."""

@@ -80,10 +80,17 @@ Listing cards show the agent's rank, whether the listing meets every condition
 or needs confirmation (and which conditions the listing does not state), rent,
 MRT, the commute to the user's faculty, the advert's lease term (the shortest
 lease the landlord accepts) and the link check; there is no 0–100
-score with the backend. Favorites are the agent's shortlist for the current
-conversation, so the agent can compare them in chat; the comparison table is
-display-only. Profile changes are sent to the agent as a message listing only
-what changed; the faculty is saved to the account directly.
+score with the backend. Favorites are the agent's shortlist, kept with the account
+and shared by every conversation, so the agent can compare them in chat; the
+comparison table is display-only. Above the map, a collapsible "This
+conversation's criteria" panel shows the conversation's criteria, with where each
+came from; its changes are sent to the agent as a message listing only what
+changed, and "Save to long-term profile" saves them after showing what changes.
+Profile is the long-term profile (the criteria new conversations start from while
+long-term memory is on): the memory switch, the same criteria form saved directly,
+other saved criteria with a button to drop each, deleting the long-term profile,
+excluded listings to restore, and deleting all data. The faculty is saved to the
+account directly. `components/criteria_panel.py` is the form both pages share.
 The secondary views (Recommendations, Rental Map, Conversation History,
 Evaluation) remain in `views/` for later work but are only routed in the offline
 demo, since they use its demo scoring.

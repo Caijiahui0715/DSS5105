@@ -129,11 +129,11 @@ class ToolsTest(unittest.TestCase):
     def test_priority_changes_show_what_is_kept(self):
         self.assertEqual(
             render_preference_changes(SearchPreferences(ranking_priority="space"), {"ranking_priority": ("space", "food_places")}),
-            "已保存条件变更：排序偏好 空间大优先 → 空间大优先、餐饮点优先",
+            "已更新本次对话的条件：排序偏好 空间大优先 → 空间大优先、餐饮点优先",
         )
         self.assertEqual(
             render_preference_changes(SearchPreferences(ranking_priority="space"), {"ranking_priority": ()}, "en"),
-            "Saved preference changes: ranking priority more space → balanced",
+            "Updated this conversation's criteria: ranking priority more space → balanced",
         )
 
     def test_budget_conversion_shows_how_the_monthly_limit_was_reached(self):

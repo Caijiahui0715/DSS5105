@@ -1,13 +1,17 @@
-"""The sign-up and Profile criteria forms, against the agent's saved criteria.
+"""The criteria forms (sign-up, a conversation's criteria on Home, the long-term profile on the
+Profile page) against the agent's saved criteria.
 
-The agent keeps the criteria; the forms only suggest changes. What a form changed is sent to the
-agent as an ordinary message in the interface language, so the agent applies it like anything
-typed in the chat and the change shows in the conversation.
+In a conversation the agent keeps the criteria and the forms only suggest changes: what a form
+changed is sent to the agent as an ordinary message in the interface language, so the agent applies
+it like anything typed in the chat and the change shows in the conversation. The long-term profile is
+changed directly, with the agent's own criteria (to_backend).
 """
 from content.labels import VALUE_ZH
 from domain.models import RentalPreferences, RentalRequirements
 
 NO = 'No preference'
+# A conversation's or the long-term profile's saved criteria as the backend sends them, when there are none.
+EMPTY = {'preferences': {}, 'sources': {}, 'items': [], 'profile_changes': []}
 REQUIREMENT_FIELDS = ('max_budget', 'rental_scope', 'min_bedrooms', 'lease_months')
 PREFERENCE_FIELDS = (
     'districts', 'mrt_distance', 'commute_minutes', 'furnishing', 'private_bathroom', 'cooking', 'air_conditioning', 'pets', 'property_type',
@@ -41,6 +45,53 @@ def from_backend(saved):
         property_type=property_types[0] if len(property_types) == 1 else NO,
     )
     return requirements, preferences
+
+
+def to_backend(requirements, preferences):
+    """The forms' values as the agent's criteria (JSON values, None for any): the inverse of
+    from_backend for every criterion the forms have a field for."""
+    p = preferences
+    return {
+        'max_price_sgd': None if requirements.max_budget is None else round(requirements.max_budget),
+        'rental_scope': requirements.rental_scope,
+        'min_bedrooms': requirements.min_bedrooms,
+        'lease_months': requirements.lease_months,
+        'district_code': p.districts[0] if p.districts else None,
+        'max_mrt_distance_m': p.mrt_distance,
+        'max_commute_minutes': p.commute_minutes,
+        'furnishing_types': [p.furnishing] if p.furnishing in _FURNISHING else None,
+        'private_bathroom_required': True if p.private_bathroom == 'yes' else None,
+        'cooking_level': {value: level for level, value in _COOKING.items()}.get(p.cooking),
+        'cooking_required': None,
+        'air_conditioning_required': True if p.air_conditioning == 'yes' else None,
+        'pets_allowed_required': True if p.pets == 'allowed' else None,
+        'property_types': [p.property_type] if p.property_type != NO else None,
+    }
+
+
+# The agent's criteria behind each form field.
+FORM_FIELDS = {
+    'max_budget': ('max_price_sgd',), 'rental_scope': ('rental_scope',), 'min_bedrooms': ('min_bedrooms',),
+    'lease_months': ('lease_months',), 'districts': ('district_code',), 'mrt_distance': ('max_mrt_distance_m',),
+    'commute_minutes': ('max_commute_minutes',), 'furnishing': ('furnishing_types',),
+    'private_bathroom': ('private_bathroom_required',), 'cooking': ('cooking_level', 'cooking_required'),
+    'air_conditioning': ('air_conditioning_required',), 'pets': ('pets_allowed_required',), 'property_type': ('property_types',),
+}
+
+
+def form_changes(before, after):
+    """The agent's criteria behind the form fields that changed from before to after, each a
+    (requirements, preferences) pair: {criterion: new value, None to drop it}."""
+    old, new = _values(*before), _values(*after)
+    values = to_backend(*after)
+    return {criterion: values[criterion] for field in FORM_FIELDS if new[field] != old[field] for criterion in FORM_FIELDS[field]}
+
+
+def in_form(saved):
+    """The saved criteria (the agent's JSON values) the forms show as they are; the rest are listed
+    apart. A criterion the forms can only show approximately, such as two property types, is listed too."""
+    shown = to_backend(*from_backend(saved))
+    return {criterion for criterion, value in saved.items() if criterion in shown and shown[criterion] == value}
 
 
 def criteria_message(before, after, language, first=False):

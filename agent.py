@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal, TypedDict
+from uuid import uuid4
 
 from langchain_core.messages import (
     AIMessage,
@@ -56,13 +57,13 @@ from group_db import Database
 from models import ResponseLanguage, SearchPreferences
 from onemap import OneMapError
 from parser import PREFERENCE_GUIDANCE
-from profiles import UserProfiles
+from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
 from response import (
-    _CONDITION_LABELS,
     _availability_text,
     _check_summary_text,
     _link_status_text,
     _render_relaxations,
+    profile_change_rows,
     render_budget_check,
     render_budget_conversion,
     render_budget_ladder,
@@ -71,18 +72,26 @@ from response import (
     render_costs,
     render_decision_context,
     render_faculty_change,
+    render_kept_profile,
     render_listing_details,
     render_lease_minimum,
     render_link_checks,
     render_listing_explanation,
+    render_memory_switch,
     render_needs_confirmation,
     render_no_faculty,
+    render_occupants,
     render_preference_changes,
-    render_remembered_profile,
+    render_profile_deleted,
+    render_profile_opening,
+    render_profile_saved,
     render_rental_scope_mix,
     render_response,
     render_saved_preferences,
+    render_shortlist_matches,
     TOOL_LABELS,
+    tidy_bold,
+    unknown_condition_labels,
 )
 from tools import (
     analyze_relaxations,
@@ -203,11 +212,18 @@ Using tools
   Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
   Space ranks sizes within the same rental_scope and area_scope. Always state which area is
   advertised; floor_reported on a room listing is the whole home's size, not the room's size.
-- Present listings in the order and numbering the tools give. Saved preference changes,
+- Put in ranking_priority only what the user asks to rank by. How many people will live there
+  is occupant_count, not a wish for space.
+- The number of people (三个人住, 我和女朋友两个人) sets only occupant_count. The system then
+  picks the rental type and bedrooms itself (whole units with a bedroom each for two or more
+  people, or one room when two people chose 合租) and tells the user. Set min_bedrooms only when
+  the user gives a bedroom count, such as how many bedrooms they need in total.
+- Present listings in the order and numbering the tools give. Changes to this conversation's criteria,
   budget conversions and budget_check notes, shortlist changes, exclusions, relaxation
-  suggestions and the rental_scope_mix note (whether the shown listings are rooms or whole
-  units) are shown to the user automatically, so do not repeat them; you may ask whether the
-  user wants a whole unit or a room.
+  suggestions, the rental_scope_mix note (whether the shown listings are rooms or whole
+  units) and the note on what the number of people changed are shown to the user
+  automatically, so do not repeat them; you may ask whether the user wants a whole unit or a
+  room.
 """
 _SYSTEM_PROMPT += PREFERENCE_GUIDANCE
 # Listed from faculties.py, so the prompt stays in step with the recorded addresses.
@@ -235,21 +251,27 @@ The user's faculty (faculty tool)
   tool returns. Never estimate minutes.
 """
 _MEMORY_GUIDANCE = """
-Long-term memory (user_memory tool)
-- memory_consent says whether this user agreed to be remembered across conversations; null means
-  not decided. The system asks once after criteria are saved, at the end of that reply, so never ask
-  it yourself. When the user agrees (记住, 好的记住吧,
-  yes remember them) call user_memory with action=allow; when they refuse (不用记, no) action=decline.
-- remembered_profile holds criteria this user agreed to keep in an earlier conversation, with the
-  user's words behind each field. The system has already shown it; it may be outdated and is not
-  applied. When the user wants to reuse it (沿用, 跟上次一样, same as last time) call user_memory with
-  action=restore, then search_listings with only the changes the user asks for now.
-- 你记得我什么 or what do you remember calls action=show; 忘掉我的信息, 删除我的数据 or forget me calls
-  action=forget. Never claim to remember anything that is not in user_memory results or the state.
+Long-term profile (user_memory tool)
+- The long-term profile holds criteria the user chose to keep. While long-term memory is on, a new
+  conversation starts from it; the user can also edit it on the Profile page. memory_switch is on,
+  off (paused: kept but neither used nor changed) or undecided. Criteria changed in this
+  conversation stay in it until the user saves them; unsaved_profile_changes names those fields.
+- The system asks once whether to save, at the end of a reply, so never ask it yourself. When the
+  user agrees or asks (好的, 存吧, 存到我的资料, 记住这些条件, yes save them) call user_memory with
+  action=save; when they refuse (不用, 不要存, no) action=off.
+- While memory is off, save returns an error saying what to ask; ask exactly that, and when the user
+  agrees call save again with switch_on=true.
+- 你记得我什么, 我的长期资料是什么 or what do you remember: action=show. 沿用, 用我的长期资料, 跟上次一样 or
+  same as last time: action=restore, then search_listings with only the changes the user asks for
+  now. 打开/关闭长期记忆: on/off. 删除我的长期资料: delete. 忘掉我的信息 or forget me: forget. Deleting
+  all data, conversations included, is done on the Profile page, not here.
+- The shortlist and exclusions belong to the account, are shared by all its conversations and are
+  not part of the long-term profile.
+- Never claim to remember anything that is not in user_memory results or the state.
 """
 _MEMORY_ASK = (
-    "要我记住这些条件吗？记住后，下次开新对话时我会先问你是否沿用；随时可以说“忘掉我的信息”删除。",
-    "Should I remember these criteria? Next time you start a new conversation I will ask whether to reuse them; say \"forget my data\" at any time to delete them.",
+    "要把这些条件存到你的长期资料吗？存了以后，新对话会自动按它们开始，也可以在“个人资料”页查看和修改。",
+    "Save these criteria to your long-term profile? New conversations will then start from them, and you can see and edit them on the Profile page.",
 )
 
 _MOVE_IN_NOTE = (
@@ -294,12 +316,12 @@ class AgentState(TypedDict, total=False):
     # ISO date of the latest turn; a later date means the conversation resumed on another day.
     last_active_date: str | None
     # Long-term memory, used only with a profile store: who is talking, the user's words and date
-    # behind each saved field, the budget as stated, a profile kept from an earlier conversation
-    # that is offered but not applied yet, and whether the system already asked for consent.
+    # behind each saved field, the budget as stated, the criteria (JSON) this conversation started
+    # from or last saved to the long-term profile, and whether the system already asked to save.
     user_id: str | None
     preference_sources: dict
     budget_statement: dict | None
-    remembered_profile: dict | None
+    profile_base: dict
     memory_asked: bool
     # What the user said about the deposit and an agent, used by later cost estimates in this
     # conversation only: deposit_months, uses_agent, agent_fee_sgd.
@@ -307,7 +329,6 @@ class AgentState(TypedDict, total=False):
     # Each final reply's trace by message id, so the processing steps can be shown again later.
     reply_traces: dict
     # Reset at the start of every turn.
-    memory_dirty: bool
     tool_rounds: int
     drafts: list[str]
     notes: list[str]
@@ -390,9 +411,10 @@ class ExcludeArgs(BaseModel):
 
 
 class MemoryArgs(BaseModel):
-    """This user's criteria kept across conversations: allow or decline keeping them, show what is kept, forget it, or restore it into this conversation. Act only on the user's own request."""
+    """The user's long-term profile, the criteria new conversations start from: save the criteria this conversation changed into it, show it, restore it into this conversation, switch long-term memory on or off (nothing is deleted), delete the kept criteria, or forget them (delete and switch off). Act only on the user's own request."""
 
-    action: Literal["allow", "decline", "show", "forget", "restore"]
+    action: Literal["save", "show", "restore", "on", "off", "delete", "forget"]
+    switch_on: bool = Field(False, description="For save while long-term memory is off: true only after the user agreed to switch it on.")
     user_quote: str = Field("", description="The user's words from the latest message that ask for this; not needed for show.")
 
 
@@ -567,6 +589,8 @@ def build_agent(
             note = render_budget_check(budget_check, work["response_language"])
             if note not in work["notes"]:
                 work["notes"].append(note)
+        extra, occupant_note = occupant_rules(current, changes)
+        changes = {field: value for field, value in {**changes, **extra}.items() if getattr(current, field) != value}
         # The faculty is not one of the criteria (model_dump leaves it out), so it is carried over.
         preferences = SearchPreferences.model_validate({**current.model_dump(), **changes, "faculty": current.faculty})
         try:
@@ -583,7 +607,13 @@ def build_agent(
             )
 
         excluded = _search_exclusions(work)
-        strict, pending = search_with_unknowns(connection, preferences, excluded)
+        # Shortlisted listings are left out of the results so new ones fill them; those meeting every
+        # condition are named after the results instead.
+        strict, pending = search_with_unknowns(connection, preferences, work["excluded_listing_ids"])
+        shortlisted = work["shortlisted_listing_ids"]
+        matching = {listing["listing_id"] for listing in strict}
+        shortlisted_matches = [listing_id for listing_id in shortlisted if listing_id in matching]
+        strict, pending = ([listing for listing in found if listing["listing_id"] not in shortlisted] for found in (strict, pending))
         strict_check = validate(rank_listings(strict, preferences), result_limit=3)
         shown = checked(work, strict_check)
         # Fewer unstated conditions first; rank order is kept within each group.
@@ -616,25 +646,28 @@ def build_agent(
                     else:
                         sources[field] = {"quote": args.user_quote, "date": date.today().isoformat()}
                 work["preference_sources"] = sources
-                # Keep the budget as stated so a reused one is converted at that day's rate.
+                # Keep the budget as stated so a saved one is converted at that day's rate.
                 if args.budget:
                     work["budget_statement"] = args.budget.model_dump()
                 elif "max_price_sgd" in changes:
                     work["budget_statement"] = None
-                # New criteria supersede what an earlier conversation kept.
-                work["remembered_profile"] = None
-                work["memory_dirty"] = True
             # Same single-condition policy and URL checks as the workflow's relaxation node.
             if not shown:
                 relaxations = analyze_relaxations(connection, preferences, excluded, listing_checker)
             work["relaxations"] = relaxations
-            # Without matches to show, say what to relax; with them, whether they are rooms or whole units.
-            work["footers"] = (
-                [_render_relaxations(relaxations, language)] if not shown
-                else [render_rental_scope_mix(scope_mix, language)] if scope_mix
-                else []
-            )
-            # Ask once whether to keep the saved criteria for later conversations.
+            # Without matches to show, say what to relax, but not that nothing helps when listings to
+            # confirm are shown; with matches, whether they are rooms or whole units.
+            relaxation_note = relaxations or not pending_shown
+            work["footers"] = [
+                *([render_occupants(occupant_note, language)] if occupant_note else []),
+                *(
+                    ([_render_relaxations(relaxations, language)] if relaxation_note else []) if not shown
+                    else [render_rental_scope_mix(scope_mix, language)] if scope_mix
+                    else []
+                ),
+                *([render_shortlist_matches(shortlisted_matches, language)] if shortlisted_matches else []),
+            ]
+            # Ask once whether to save the criteria to the long-term profile.
             user_id = work.get("user_id")
             if changes and profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
                 work["footers"].append(_text(work, *_MEMORY_ASK))
@@ -707,20 +740,16 @@ def build_agent(
             },
             "decision_context": context,
             "rental_scope_mix": scope_mix,
+            "shortlisted_also_matching": shortlisted_matches,
             "relaxation_suggestions": relaxations,
             "missing_refinements": missing,
             "move_in_date_cannot_be_verified": preferences.move_in_date is not None,
         }
         # For the frontend's listing cards: the listings this search shows, in display order.
-        labels = _CONDITION_LABELS[language]
         work["recommendations"] = work["last_recommendations"] = {
             "preview": preview,
             "listings": [
-                {
-                    "status": status,
-                    **facts,
-                    "unknown_condition_labels": [labels.get(field, field) for field in facts.get("unknown_conditions", [])],
-                }
+                {"status": status, "unknown_condition_labels": [], **facts}
                 for status, part in (("match", "strict_matches"), ("needs_confirmation", "needs_confirmation"))
                 for facts in observation[part]["listings"]
             ],
@@ -820,7 +849,10 @@ def build_agent(
         ]
         saved = work["shortlisted_listing_ids"]
         if add or remove:
-            work["memory_dirty"] = True
+            # The account's shortlist, shared by its other conversations.
+            if profiles and (user_id := work.get("user_id")):
+                profiles.mark(user_id, found, SHORTLIST)
+                profiles.unmark(user_id, remove, SHORTLIST)
             removed = [listing_id for listing_id in remove if listing_id in before]
             not_found = [listing_id for listing_id in add if listing_id not in found]
             # Shown verbatim, like the workflow's shortlist replies, so a wrong pick is visible.
@@ -863,7 +895,10 @@ def build_agent(
         work["shortlisted_listing_ids"] = [
             listing_id for listing_id in work["shortlisted_listing_ids"] if listing_id not in excluded
         ]
-        work["memory_dirty"] = work["memory_dirty"] or bool(excluded or restored)
+        # The account's exclusions, shared by its other conversations.
+        if profiles and (user_id := work.get("user_id")):
+            profiles.mark(user_id, excluded, EXCLUDED)
+            profiles.unmark(user_id, restored, EXCLUDED)
         if excluded:
             work["notes"].append(_text(work, f"已排除房源 {'、'.join(excluded)}，之后的搜索不再显示（可以说“恢复 {excluded[0]}”撤销）。", f"Excluded listings {', '.join(excluded)} from later searches (say \"restore {excluded[0]}\" to undo)."))
         if restored:
@@ -877,97 +912,65 @@ def build_agent(
         if args.action != "show" and not _quotes(args.user_quote, work["message"]):
             raise ToolError("This action needs user_quote copied from the latest user message.")
         language = work["response_language"]
+        switch = profiles.consent(user_id)
         if args.action == "show":
             kept = profiles.profile(user_id)
-            work["drafts"].append(
-                render_remembered_profile(kept, language, welcome=False) if kept
-                else _text(work, "目前没有为你长期保存任何内容。", "Nothing is kept for you across conversations.")
-            )
-            return {"memory_consent": profiles.consent(user_id), "kept_profile": kept}
-        if args.action == "allow":
-            profiles.set_consent(user_id, True)
-            profiles.save(user_id, kept_profile(work))
-            work["memory_asked"] = True
-            work["notes"].append(_text(
-                work,
-                "好的，已记住当前的条件、候选和排除。下次开新对话时我会先问你是否沿用；随时可以说“忘掉我的信息”删除。",
-                "Done: your current criteria, shortlist and exclusions are kept. Next time you start a new conversation I will ask whether to reuse them; say \"forget my data\" at any time to delete them.",
-            ))
-            return {"memory_consent": True}
-        if args.action in ("decline", "forget"):
-            profiles.set_consent(user_id, False)
-            work["memory_asked"] = True
-            work["remembered_profile"] = None
-            work["notes"].append(
-                _text(work, "好的，不会保存你的条件，新对话不会带入这些内容。", "OK, your criteria will not be kept for new conversations.")
-                if args.action == "decline"
-                else _text(
-                    work,
-                    "已删除为你长期保存的条件、候选和排除，之后也不会再保存。当前这段对话的记录仍在，开新对话后不会带入。",
-                    "Deleted the criteria, shortlist and exclusions kept for you, and nothing more will be kept. This conversation's own record remains; new conversations will not include it.",
+            work["drafts"].append(render_kept_profile(kept, switch, language))
+            return {"memory_switch": memory_switch(switch), "kept_profile": kept, "unsaved_profile_changes": list(profile_changes(work))}
+        work["memory_asked"] = True
+        if args.action == "save":
+            if switch is False and not args.switch_on:
+                raise ToolError(
+                    "Long-term memory is switched off, so nothing was saved. Ask the user exactly this: "
+                    + _text(work, "长期记忆已关闭，要打开并保存吗？", "Long-term memory is off. Switch it on and save?")
+                    + " If they agree, call save again with switch_on=true."
                 )
-            )
-            return {"memory_consent": False, "deleted": args.action == "forget"}
+            if args.switch_on:
+                profiles.set_consent(user_id, True)
+            rows, work["profile_base"] = save_to_profile(profiles, user_id, work)
+            now = profiles.consent(user_id)
+            work["notes"].append(render_profile_saved(rows, now and switch is not True, language))
+            return {"memory_switch": memory_switch(now), "saved_changes": [row["field"] for row in rows]}
+        if args.action in ("on", "off"):
+            profiles.set_consent(user_id, args.action == "on")
+            work["notes"].append(render_memory_switch(args.action == "on", bool(profiles.profile(user_id)), language))
+            return {"memory_switch": args.action}
+        if args.action in ("delete", "forget"):
+            (profiles.forget if args.action == "forget" else profiles.delete_profile)(user_id)
+            # Nothing is kept now, so saving later keeps every criterion this conversation has.
+            work["profile_base"] = {}
+            switch = False if args.action == "forget" else switch
+            work["notes"].append(render_profile_deleted(memory_switch(switch), language))
+            return {"memory_switch": memory_switch(switch), "deleted": True}
 
-        kept = profiles.profile(user_id)
+        kept = profiles.active_profile(user_id)
         if not kept:
-            raise ToolError("Nothing is kept for this user; tell the user and ask for their criteria.")
+            raise ToolError(
+                "Long-term memory is switched off, so its criteria are not used. Ask whether to switch it on (action=on) first."
+                if switch is False and profiles.profile(user_id)
+                else "Nothing is kept for this user; tell the user and ask for their criteria."
+            )
         current = work["preferences"]
-        restored = SearchPreferences.model_validate({**kept.get("preferences", {}), "faculty": current.faculty})
-        budget, conversion = kept.get("budget"), None
-        if budget:
-            # Work the monthly limit out again at today's rate; keep the saved one if that fails.
-            amount = budget["amount"]
-            try:
-                if budget["currency"] != "SGD":
-                    _progress("正在换算汇率", "Converting the currency")
-                    conversion = convert_to_sgd(amount, budget["currency"])
-                    amount = conversion["amount_sgd"]
-                months = budget.get("months", 1)
-                if months > 1:
-                    conversion = {
-                        **(conversion or {"original_amount": amount, "original_currency": "SGD", "amount_sgd": amount}),
-                        "months": months,
-                        "monthly_sgd": amount // months,
-                    }
-                    amount //= months
-                restored = restored.model_copy(update={"max_price_sgd": amount})
-            except (CurrencyConversionError, ValueError):
-                work["notes"].append(_text(
-                    work,
-                    f"汇率服务暂时不可用，先沿用上次换算的月租上限 S${restored.max_price_sgd:,}。",
-                    f"The exchange-rate service is unavailable, so the monthly limit from last time, S${restored.max_price_sgd:,}, is used.",
-                ))
+        restored, conversion, rate_failed = profile_criteria(kept, current.faculty)
         changes = {
             field: getattr(restored, field)
             for field in SearchPreferences.model_fields
             if getattr(restored, field) != getattr(current, field)
         }
-        kept_ids = kept.get("shortlisted_listing_ids", [])
-        present = [listing["listing_id"] for listing in get_listings_by_ids(connection, kept_ids)]
-        gone = [listing_id for listing_id in kept_ids if listing_id not in present]
         work["preferences"] = restored
-        work["shortlisted_listing_ids"] = list(dict.fromkeys([*work["shortlisted_listing_ids"], *present]))
-        work["excluded_listing_ids"] = list(dict.fromkeys([*work["excluded_listing_ids"], *kept.get("excluded_listing_ids", [])]))
         work["preference_sources"] = kept.get("sources", {})
-        work["budget_statement"] = budget
-        work["remembered_profile"] = None
+        work["budget_statement"] = kept.get("budget")
+        work["profile_base"] = restored.model_dump(mode="json", exclude_defaults=True)
         work["relaxations"], work["last_search"] = [], None
-        work["memory_dirty"] = True
         if changes:
             work["notes"].append(render_preference_changes(current, changes, language))
         if conversion:
             work["notes"].append(render_budget_conversion(conversion, language))
-        work["notes"].append(_text(
-            work,
-            f"已沿用上次的候选清单：{'、'.join(present) or '空'}" + (f"；{'、'.join(gone)} 已不在当前房源数据中，未恢复。" if gone else "。"),
-            f"Restored last time's shortlist: {', '.join(present) or 'empty'}" + (f"; {', '.join(gone)} no longer in the listing data and not restored." if gone else "."),
-        ))
+        if rate_failed:
+            work["notes"].append(_rate_unavailable(restored, language))
         return {
-            "restored_preferences": restored.model_dump(mode="json", exclude_defaults=True),
+            "restored_preferences": work["profile_base"],
             "budget_conversion": conversion,
-            "shortlist": work["shortlisted_listing_ids"],
-            "not_restored_delisted": gone,
             "next_step": "Call search_listings with only the changes the user asks for now to show listings.",
         }
 
@@ -1095,8 +1098,6 @@ def build_agent(
             }
             # Suggestions and counts from the last search rest on the old criteria.
             work["relaxations"], work["last_search"] = [], None
-            work["remembered_profile"] = None
-            work["memory_dirty"] = True
             user_id = work.get("user_id")
             if profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
                 work["footers"].append(_text(work, *_MEMORY_ASK))
@@ -1180,8 +1181,8 @@ def build_agent(
 
         memory = (
             {
-                "memory_consent": profiles.consent(state["user_id"]),
-                "remembered_profile": state.get("remembered_profile"),
+                "memory_switch": memory_switch(profiles.consent(state["user_id"])),
+                "unsaved_profile_changes": list(profile_changes(state)),
                 "faculty": preferences.faculty,
             }
             if profiles and state.get("user_id")
@@ -1215,11 +1216,18 @@ def build_agent(
         preferences = preferences.model_copy(update={"faculty": profiles.faculty(user_id) if profiles and user_id else None})
         today = date.today()
         notes, trace = [], []
-        # A saved conversation can outlive a data refresh that delisted shortlisted listings.
-        shortlisted = state.get("shortlisted_listing_ids", [])
+        # A signed-in user's shortlist and exclusions belong to the account, so a change made in
+        # another conversation or on the web page shows here too.
+        shortlisted, excluded = (
+            profiles.listings(user_id) if profiles and user_id
+            else (state.get("shortlisted_listing_ids", []), state.get("excluded_listing_ids", []))
+        )
+        # A shortlist can outlive a data refresh that delisted some of its listings.
         known = {listing["listing_id"] for listing in get_listings_by_ids(connection, shortlisted)}
         gone = [listing_id for listing_id in shortlisted if listing_id not in known]
         if gone:
+            if profiles and user_id:
+                profiles.unmark(user_id, gone, SHORTLIST)
             notes.append(_text(
                 turn,
                 f"候选清单里的 {'、'.join(gone)} 已不在当前房源数据中（可能已下架），已从候选清单移除。",
@@ -1237,31 +1245,21 @@ def build_agent(
                     f"你之前填写的入住日期 {preferences.move_in_date.isoformat()} 已经过去，如需更新请告诉我。",
                     f"The move-in date you gave, {preferences.move_in_date.isoformat()}, has passed; tell me if it changed.",
                 ))
-        # A new conversation of a user who agreed to be remembered opens with what was kept.
-        remembered = state.get("remembered_profile")
-        if profiles and user_id and not state.get("messages"):
-            remembered = profiles.profile(user_id)
-            if remembered:
-                kept = remembered.get("shortlisted_listing_ids", [])
-                present = {listing["listing_id"] for listing in get_listings_by_ids(connection, kept)}
-                notes.append(render_remembered_profile(remembered, language, gone=[i for i in kept if i not in present]))
-                trace.append(f"[memory] offered the profile kept on {remembered.get('saved_on')}")
         return {
             "messages": [HumanMessage(content=state["message"])],
             "response_language": language,
             "preferences": preferences,
             "shown_listing_ids": state.get("shown_listing_ids", []),
             "shortlisted_listing_ids": [listing_id for listing_id in shortlisted if listing_id in known],
-            "excluded_listing_ids": state.get("excluded_listing_ids", []),
+            "excluded_listing_ids": excluded,
             "relaxations": [] if new_day else state.get("relaxations", []),
             "last_search": None if new_day else state.get("last_search"),
             "last_active_date": today.isoformat(),
             "preference_sources": state.get("preference_sources", {}),
             "budget_statement": state.get("budget_statement"),
-            "remembered_profile": remembered,
+            "profile_base": state.get("profile_base", {}),
             "memory_asked": state.get("memory_asked", False),
             "cost_assumptions": state.get("cost_assumptions", {}),
-            "memory_dirty": False,
             "tool_rounds": 0,
             "drafts": [],
             "notes": notes,
@@ -1318,10 +1316,9 @@ def build_agent(
                 "user_id",
                 "preference_sources",
                 "budget_statement",
-                "remembered_profile",
+                "profile_base",
                 "memory_asked",
                 "cost_assumptions",
-                "memory_dirty",
                 "drafts",
                 "notes",
                 "footers",
@@ -1373,9 +1370,9 @@ def build_agent(
             json.dumps(snapshot(state), ensure_ascii=False, default=str),
         ]
         problems = _reply_problems(reply, sources, language) if reply.strip() else []
-        # The system's question about remembering the criteria ends this reply; the model asking too repeats it.
-        if reply.strip() and _text(state, *_MEMORY_ASK) in state["footers"] and re.search(r"remember|记住", reply, re.IGNORECASE):
-            problems.append("it asks whether to remember the criteria, which the system already asks at the end of the reply")
+        # The system's question about saving the criteria ends this reply; the model asking too repeats it.
+        if reply.strip() and _text(state, *_MEMORY_ASK) in state["footers"] and re.search(r"remember|long-term profile|记住|长期资料", reply, re.IGNORECASE):
+            problems.append("it asks whether to save the criteria to the long-term profile, which the system already asks at the end of the reply")
         trace = list(state["trace"])
         retried = any(isinstance(message, SystemMessage) for message in messages[_turn_start(messages):])
         if problems and not retried:
@@ -1388,12 +1385,6 @@ def build_agent(
             return {"messages": [RemoveMessage(id=last.id), SystemMessage(content=feedback)], "trace": trace}
         if problems:
             trace.append(f"[guard] reply rejected ({'; '.join(problems)}) -> fallback")
-        # Keep this turn's changes for later conversations, only with consent. While an earlier
-        # profile is offered but not reused or replaced, it is left as it was.
-        user_id = state.get("user_id")
-        if profiles and user_id and state.get("memory_dirty") and not state.get("remembered_profile"):
-            if profiles.save(user_id, kept_profile(state)):
-                trace.append("[memory] kept this conversation's criteria for later conversations")
         footers = list(state["footers"])
         if problems or not reply.strip():
             # Drafts already carry each unverified link's reason in their data notes.
@@ -1403,7 +1394,7 @@ def build_agent(
             unverified = [check for check in latest.values() if check["status"] == "unknown"]
             if unverified:
                 footers.append(render_link_checks(unverified, language))
-        response = "\n\n".join([*state["notes"], reply.strip(), *footers])
+        response = tidy_bold("\n\n".join([*state["notes"], reply.strip(), *footers]))
         return {
             "response": response,
             "trace": trace,
@@ -1452,17 +1443,96 @@ def _progress(zh: str, en: str) -> None:
         pass  # Outside a graph run.
 
 
-def kept_profile(state) -> dict:
-    """What long-term memory keeps: saved criteria with their sources, never conversation text."""
+def memory_switch(consent: bool | None) -> str:
+    """The long-term memory switch as the state and the web page name it."""
+    return "undecided" if consent is None else "on" if consent else "off"
+
+
+def profile_changes(values) -> dict:
+    """The criteria (JSON values) a conversation changed from the long-term ones it started from or
+    last saved, None for a dropped one."""
+    now = values["preferences"].model_dump(mode="json", exclude_defaults=True)
+    base = values.get("profile_base") or {}
+    return {field: now.get(field) for field in SearchPreferences.model_fields if now.get(field) != base.get(field)}
+
+
+def profile_update(profiles: UserProfiles, user_id: str, values) -> tuple[dict, list[dict]]:
+    """The user's long-term profile with what a conversation changed, each criterion with the user's
+    words behind it (what the other conversations and the Profile page changed stays), and the rows
+    saying what that changes in it."""
+    kept = profiles.profile(user_id)
+    updated = merged(kept, profile_changes(values), values.get("preference_sources") or {}, values.get("budget_statement"))
+    return updated, profile_change_rows((kept or {}).get("preferences", {}), updated["preferences"])
+
+
+def save_to_profile(profiles: UserProfiles, user_id: str, values) -> tuple[list[dict], dict]:
+    """Save what a conversation changed into the long-term profile: (the rows saying what changed in
+    it, the conversation's new profile_base)."""
+    updated, rows = profile_update(profiles, user_id, values)
+    # Saving nothing does not switch memory on.
+    if profile_changes(values):
+        profiles.save(user_id, updated)
+    return rows, values["preferences"].model_dump(mode="json", exclude_defaults=True)
+
+
+def profile_criteria(kept: dict, faculty: str | None) -> tuple[SearchPreferences, dict | None, bool]:
+    """Kept criteria as a conversation's preferences: (preferences, the budget conversion, whether the
+    rate was unavailable). A budget stated in another currency or over several months is worked out
+    again at today's rate; when that fails the monthly limit saved last time stays."""
+    restored = SearchPreferences.model_validate({**kept.get("preferences", {}), "faculty": faculty})
+    budget, conversion = kept.get("budget"), None
+    if not budget:
+        return restored, None, False
+    amount = budget["amount"]
+    try:
+        if budget["currency"] != "SGD":
+            _progress("正在换算汇率", "Converting the currency")
+            conversion = convert_to_sgd(amount, budget["currency"])
+            amount = conversion["amount_sgd"]
+    except (CurrencyConversionError, ValueError):
+        return restored, None, True
+    months = budget.get("months", 1)
+    if months > 1:
+        conversion = {
+            **(conversion or {"original_amount": amount, "original_currency": "SGD", "amount_sgd": amount}),
+            "months": months,
+            "monthly_sgd": amount // months,
+        }
+        amount //= months
+    return restored.model_copy(update={"max_price_sgd": amount}), conversion, False
+
+
+def opening_state(profiles: UserProfiles, user_id: str, language: ResponseLanguage) -> dict | None:
+    """A new conversation's starting state while long-term memory is on: the kept criteria applied,
+    with a message saying so. None when nothing is kept or memory is not on."""
+    kept = profiles.active_profile(user_id)
+    if not kept or not kept.get("preferences"):
+        return None
+    preferences, conversion, rate_failed = profile_criteria(kept, profiles.faculty(user_id))
+    parts = [render_profile_opening(preferences.model_dump(mode="json", exclude_defaults=True), language)]
+    if conversion:
+        parts.append(render_budget_conversion(conversion, language))
+    if rate_failed:
+        parts.append(_rate_unavailable(preferences, language))
+    message = AIMessage(content="\n\n".join(parts), id=f"opening-{uuid4().hex}")
     return {
-        "preferences": state["preferences"].model_dump(mode="json", exclude_defaults=True),
-        "budget": state.get("budget_statement"),
-        "sources": state.get("preference_sources") or {},
-        "shortlisted_listing_ids": state.get("shortlisted_listing_ids", []),
-        "excluded_listing_ids": state.get("excluded_listing_ids", []),
-        "response_language": state.get("response_language"),
-        "saved_on": date.today().isoformat(),
+        "messages": [message],
+        "response_language": language,
+        "preferences": preferences,
+        "preference_sources": kept.get("sources", {}),
+        "budget_statement": kept.get("budget"),
+        "profile_base": preferences.model_dump(mode="json", exclude_defaults=True),
+        # Shown like a reply's steps under the opening message.
+        "reply_traces": {message.id: [f"[memory] started from the long-term profile saved on {kept.get('saved_on')}"]},
     }
+
+
+def _rate_unavailable(preferences: SearchPreferences, language: ResponseLanguage) -> str:
+    return _text(
+        {"response_language": language},
+        f"汇率服务暂时不可用，先沿用上次换算的月租上限 S${preferences.max_price_sgd:,}。",
+        f"The exchange-rate service is unavailable, so the monthly limit from last time, S${preferences.max_price_sgd:,}, is used.",
+    )
 
 
 def _tool_spec(name: str, schema: type[BaseModel]) -> dict:
@@ -1504,6 +1574,7 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
             key: value for key, value in extract_restrictions(listing).items() if value != "unknown"
         },
         "unknown_conditions": listing.get("unknown_conditions"),
+        "unknown_condition_labels": unknown_condition_labels(listing, language),
         "warnings": item.get("warnings"),
         "rank_value": item.get("rank_value"),
     }
@@ -1519,6 +1590,41 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
         distance = location_distance_m(listing, preferences.nearby_location)
         facts["distance_to_reference_m"] = round(distance, 1) if distance is not None else None
     return {key: value for key, value in facts.items() if value not in (None, [], {})}
+
+
+def occupant_rules(current: SearchPreferences, changes: dict) -> tuple[dict, dict | None]:
+    """Further changes and the note to show when the number of people or the rental type changes.
+
+    The system cannot find several rooms in one home, so two or more people search whole units
+    with a bedroom each, unless two chose to rent one room together. Bedrooms equal to the
+    earlier number of people count as set from it and follow it, or go when it drops below two.
+    """
+    if not {"occupant_count", "rental_scope"} & changes.keys():
+        return {}, None
+    before = current.occupant_count
+    people = changes.get("occupant_count", before)
+    scope = changes.get("rental_scope", current.rental_scope)
+    bedrooms = current.min_bedrooms
+    followed = before is not None and before >= 2 and bedrooms == before
+    own_bedrooms = "min_bedrooms" in changes
+    if people is not None and (people >= 3 or (people == 2 and scope != "room")):
+        extra = {"rental_scope": "entire_unit"}
+        if not own_bedrooms and (followed or bedrooms is None or bedrooms < people):
+            extra["min_bedrooms"] = people
+        set_bedrooms = extra.get("min_bedrooms") not in (None, bedrooms)
+        note = {
+            "kind": "whole_unit",
+            "from_room": scope == "room",
+            "bedrooms": set_bedrooms and people,
+            "earlier_bedrooms": set_bedrooms and not followed and bedrooms,
+        }
+        return extra, note if note["from_room"] or note["bedrooms"] else None
+    extra = {"min_bedrooms": None} if followed and not own_bedrooms else {}
+    if people == 2:
+        return extra, {"kind": "shared_room"}
+    if extra and scope == "entire_unit":
+        return extra, {"kind": "one_person", "people": people}
+    return extra, None
 
 
 def _clean_ids(listing_ids: list[str]) -> list[str]:

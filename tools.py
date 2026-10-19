@@ -36,6 +36,9 @@ TENANT_GENDER_ACCEPTS = {
     "mixed": ("no_restriction",),
 }
 FURNISHED = ("fully_furnished", "partially_furnished", "furnished_unspecified")
+# Unrelated people any whole unit may be let to: the lowest standing cap for private homes and
+# HDB flats of three rooms or more (URA / HDB). Listings rarely state their own limit.
+MAX_LEGAL_OCCUPANTS = 6
 _LARGE_AREA_REVIEW_THRESHOLD_SQM = 10_000 * 0.09290304
 _IGNORED_REVIEW_FLAGS = {
     "same_address_different_ids",
@@ -260,12 +263,19 @@ def search_listings(
         ),
         ("bedrooms >= %s AND rental_scope <> 'room'", preferences.min_bedrooms),
         ("area_sqm >= %s AND space_rank IS NOT NULL", preferences.min_area_sqm),
-        ("tenant_count_reported >= %s", preferences.occupant_count),
     )
     for clause, value in filters:
         if value is not None:
             clauses.append(clause)
             params.append(value)
+    # Occupants meet a whole unit up to the legal cap, and a room only for one person: a room's
+    # "N pax" label may count the whole flat (decision.condition_status).
+    if (people := preferences.occupant_count) is not None:
+        clauses.append(
+            "rental_scope IN ('entire_unit', 'room')" if people == 1
+            else "rental_scope = 'entire_unit'" if people <= MAX_LEGAL_OCCUPANTS
+            else "FALSE"
+        )
 
     excluded_listing_ids = list(dict.fromkeys(excluded_listing_ids or []))
     if excluded_listing_ids:

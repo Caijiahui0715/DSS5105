@@ -74,8 +74,10 @@ class FrontendClientTest(unittest.TestCase):
 
         self.assertTrue(conversation["thread_id"])
         self.assertIn("Understanding your request", progress)
-        self.assertIn("Should I remember these criteria?", response.text)
+        self.assertIn("Save these criteria to your long-term profile?", response.text)
         self.assertEqual(response.requirements.max_budget, 1300)
+        self.assertEqual(response.criteria["preferences"], {"max_price_sgd": 1300})
+        self.assertEqual(response.criteria["items"][0]["field"], "max_price_sgd")
         self.assertTrue(response.recommendations)
         first = response.recommendations[0]
         self.assertEqual((first.rank, first.score, first.is_demo_score), (1, None, False))
@@ -83,17 +85,31 @@ class FrontendClientTest(unittest.TestCase):
         self.assertEqual(first.facts["listing_id"], first.listing_id)
 
         thread_id = conversation["thread_id"]
-        self.assertEqual(self.client.shortlist_add(thread_id, first.listing_id), [first.listing_id])
+        self.assertEqual(self.client.shortlist_add(first.listing_id), {"shortlist": [first.listing_id], "excluded": []})
         snapshot = self.client.conversation(thread_id)
         self.assertEqual(from_backend(snapshot["preferences"])[0].max_budget, 1300)
         self.assertEqual([rec.listing_id for rec in recommendations(snapshot["recommendations"])], [rec.listing_id for rec in response.recommendations])
         self.assertEqual(snapshot["shortlist"], [first.listing_id])
         self.assertEqual([message["role"] for message in self.client.messages(thread_id)], ["user", "assistant"])
         self.assertEqual([thread["id"] for thread in self.client.conversations()], [thread_id])
-        self.assertEqual(self.client.shortlist_remove(thread_id, first.listing_id), [])
+        self.assertEqual(self.client.shortlist_remove(first.listing_id)["shortlist"], [])
+        self.assertEqual(self.client.my_listings(), {"shortlist": [], "excluded": []})
         self.assertIsNone(self.client.set_faculty(None)["faculty"])
 
-        self.client.sign_out()
+        # The long-term profile: save this conversation's criteria after seeing what changes.
+        self.assertEqual([row["field"] for row in self.client.profile_changes(thread_id)["changes"]], ["max_price_sgd"])
+        saved = self.client.save_profile(thread_id)
+        self.assertEqual((saved["profile"]["memory"], saved["profile"]["preferences"]), ("on", {"max_price_sgd": 1300}))
+        edited = self.client.edit_profile({"max_price_sgd": 1500, "district_code": "D05"})
+        self.assertEqual(edited["preferences"], {"max_price_sgd": 1500, "district_code": "D05"})
+        self.assertEqual(self.client.set_memory(False)["memory"], "off")
+        self.assertIsNone(self.client.profile()["opening"])
+        self.client.set_memory(True)
+        started = self.client.new_conversation("en")
+        self.assertEqual(self.client.conversation(started)["preferences"], {"max_price_sgd": 1500, "district_code": "D05"})
+        self.assertEqual(self.client.delete_profile()["preferences"], {})
+
+        self.client.delete_my_data()
         with self.assertRaises(SessionExpired):
             BackendClient(BASE, account["token"], opener=self.open).me()
 

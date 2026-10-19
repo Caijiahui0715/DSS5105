@@ -11,10 +11,11 @@ class HttpAgentApi:
         self.client = client
 
     def respond(self, conversation, message, language, progress=lambda text: None):
-        """One turn in a conversation; creates it on the backend at its first message.
-        progress(text) is called with each progress line while the agent works."""
+        """One turn in a conversation; creates it on the backend at its first message, starting from
+        the long-term profile while memory is on. progress(text) is called with each progress line
+        while the agent works."""
         if conversation.get('thread_id') is None:
-            conversation['thread_id'] = self.client.new_conversation()
+            conversation['thread_id'] = self.client.new_conversation(language)
         reply = None
         for event, data in self.client.send(conversation['thread_id'], message, language):
             if event == 'progress':
@@ -30,6 +31,7 @@ class HttpAgentApi:
         return AgentResponse(
             reply['text'], requirements, preferences, recommendations(found), steps=reply.get('steps') or [],
             shortlist=reply.get('shortlist'), preview=bool(found and found.get('preview')),
+            criteria={key: reply.get(key) or empty for key, empty in (('preferences', {}), ('sources', {}), ('items', []), ('profile_changes', []))},
         )
 
 

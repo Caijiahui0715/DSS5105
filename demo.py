@@ -4,7 +4,7 @@ from contextlib import closing
 from langchain_openai import ChatOpenAI
 from psycopg import OperationalError
 
-from agent import build_agent
+from agent import build_agent, opening_state
 from config import env
 from graph import build_graph
 from group_db import UNAVAILABLE, open_database
@@ -48,18 +48,23 @@ def main() -> None:
         )
         workflow = "--workflow" in flags
         # Long-term memory is an agent feature; the workflow baseline stays as it was.
+        profiles = UserProfiles(storage)
         graph = (
             build_graph(connection, model, memory)
             if workflow
-            else build_agent(connection, model, memory, profiles=UserProfiles(storage))
+            else build_agent(connection, model, memory, profiles=profiles)
         )
         # The workflow keeps separate threads: its state has a different shape from the agent's.
         session_user = f"{user}@workflow" if workflow else user
         thread_id = None if "--new" in flags else storage.latest_thread(session_user)
         if thread_id:
             print(f"继续 {user} 上次的对话（{thread_id}）；加 --new 可以开始新对话。")
-        thread_id = thread_id or storage.new_thread(session_user)
-        config = {"configurable": {"thread_id": thread_id}}
+        config = {"configurable": {"thread_id": thread_id or storage.new_thread(session_user)}}
+        # A new conversation starts from the long-term profile while memory is on, as on the web page.
+        if not thread_id and not workflow and (opening := opening_state(profiles, user, "zh")):
+            graph.update_state(config, opening, as_node="finalize")
+            print(f"Agent：{opening['messages'][0].content}")
+        thread_id = config["configurable"]["thread_id"]
         user_input = {} if workflow else {"user_id": user}
 
         def reply(text: str) -> str:

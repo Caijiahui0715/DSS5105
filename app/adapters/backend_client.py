@@ -86,24 +86,59 @@ class BackendClient:
     def conversations(self):
         return self._json('GET', '/api/conversations')
 
-    def new_conversation(self):
-        return self._json('POST', '/api/conversations', {})['id']
+    def new_conversation(self, language=None):
+        """A new conversation; while long-term memory is on it starts from the kept criteria, with a
+        first message in language ('zh' or 'en')."""
+        return self._json('POST', '/api/conversations', {'language': language} if language else {})['id']
 
     def conversation(self, thread_id):
-        """The saved criteria, the latest search's listings and the shortlist."""
+        """The saved criteria (preferences, sources, items), the latest search's listings and the account's shortlist."""
         return self._json('GET', f'/api/conversations/{quote(thread_id, safe="")}')
 
     def messages(self, thread_id):
         return self._json('GET', f'/api/conversations/{quote(thread_id, safe="")}/messages')
 
-    # A shortlist change waits for a reply the agent is still writing in the same conversation.
-    def shortlist_add(self, thread_id, listing_id):
-        path = f'/api/conversations/{quote(thread_id, safe="")}/shortlist'
-        return self._json('POST', path, {'listing_id': listing_id}, TURN_TIMEOUT_SECONDS)['shortlist']
+    # The long-term profile: the criteria new conversations start from while memory is on.
+    def profile(self):
+        """{memory: on/off/undecided, saved_on, preferences, sources, budget, items, opening}."""
+        return self._json('GET', '/api/me/profile')
 
-    def shortlist_remove(self, thread_id, listing_id):
-        path = f'/api/conversations/{quote(thread_id, safe="")}/shortlist/{quote(listing_id, safe="")}'
-        return self._json('DELETE', path, timeout=TURN_TIMEOUT_SECONDS)['shortlist']
+    def edit_profile(self, changes):
+        """changes: the agent's criteria to change, each to its new value or None to drop it."""
+        return self._json('PUT', '/api/me/profile', {'changes': changes})
+
+    def set_memory(self, on):
+        return self._json('PUT', '/api/me/memory', {'on': on})
+
+    def delete_profile(self):
+        return self._json('DELETE', '/api/me/profile')
+
+    def profile_changes(self, thread_id):
+        """What saving this conversation's criteria would change in the long-term profile."""
+        return self._json('GET', f'/api/conversations/{quote(thread_id, safe="")}/profile')
+
+    # Saving waits for a reply the agent is still writing in the same conversation.
+    def save_profile(self, thread_id, switch_on=False):
+        path = f'/api/conversations/{quote(thread_id, safe="")}/profile'
+        return self._json('POST', path, {'switch_on': switch_on}, TURN_TIMEOUT_SECONDS)
+
+    # The account's shortlist and exclusions, shared by all its conversations: {shortlist, excluded}.
+    def my_listings(self):
+        return self._json('GET', '/api/me/listings')
+
+    def shortlist_add(self, listing_id):
+        return self._json('POST', '/api/me/shortlist', {'listing_id': listing_id})
+
+    def shortlist_remove(self, listing_id):
+        return self._json('DELETE', f'/api/me/shortlist/{quote(listing_id, safe="")}')
+
+    def restore(self, listing_id):
+        """Searches show an excluded listing again."""
+        return self._json('DELETE', f'/api/me/excluded/{quote(listing_id, safe="")}')
+
+    def delete_my_data(self):
+        """Every conversation, the long-term profile, listings and the faculty; signs out everywhere."""
+        return self._json('DELETE', '/api/me/data')
 
     def send(self, thread_id, message, language):
         """Yields (event, data) pairs: 'progress' {'zh', 'en'}, then 'reply' or 'error'."""

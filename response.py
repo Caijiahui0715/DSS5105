@@ -232,6 +232,41 @@ for language, index in (("zh", 0), ("en", 1)):
     })
 
 
+_EDGE_PUNCTUATION = "：:，,。.；;！!？?、…）)」』】”’（(「『【“‘"
+_BOLD = re.compile(r"\*\*([^*\n]+?)\*\*")
+
+
+def tidy_bold(text: str) -> str:
+    """Move punctuation at the edges of bold text outside the asterisks: Markdown shows
+    **主要取舍：**第1套 with literal asterisks, because ** after punctuation and before a
+    character does not close the bold."""
+
+    def outside(match: re.Match) -> str:
+        inner = match.group(1)
+        core = inner.strip(_EDGE_PUNCTUATION)
+        if not core.strip():
+            return match.group(0)
+        start = inner.index(core)
+        return f"{inner[:start]}**{core}**{inner[start + len(core):]}"
+
+    return _BOLD.sub(outside, text)
+
+
+def unknown_condition_labels(listing: Listing, language: ResponseLanguage) -> list[str]:
+    """What to confirm for a needs-confirmation listing; a room's "N pax" label is only a clue."""
+    labels = []
+    for field in listing.get("unknown_conditions") or []:
+        label = _CONDITION_LABELS[language].get(field, field)
+        if field == "occupant_count" and (pax := listing.get("tenant_count_reported")):
+            label = _text(
+                language,
+                f"{label}（广告标注 {pax} pax，能住几个人要问房东）",
+                f"{label} (the ad says {pax} pax; ask the landlord how many can live there)",
+            )
+        labels.append(label)
+    return labels
+
+
 def render_response(
     ranked_listings: list[RankingResult] | None = None,
     restrictions: dict[str, RestrictionSummary] | None = None,
@@ -326,9 +361,7 @@ def render_response(
             )
         if listing.get("unknown_conditions"):
             separator = "、" if language == "zh" else ", "
-            unstated = separator.join(
-                _CONDITION_LABELS[language][field] for field in listing["unknown_conditions"]
-            )
+            unstated = separator.join(unknown_condition_labels(listing, language))
             lines.append(_text(language, f"   需确认（数据未注明）：{unstated}", f"   To confirm (not stated): {unstated}"))
         if item.get("warnings"):
             lines.append(
@@ -754,10 +787,8 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
         elif kind == "[resume]":
             day = rest.removeprefix("last active ").split(";", 1)[0]
             steps.append(_text(language, f"隔天继续对话（上次 {day}）：清除了过期的放宽建议和搜索统计", f"Resumed on a later day (last {day}): cleared stale suggestions and counts"))
-        elif kind == "[memory]" and rest.startswith("offered"):
-            steps.append(_text(language, f"长期记忆：显示了 {rest.rsplit(' ', 1)[1]} 保存的条件", f"Long-term memory: offered criteria kept on {rest.rsplit(' ', 1)[1]}"))
-        elif kind == "[memory]":
-            steps.append(_text(language, "长期记忆：已更新为你保存的条件", "Long-term memory: updated what is kept for you"))
+        elif kind == "[memory]" and rest.startswith("started from"):
+            steps.append(_text(language, f"长期资料：按 {rest.rsplit(' ', 1)[1]} 保存的条件开始这段对话", f"Long-term profile: started from the criteria saved on {rest.rsplit(' ', 1)[1]}"))
         else:
             steps.append(line)
     return steps
@@ -773,42 +804,119 @@ def _budget_phrase(budget: dict, language: ResponseLanguage) -> str:
     )
 
 
-def render_remembered_profile(
-    profile: dict,
-    language: ResponseLanguage = "zh",
-    gone: list[str] = (),
-    welcome: bool = True,
-) -> str:
-    """What the user agreed to keep: offered at the start of a new conversation, or shown on request."""
-    saved = SearchPreferences.model_validate(profile.get("preferences", {})).model_dump(exclude_defaults=True)
-    budget = profile.get("budget")
-    items = []
-    for field, value in saved.items():
-        if field == "max_price_sgd" and budget:
-            # The budget as the user stated it; the monthly limit is worked out again when reused.
-            items.append(_text(language, "预算 ", "budget ") + _budget_phrase(budget, language))
-        else:
-            items.append(f"{PREFERENCE_LABELS[language][field]} {_preference_value(value, language)}")
-    shortlist = profile.get("shortlisted_listing_ids", [])
+def criteria_items(preferences: dict, sources: dict) -> list[dict]:
+    """Saved criteria (JSON values) for a page to list: each one's label and value in both languages,
+    and where it came from ({quote, date} from a conversation, {via: "profile", date} from the
+    Profile page), in the criteria's own order."""
+    return [
+        {
+            "field": field,
+            "label": {language: PREFERENCE_LABELS[language][field] for language in ("zh", "en")},
+            "value": {language: _criterion_value(field, preferences[field], language) for language in ("zh", "en")},
+            "source": sources.get(field),
+        }
+        for field in SearchPreferences.model_fields
+        if field in preferences
+    ]
+
+
+def profile_change_rows(before: dict, after: dict) -> list[dict]:
+    """What changes between two sets of saved criteria (JSON values): each changed criterion with its
+    label, and its value before and after, in both languages."""
+    return [
+        {
+            "field": field,
+            "label": {language: PREFERENCE_LABELS[language][field] for language in ("zh", "en")},
+            "before": {language: _criterion_value(field, before.get(field), language) for language in ("zh", "en")},
+            "after": {language: _criterion_value(field, after.get(field), language) for language in ("zh", "en")},
+        }
+        for field in SearchPreferences.model_fields
+        if field != "faculty" and before.get(field) != after.get(field)
+    ]
+
+
+def render_profile_saved(rows: list[dict], switched_on: bool, language: ResponseLanguage = "zh") -> str:
+    """What saving changed in the long-term profile, as the rows of profile_change_rows."""
     separator = "；" if language == "zh" else "; "
-    criteria = separator.join(items) or _text(language, "无", "none")
-    listings = _text(
-        language,
-        f"候选清单 {len(shortlist)} 套" + (f"（{'、'.join(gone)} 已不在当前房源数据中）" if gone else ""),
-        f"{len(shortlist)} shortlisted listings" + (f" ({', '.join(gone)} no longer in the listing data)" if gone else ""),
+    changed = separator.join(f"{row['label'][language]} {row['before'][language]} → {row['after'][language]}" for row in rows)
+    text = (
+        _text(language, f"已存到长期资料：{changed}。之后的新对话会按这些条件开始。", f"Saved to your long-term profile: {changed}. New conversations will start from these criteria.")
+        if rows else _text(language, "长期资料里已经是这些条件，没有改动。", "Your long-term profile already has these criteria; nothing changed.")
     )
-    saved_on = profile.get("saved_on", "")
-    if not welcome:
-        return _text(
-            language,
-            f"目前为你长期保存的内容（{saved_on} 更新）：条件：{criteria}；{listings}。说“忘掉我的信息”可以删除。",
-            f"Kept for you across conversations (updated {saved_on}): criteria: {criteria}; {listings}. Say \"forget my data\" to delete it.",
-        )
+    return text + (_text(language, "长期记忆已打开。", " Long-term memory is now on.") if switched_on else "")
+
+
+def render_profile_opening(preferences: dict, language: ResponseLanguage = "zh") -> str:
+    """The first message of a new conversation that starts from the long-term profile."""
+    separator = "；" if language == "zh" else "; "
+    criteria = separator.join(f"{item['label'][language]} {item['value'][language]}" for item in criteria_items(preferences, {}))
     return _text(
         language,
-        f"欢迎回来。上次（{saved_on}）记住的条件：{criteria}；{listings}。说“沿用”可以继续用这些条件，也可以直接告诉我新的需求。",
-        f"Welcome back. Kept from last time ({saved_on}): criteria: {criteria}; {listings}. Say \"reuse\" to continue with them, or tell me what you need now.",
+        f"已按你的长期资料设好条件：{criteria}。说“开始找”就按这些条件搜索，也可以直接告诉我新的需求。",
+        f"Your long-term profile's criteria are set: {criteria}. Say \"start\" to search with them, or tell me what you need now.",
     )
+
+
+def render_kept_profile(profile: dict | None, consent: bool | None, language: ResponseLanguage = "zh") -> str:
+    """The long-term profile and the memory switch, shown on request."""
+    switch = _text(language, *(("未开启", "not on") if consent is None else ("开", "on") if consent else ("关（已暂停，新对话不会使用）", "off (paused: new conversations do not use it)")))
+    saved = (profile or {}).get("preferences", {})
+    if not saved:
+        return _text(
+            language,
+            f"长期资料里还没有保存条件（长期记忆：{switch}）。说“存到我的资料”就能保存这段对话的条件。",
+            f"Nothing is saved in your long-term profile yet (long-term memory: {switch}). Say \"save to my profile\" to keep this conversation's criteria.",
+        )
+    budget = profile.get("budget")
+    separator = "；" if language == "zh" else "; "
+    criteria = separator.join(
+        # The budget as the user stated it; the monthly limit is worked out again when used.
+        _text(language, "预算 ", "budget ") + _budget_phrase(budget, language) if item["field"] == "max_price_sgd" and budget
+        else f"{item['label'][language]} {item['value'][language]}"
+        for item in criteria_items(saved, {})
+    )
+    return _text(
+        language,
+        f"你的长期资料（{profile.get('saved_on', '')} 保存，长期记忆：{switch}）：{criteria}。可以在“个人资料”页查看和修改。",
+        f"Your long-term profile (saved {profile.get('saved_on', '')}, long-term memory: {switch}): {criteria}. You can see and edit it on the Profile page.",
+    )
+
+
+def render_memory_switch(on: bool, has_profile: bool, language: ResponseLanguage = "zh") -> str:
+    if not on:
+        return _text(
+            language,
+            "长期记忆已关闭：保存的条件还在，但新对话不会使用，也不会保存新的改动；随时可以再打开。",
+            "Long-term memory is off: what is saved stays, but new conversations will not use it and nothing new is saved; you can switch it on again at any time.",
+        )
+    return _text(language, "长期记忆已打开，新对话会按你的长期资料开始。", "Long-term memory is on: new conversations will start from your long-term profile.") + (
+        "" if has_profile else _text(language, "目前还没有保存的条件，说“存到我的资料”就能保存这段对话的条件。", " Nothing is saved yet; say \"save to my profile\" to keep this conversation's criteria.")
+    )
+
+
+def render_profile_deleted(switch: str, language: ResponseLanguage = "zh") -> str:
+    """switch is the memory switch afterwards: on, off or undecided."""
+    state = _text(language, *{"on": ("开着", "on"), "off": ("关着", "off"), "undecided": ("未开启", "not on")}[switch])
+    return _text(
+        language,
+        f"已删除长期资料里的条件，长期记忆现在{state}。收藏和排除的房源不受影响。",
+        f"Deleted the criteria in your long-term profile; long-term memory is {state}. Shortlisted and excluded listings are not affected.",
+    )
+
+
+def render_shortlist_matches(listing_ids: list[str], language: ResponseLanguage = "zh") -> str:
+    """Shortlisted listings that meet every condition of a search, which leaves them out of its results."""
+    return _text(
+        language,
+        f"另外，你收藏的 {'、'.join(listing_ids)} 也符合这次的全部条件（收藏的房源不占推荐名额，在“收藏”页可以看到）。",
+        f"Your shortlisted {', '.join(listing_ids)} also meet every condition of this search (shortlisted listings do not take up the recommendations; see them on the Favorites page).",
+    )
+
+
+def _criterion_value(field: str, value: object, language: ResponseLanguage) -> str:
+    if field == "max_price_sgd" and isinstance(value, (int, float)):
+        return f"S${value:,.0f}"
+    return _preference_value(value, language)
 
 
 def render_preference_changes(
@@ -816,12 +924,13 @@ def render_preference_changes(
     changes: dict,
     language: ResponseLanguage = "zh",
 ) -> str:
+    """What changed in this conversation's criteria; the long-term profile changes only when saved."""
     separator = "；" if language == "zh" else "; "
     changed = separator.join(
-        f"{PREFERENCE_LABELS[language][field]} {_preference_value(getattr(before, field), language)} → {_preference_value(value, language)}"
+        f"{PREFERENCE_LABELS[language][field]} {_criterion_value(field, getattr(before, field), language)} → {_criterion_value(field, value, language)}"
         for field, value in changes.items()
     )
-    return _text(language, f"已保存条件变更：{changed}", f"Saved preference changes: {changed}")
+    return _text(language, f"已更新本次对话的条件：{changed}", f"Updated this conversation's criteria: {changed}")
 
 
 def render_link_checks(checks: list[dict], language: ResponseLanguage = "zh") -> str:
@@ -1163,6 +1272,33 @@ def render_lease_minimum(months: int | None, language: ResponseLanguage = "zh") 
         "提示：新加坡规定私人住宅最短租期 3 个月，HDB 组屋（包括组屋房间）最短 6 个月，短于这个期限的租约不合规；房源仍按你说的租期筛选。",
         "Note: in Singapore a private home can be let for no less than 3 months, and an HDB flat or HDB room for no less than 6 months; shorter leases are not allowed. Listings are still filtered by the lease you gave.",
     )
+
+
+def render_occupants(note: dict, language: ResponseLanguage = "zh") -> str:
+    """Shown verbatim when the number of people changed the rental type or bedrooms (agent.occupant_rules)."""
+    if note["kind"] == "shared_room":
+        return _text(
+            language,
+            "按两人合住一个单间找。如果是想各住一间，系统找不到同一套里的两个单间，可以改找 2 房的整租。",
+            "Searching for one room the two of you share. If you each want a room, the system cannot find two rooms in the same home; you could look for a 2-bedroom whole unit instead.",
+        )
+    if note["kind"] == "one_person":
+        return _text(
+            language,
+            f"{'按一个人住找' if note['people'] == 1 else '不按人数找了'}，按人数设的卧室数也去掉了，仍然只找整租。要不要也看看单间？",
+            f"{'Searching for one person' if note['people'] == 1 else 'No longer searching by the number of people'}: the bedrooms set from it are removed, and only whole units are still searched. Would you like to see rooms too?",
+        )
+    parts = []
+    if note["from_room"]:
+        parts.append(_text(language, "系统找不到几个人合住的单间，所以按整租找。", "The system cannot find rooms for several people, so it searches whole units."))
+    if note["bedrooms"]:
+        earlier = note["earlier_bedrooms"]
+        parts.append(_text(
+            language,
+            f"按整套、一人一间找了至少 {note['bedrooms']} 个卧室{f'（原来是至少 {earlier} 个）' if earlier else ''}。如果有人合住一间，告诉我一共需要几个卧室。",
+            f"Searching whole units with a bedroom each, at least {note['bedrooms']}{f' (was at least {earlier})' if earlier else ''}. If some of you share a bedroom, tell me how many bedrooms you need in total.",
+        ))
+    return "".join(parts) if language == "zh" else " ".join(parts)
 
 
 def _money(amount) -> str:

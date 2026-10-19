@@ -4,8 +4,8 @@ import streamlit as st
 from adapters.backend_client import BackendClient, BackendError
 from adapters.configuration import backend_url
 from adapters.http_agent_api import recommendations
-from content.i18n import t
-from domain.criteria import empty, from_backend
+from content.i18n import t, language
+from domain.criteria import EMPTY, empty, from_backend
 from domain.models import RentalRequirements, RentalPreferences
 
 NEW_TITLE = 'New conversation'
@@ -14,7 +14,9 @@ _KEPT_ON_SIGN_OUT = ('language', 'cookie-checked', 'cookie-action', 'auth-error'
 
 
 def initialize():
-    defaults = {'authenticated':False, 'profile':{'name':'Demo explorer','email':'demo@example.com'}, 'requirements':RentalRequirements(), 'preferences':RentalPreferences(), 'favorites':{}, 'compare':[], 'conversations':{}, 'active_conversation':None, 'selected_listing':None, 'page':'Home', 'notice':None, 'language':'en', 'client':None, 'faculty':None}
+    defaults = {'authenticated':False, 'profile':{'name':'Demo explorer','email':'demo@example.com'}, 'requirements':RentalRequirements(), 'preferences':RentalPreferences(), 'favorites':{}, 'compare':[], 'conversations':{}, 'active_conversation':None, 'selected_listing':None, 'page':'Home', 'notice':None, 'language':'en', 'client':None, 'faculty':None,
+                # The signed-in account's shortlisted and excluded listings, shared by all its conversations.
+                'shortlist':[], 'excluded':[]}
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
     if st.session_state.active_conversation is None:
@@ -30,19 +32,39 @@ def _conversation(title, requirements, preferences, thread_id=None, loaded=True,
     return {'title':title, 'messages':[], 'recommendations':None, 'requirements':requirements, 'preferences':preferences,
             'updated':updated or datetime.now().isoformat(timespec='seconds'),
             # The backend's id (None until the first message), whether its messages are here yet,
-            # its shortlist, and whether its listings are only a preview.
-            'thread_id':thread_id, 'loaded':loaded, 'shortlist':[], 'preview':False}
+            # whether its listings are only a preview, and its saved criteria as the backend sends them
+            # ({'preferences', 'sources', 'items'}) for the criteria panel.
+            'thread_id':thread_id, 'loaded':loaded, 'preview':False, 'criteria':dict(EMPTY)}
 
 
 def new_conversation():
     key = str(uuid4())
     if live():
-        # The agent starts each conversation from what the account kept, not from the form defaults.
-        requirements, preferences = empty()
+        conv = _conversation(NEW_TITLE, *empty())
+        start_from_profile(conv)
     else:
-        requirements, preferences = st.session_state.requirements, st.session_state.preferences
-    st.session_state.conversations[key] = _conversation(NEW_TITLE, requirements, preferences)
+        conv = _conversation(NEW_TITLE, st.session_state.requirements, st.session_state.preferences)
+    st.session_state.conversations[key] = conv
     st.session_state.active_conversation = key
+
+
+def start_from_profile(conv):
+    """A conversation not started yet shows what the backend will start it from: the long-term
+    profile while memory is on, with the same first message; otherwise nothing."""
+    profile = st.session_state.client.profile()
+    if profile['opening']:
+        conv['criteria'] = {**{key: profile[key] for key in ('preferences', 'sources', 'items')}, 'profile_changes': []}
+        conv['messages'] = [{'role': 'assistant', 'text': profile['opening'][language()]}]
+    else:
+        conv['criteria'], conv['messages'] = dict(EMPTY), []
+    conv['requirements'], conv['preferences'] = from_backend(conv['criteria']['preferences'])
+
+
+def refresh_new_conversations():
+    """After the long-term profile or the memory switch changes, conversations not started yet follow it."""
+    for conv in st.session_state.conversations.values():
+        if conv['thread_id'] is None:
+            start_from_profile(conv)
 
 
 def current():
@@ -56,9 +78,11 @@ def title(conv):
 def start_session(client, account):
     """Signed in: the account's conversations from the backend, newest first, and a new one to start in."""
     threads = client.conversations()
+    listings = client.my_listings()
     st.session_state.update(authenticated=True, client=client, faculty=account.get('faculty'),
                             profile={'name':account['username'], 'email':''}, conversations={}, active_conversation=None,
-                            favorites={}, compare=[], selected_listing=None, page='Home')
+                            favorites={}, compare=[], selected_listing=None, page='Home',
+                            shortlist=listings['shortlist'], excluded=listings['excluded'])
     for thread in reversed(threads):
         st.session_state.conversations[thread['id']] = _conversation(
             thread['title'] or NEW_TITLE, *empty(), thread_id=thread['id'], loaded=False, updated=thread.get('updated_at'))
@@ -83,10 +107,11 @@ def load(conv):
         st.session_state.notice = t('That conversation no longer exists.', '这段对话已经不存在了。')
         return
     conv['messages'] = client.messages(conv['thread_id'])
+    conv['criteria'] = {key: snapshot[key] for key in ('preferences', 'sources', 'items', 'profile_changes')}
     conv['requirements'], conv['preferences'] = from_backend(snapshot['preferences'])
     conv['recommendations'] = recommendations(snapshot['recommendations'])
     conv['preview'] = bool((snapshot['recommendations'] or {}).get('preview'))
-    conv['shortlist'] = snapshot['shortlist']
+    st.session_state.shortlist = snapshot['shortlist']
     conv['loaded'] = not waiting_for_reply(conv)
 
 
@@ -124,21 +149,20 @@ def navigate(page):
 
 
 def favorite_ids():
-    """Saved listings: the active conversation's shortlist on the backend, or this session's in the offline demo."""
-    return list(current()['shortlist']) if live() else list(st.session_state.favorites)
+    """Saved listings: the account's shortlist on the backend, or this session's in the offline demo."""
+    return list(st.session_state.shortlist) if live() else list(st.session_state.favorites)
 
 
 def toggle_favorite(listing_id):
     if live():
-        conv, client = current(), st.session_state.client
-        if conv['thread_id'] is None:
-            conv['thread_id'] = client.new_conversation()
-        if listing_id in conv['shortlist']:
-            conv['shortlist'] = client.shortlist_remove(conv['thread_id'], listing_id)
-            st.session_state.notice = t('Removed from this conversation’s favorites.', '已从本对话的收藏里移除。')
+        client = st.session_state.client
+        if listing_id in st.session_state.shortlist:
+            listings = client.shortlist_remove(listing_id)
+            st.session_state.notice = t('Removed from your favorites.', '已取消收藏。')
         else:
-            conv['shortlist'] = client.shortlist_add(conv['thread_id'], listing_id)
-            st.session_state.notice = t('Saved to this conversation. The agent can see it too.', '已收藏到本对话，agent 也能看到。')
+            listings = client.shortlist_add(listing_id)
+            st.session_state.notice = t('Saved to your favorites, in every conversation. The agent can see it too.', '已收藏，所有对话都能看到，agent 也能看到。')
+        st.session_state.shortlist, st.session_state.excluded = listings['shortlist'], listings['excluded']
     elif listing_id in st.session_state.favorites:
         del st.session_state.favorites[listing_id]
         st.session_state.notice = t('Favorite removed.', '已取消收藏。')

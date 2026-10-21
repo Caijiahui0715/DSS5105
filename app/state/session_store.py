@@ -19,6 +19,8 @@ def initialize():
                 'shortlist':[], 'excluded':[]}
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+    # True while this run sends a message to the agent (set by Home, after the page is drawn).
+    st.session_state.sending = False
     if st.session_state.active_conversation is None:
         new_conversation()
 
@@ -34,7 +36,11 @@ def _conversation(title, requirements, preferences, thread_id=None, loaded=True,
             # The backend's id (None until the first message), whether its messages are here yet,
             # whether its listings are only a preview, and its saved criteria as the backend sends them
             # ({'preferences', 'sources', 'items'}) for the criteria panel.
-            'thread_id':thread_id, 'loaded':loaded, 'preview':False, 'criteria':dict(EMPTY)}
+            'thread_id':thread_id, 'loaded':loaded, 'preview':False, 'criteria':dict(EMPTY),
+            # With the backend: the latest comparison table, the listings chosen to compare (those
+            # compared, less any removed since, plus one waiting for a second), and whether the
+            # table is new since the Compare bar was last opened.
+            'comparison':None, 'compare':[], 'compare_new':False}
 
 
 def new_conversation():
@@ -48,10 +54,18 @@ def new_conversation():
     st.session_state.active_conversation = key
 
 
-def start_from_profile(conv):
+def read_profile():
+    """The long-term profile with both switches, read from the backend and kept as
+    st.session_state.long_term for the Home page's auto-save offer."""
+    st.session_state.long_term = st.session_state.client.profile()
+    return st.session_state.long_term
+
+
+def start_from_profile(conv, profile=None):
     """A conversation not started yet shows what the backend will start it from: the long-term
-    profile while memory is on, with the same first message; otherwise nothing."""
-    profile = st.session_state.client.profile()
+    profile while memory is on, with the same first message; otherwise nothing. profile: as just
+    read, else it is read now."""
+    profile = profile or read_profile()
     if profile['opening']:
         conv['criteria'] = {**{key: profile[key] for key in ('preferences', 'sources', 'items')}, 'profile_changes': []}
         conv['messages'] = [{'role': 'assistant', 'text': profile['opening'][language()]}]
@@ -60,11 +74,33 @@ def start_from_profile(conv):
     conv['requirements'], conv['preferences'] = from_backend(conv['criteria']['preferences'])
 
 
+def delete_conversation(key):
+    """Delete a conversation on the backend (one already gone counts as deleted) and from the list.
+    When it was open, a new conversation takes its place, as after signing in."""
+    conv = st.session_state.conversations[key]
+    try:
+        st.session_state.client.delete_conversation(conv['thread_id'])
+    except BackendError as error:
+        if error.status != 404:
+            raise
+    del st.session_state.conversations[key]
+    if st.session_state.active_conversation == key:
+        blank = next((other for other, kept in st.session_state.conversations.items() if kept['thread_id'] is None), None)
+        if blank:
+            st.session_state.active_conversation = blank
+        else:
+            new_conversation()
+        st.session_state.selected_listing = None
+    st.session_state.notice = t('Conversation deleted.', '已删除这段对话。')
+
+
 def refresh_new_conversations():
-    """After the long-term profile or the memory switch changes, conversations not started yet follow it."""
+    """After the long-term profile or a switch may have changed (on a page, or in chat: a reply can
+    save automatically), read it again; conversations not started yet follow it."""
+    profile = read_profile()
     for conv in st.session_state.conversations.values():
         if conv['thread_id'] is None:
-            start_from_profile(conv)
+            start_from_profile(conv, profile)
 
 
 def current():
@@ -111,8 +147,16 @@ def load(conv):
     conv['requirements'], conv['preferences'] = from_backend(snapshot['preferences'])
     conv['recommendations'] = recommendations(snapshot['recommendations'])
     conv['preview'] = bool((snapshot['recommendations'] or {}).get('preview'))
+    conv['comparison'] = snapshot.get('comparison')
+    conv['compare'] = list((conv['comparison'] or {}).get('listing_ids') or [])
     st.session_state.shortlist = snapshot['shortlist']
     conv['loaded'] = not waiting_for_reply(conv)
+
+
+def busy(conv):
+    """The agent is working on this conversation: a message this run is sending, or one without a
+    reply yet. Buttons that would ask it something else wait."""
+    return st.session_state.get('sending', False) or waiting_for_reply(conv)
 
 
 def waiting_for_reply(conv):
@@ -170,14 +214,39 @@ def toggle_favorite(listing_id):
         st.session_state.favorites[listing_id] = datetime.now().isoformat(timespec='seconds')
         st.session_state.notice = t('Saved for this session.', '已收藏（仅本次会话）。')
 
+def compare_ids():
+    """The listings chosen to compare: this conversation's with the backend, this session's offline."""
+    return list(current()['compare']) if live() else list(st.session_state.compare)
+
+
+def compare_message(ids):
+    """The chat message asking the agent to compare listings."""
+    return t(f"Compare {', '.join(ids[:-1])} and {ids[-1]}.", f"比较 {'、'.join(ids[:-1])} 和 {ids[-1]}")
+
+
 def toggle_compare(listing_id):
-    ids = st.session_state.compare
+    """Choose a listing to compare, or remove it, up to three. With the backend, choosing a second or
+    third sends the agent a message to compare them, from Home; removing one asks nothing. Offline,
+    the Favorites page shows the chosen listings in a table."""
+    ids = current()['compare'] if live() else st.session_state.compare
     if listing_id in ids:
         ids.remove(listing_id)
-    elif len(ids) < 3:
-        ids.append(listing_id)
-    else:
+    elif len(ids) >= 3:
         st.session_state.notice = t('Compare up to three listings. Remove one before adding another.', '最多比较三套房源，请先移除一套。')
+    else:
+        ids.append(listing_id)
+        if live() and len(ids) >= 2:
+            send_from_home(compare_message(ids))
+
+
+def send_from_home(message):
+    """Send the agent a message from Home. From another page, Home is shown first and the message
+    goes in the run after, so nothing of that page is left on screen while the agent works."""
+    if st.session_state.page == 'Home':
+        st.session_state.pending_message = message
+    else:
+        st.session_state.deferred_message = message
+        st.session_state.page = 'Home'
 
 def logout(expired=False):
     """Signs out; with the backend, also revokes the token and forgets the remember-me cookie."""

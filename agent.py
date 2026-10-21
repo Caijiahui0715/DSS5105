@@ -63,12 +63,16 @@ from response import (
     _check_summary_text,
     _link_status_text,
     _render_relaxations,
+    comparison_view,
     profile_change_rows,
+    render_auto_save,
     render_budget_check,
     render_budget_conversion,
     render_budget_ladder,
     render_commutes,
-    render_comparison,
+    render_compare_hint,
+    render_comparison_summary,
+    render_left_out,
     render_costs,
     render_decision_context,
     render_faculty_change,
@@ -146,6 +150,11 @@ Using tools
   Ask when a reference is ambiguous.
 - Call as many tools as the request needs, for example shortlist one listing and show the
   details of another in the same turn.
+- compare_listings compares two or three listings; with more, ask which three. The page shows
+  its table (rent, commute, MRT, room, area, bathroom, furnishing, lease, availability, whether
+  each meets the criteria, link check) beside the chat, so never list each listing's facts again:
+  in a few sentences say the key differences, the trade-offs and which suits the user's criteria
+  better. The system already notes listings left out and where the table is.
 - When there are no or few strict matches, use decision_context to explain which condition
   blocks results and whether that is only because the data does not state it.
 - For a listing under needs_confirmation, name each requirement in its unknown_conditions and
@@ -256,23 +265,21 @@ Long-term profile (user_memory tool)
   conversation starts from it; the user can also edit it on the Profile page. memory_switch is on,
   off (paused: kept but neither used nor changed) or undecided. Criteria changed in this
   conversation stay in it until the user saves them; unsaved_profile_changes names those fields.
-- The system asks once whether to save, at the end of a reply, so never ask it yourself. When the
-  user agrees or asks (好的, 存吧, 存到我的资料, 记住这些条件, yes save them) call user_memory with
-  action=save; when they refuse (不用, 不要存, no) action=off.
+- auto_save is the user's automatic-saving switch. While it and memory are on, criteria changed in
+  this conversation are saved to the long-term profile as they change, and the system tells the user.
+- Never ask whether to save; the page offers automatic saving. When the user asks (存到我的资料,
+  记住这些条件, save them) call user_memory with action=save.
 - While memory is off, save returns an error saying what to ask; ask exactly that, and when the user
   agrees call save again with switch_on=true.
 - 你记得我什么, 我的长期资料是什么 or what do you remember: action=show. 沿用, 用我的长期资料, 跟上次一样 or
   same as last time: action=restore, then search_listings with only the changes the user asks for
-  now. 打开/关闭长期记忆: on/off. 删除我的长期资料: delete. 忘掉我的信息 or forget me: forget. Deleting
+  now. 打开/关闭长期记忆: on/off. 打开/关闭自动保存 or turn auto-save on/off: auto_on/auto_off.
+  删除我的长期资料: delete. 忘掉我的信息 or forget me: forget (it switches auto-save off too). Deleting
   all data, conversations included, is done on the Profile page, not here.
 - The shortlist and exclusions belong to the account, are shared by all its conversations and are
   not part of the long-term profile.
 - Never claim to remember anything that is not in user_memory results or the state.
 """
-_MEMORY_ASK = (
-    "要把这些条件存到你的长期资料吗？存了以后，新对话会自动按它们开始，也可以在“个人资料”页查看和修改。",
-    "Save these criteria to your long-term profile? New conversations will then start from them, and you can see and edit them on the Profile page.",
-)
 
 _MOVE_IN_NOTE = (
     "入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
@@ -317,12 +324,11 @@ class AgentState(TypedDict, total=False):
     last_active_date: str | None
     # Long-term memory, used only with a profile store: who is talking, the user's words and date
     # behind each saved field, the budget as stated, the criteria (JSON) this conversation started
-    # from or last saved to the long-term profile, and whether the system already asked to save.
+    # from or last saved to the long-term profile.
     user_id: str | None
     preference_sources: dict
     budget_statement: dict | None
     profile_base: dict
-    memory_asked: bool
     # What the user said about the deposit and an agent, used by later cost estimates in this
     # conversation only: deposit_months, uses_agent, agent_fee_sgd.
     cost_assumptions: dict
@@ -340,6 +346,10 @@ class AgentState(TypedDict, total=False):
     recommendations: dict | None
     # The latest search's listings, kept across turns so a reopened conversation can show them again.
     last_recommendations: dict | None
+    # The comparison table compare_listings made this turn for the frontend (None without one), and
+    # the latest one, kept across turns like last_recommendations.
+    comparison: dict | None
+    last_comparison: dict | None
     # The frontend's interface language ("zh" or "en"), which the reply then uses; None detects it per message.
     reply_language: ResponseLanguage | None
 
@@ -391,7 +401,7 @@ class ExplainArgs(ListingArgs):
 
 
 class CompareArgs(BaseModel):
-    """Compare two or more listings with precomputed differences; an empty list compares the shortlist."""
+    """Compare two or three listings with precomputed differences; the page shows them as a table. An empty list compares the shortlist when it has at most three."""
 
     listing_ids: list[str] = Field(default_factory=list)
 
@@ -411,9 +421,9 @@ class ExcludeArgs(BaseModel):
 
 
 class MemoryArgs(BaseModel):
-    """The user's long-term profile, the criteria new conversations start from: save the criteria this conversation changed into it, show it, restore it into this conversation, switch long-term memory on or off (nothing is deleted), delete the kept criteria, or forget them (delete and switch off). Act only on the user's own request."""
+    """The user's long-term profile, the criteria new conversations start from: save the criteria this conversation changed into it, show it, restore it into this conversation, switch long-term memory on or off (nothing is deleted), switch automatic saving of changed criteria on or off (auto_on, auto_off), delete the kept criteria, or forget them (delete and switch both off). Act only on the user's own request."""
 
-    action: Literal["save", "show", "restore", "on", "off", "delete", "forget"]
+    action: Literal["save", "show", "restore", "on", "off", "auto_on", "auto_off", "delete", "forget"]
     switch_on: bool = Field(False, description="For save while long-term memory is off: true only after the user agreed to switch it on.")
     user_quote: str = Field("", description="The user's words from the latest message that ask for this; not needed for show.")
 
@@ -496,6 +506,36 @@ def build_agent(
             item["listing"]["listing_id"]: extract_restrictions(item["listing"])
             for item in ranked
         }
+
+    def saved_automatically(work) -> bool:
+        """After the conversation's criteria change: save what it changed to the long-term profile when
+        the user chose automatic saving and memory is on."""
+        user_id = work.get("user_id")
+        if not (profiles and user_id and profiles.saves_automatically(user_id)):
+            return False
+        work["profile_base"] = save_to_profile(profiles, user_id, work)[1]
+        return True
+
+    def comparison_criteria(preferences: SearchPreferences, items: list[dict]) -> dict:
+        """Whether each compared listing meets the criteria, as a search judges it: (match, []),
+        (confirm, the conditions it does not state), (fail, the conditions it fails) or (none, [])
+        without criteria."""
+        if not _has_search_criteria(preferences):
+            return {item["listing"]["listing_id"]: ("none", []) for item in items}
+        strict, pending = search_with_unknowns(connection, preferences, [])
+        matched = {listing["listing_id"] for listing in strict}
+        unstated = {listing["listing_id"]: listing["unknown_conditions"] for listing in pending}
+        result = {}
+        for item in items:
+            listing = item["listing"]
+            listing_id = listing["listing_id"]
+            if listing_id in matched:
+                result[listing_id] = ("match", [])
+            elif listing_id in unstated:
+                result[listing_id] = ("confirm", unstated[listing_id])
+            else:
+                result[listing_id] = ("fail", [field for field in active_conditions(preferences) if condition_status(field, listing, preferences) == "fail"])
+        return result
 
     def one_listing(listing_id: str):
         listings = get_listings_by_ids(connection, _clean_ids([listing_id]))
@@ -634,9 +674,6 @@ def build_agent(
         relaxations = []
         if not preview:
             if changes:
-                work["notes"].append(render_preference_changes(current, changes, language))
-                if "lease_months" in changes and (note := render_lease_minimum(preferences.lease_months, language)):
-                    work["notes"].append(note)
                 work["preferences"] = preferences
                 # The user's words behind each saved field, kept with the profile if they agree.
                 sources = dict(work["preference_sources"])
@@ -651,6 +688,9 @@ def build_agent(
                     work["budget_statement"] = args.budget.model_dump()
                 elif "max_price_sgd" in changes:
                     work["budget_statement"] = None
+                work["notes"].append(render_preference_changes(current, changes, language, saved_automatically(work)))
+                if "lease_months" in changes and (note := render_lease_minimum(preferences.lease_months, language)):
+                    work["notes"].append(note)
             # Same single-condition policy and URL checks as the workflow's relaxation node.
             if not shown:
                 relaxations = analyze_relaxations(connection, preferences, excluded, listing_checker)
@@ -667,14 +707,9 @@ def build_agent(
                 ),
                 *([render_shortlist_matches(shortlisted_matches, language)] if shortlisted_matches else []),
             ]
-            # Ask once whether to save the criteria to the long-term profile.
-            user_id = work.get("user_id")
-            if changes and profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
-                work["footers"].append(_text(work, *_MEMORY_ASK))
-                work["memory_asked"] = True
             # Commute criteria measure to the user's faculty; without one they cannot be checked.
             commute_asked = preferences.max_commute_minutes is not None or "commute" in preferences.ranking_priority
-            if profiles and user_id and commute_asked and not preferences.faculty:
+            if profiles and work.get("user_id") and commute_asked and not preferences.faculty:
                 work["footers"].append(render_no_faculty(language))
             work["last_search"] = {
                 "strict_database_count": len(strict),
@@ -815,24 +850,49 @@ def build_agent(
         return explanation
 
     def compare(work, args: CompareArgs):
-        listings = get_listings_by_ids(connection, _clean_ids(args.listing_ids) or work["shortlisted_listing_ids"])
-        ranked = checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings)))
-        if len(ranked) < 2:
+        wanted = _clean_ids(args.listing_ids) or list(work["shortlisted_listing_ids"])
+        if len(wanted) > 3:
+            raise ToolError("At most three listings can be compared at once: ask the user which three.")
+        listings = get_listings_by_ids(connection, wanted)
+        ranked = checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings))) if listings else []
+        by_id = {item["listing"]["listing_id"]: item for item in ranked}
+        found = {listing["listing_id"] for listing in listings}
+        # In the order the user chose; a delisted listing or one whose link is dead is left out.
+        items = [by_id[listing_id] for listing_id in wanted if listing_id in by_id]
+        left_out = {listing_id: "inactive" if listing_id in found else "missing" for listing_id in wanted if listing_id not in by_id}
+        if len(items) < 2 and not left_out:
             raise ToolError(
-                "At least two existing listings with working links are needed; the shortlist may have fewer. "
-                "Pass two or more listing_ids from shown_listings_in_display_order, or tell the user the "
-                "shortlist has fewer than two listings."
+                "At least two listings are needed; the shortlist may have fewer. Pass two or three "
+                "listing_ids from shown_listings_in_display_order, or tell the user the shortlist has "
+                "fewer than two listings."
             )
-        rents = {item["listing"]["listing_id"]: whole(item["listing"]["rent_monthly_sgd"]) for item in ranked}
+        language = work["response_language"]
+        view = comparison_view(items, comparison_criteria(work["preferences"], items), left_out, bool(work["preferences"].faculty))
+        work["comparison"] = work["last_comparison"] = view
+        if left_out:
+            work["notes"].append(render_left_out(view, language))
+        if len(items) < 2:
+            return {
+                "compared": False,
+                "left_out": left_out,
+                "next_step": "Too few listings are left to compare; the system told the user why. Ask them to choose another listing.",
+            }
+        rents = {item["listing"]["listing_id"]: whole(item["listing"]["rent_monthly_sgd"]) for item in items}
         minutes = {
             item["listing"]["listing_id"]: mrt_minutes(item["listing"])
-            for item in ranked
+            for item in items
             if mrt_minutes(item["listing"]) is not None
         }
-        work["shown_listing_ids"] = list(rents)
-        work["drafts"].append(render_comparison(ranked, restrictions_of(ranked), work["response_language"]))
+        work["shown_listing_ids"] = view["listing_ids"]
+        work["drafts"].append(render_comparison_summary(view, language))
+        # Once per account, where the table is, before the model's analysis.
+        user_id = work.get("user_id")
+        if profiles and user_id and not profiles.compare_hint_shown(user_id):
+            work["notes"].append(render_compare_hint(language))
+            profiles.mark_compare_hint_shown(user_id)
         return {
             "listings": [_facts(item, work["response_language"], position) for position, item in enumerate(ranked, 1)],
+            "left_out": left_out,
             "rent_above_cheapest_sgd": {key: rent - min(rents.values()) for key, rent in rents.items()},
             "mrt_minutes_above_closest": {key: value - min(minutes.values()) for key, value in minutes.items()},
         }
@@ -917,7 +977,6 @@ def build_agent(
             kept = profiles.profile(user_id)
             work["drafts"].append(render_kept_profile(kept, switch, language))
             return {"memory_switch": memory_switch(switch), "kept_profile": kept, "unsaved_profile_changes": list(profile_changes(work))}
-        work["memory_asked"] = True
         if args.action == "save":
             if switch is False and not args.switch_on:
                 raise ToolError(
@@ -933,14 +992,25 @@ def build_agent(
             return {"memory_switch": memory_switch(now), "saved_changes": [row["field"] for row in rows]}
         if args.action in ("on", "off"):
             profiles.set_consent(user_id, args.action == "on")
-            work["notes"].append(render_memory_switch(args.action == "on", bool(profiles.profile(user_id)), language))
+            work["notes"].append(render_memory_switch(args.action == "on", bool(profiles.profile(user_id)), language, bool(profiles.auto_save(user_id))))
             return {"memory_switch": args.action}
+        if args.action in ("auto_on", "auto_off"):
+            on = args.action == "auto_on"
+            profiles.set_auto_save(user_id, on)
+            rows = []
+            # What this conversation changed so far is saved at once, as later changes will be.
+            if on and profiles.saves_automatically(user_id):
+                rows, work["profile_base"] = save_to_profile(profiles, user_id, work)
+            now = memory_switch(profiles.consent(user_id))
+            work["notes"].append(render_auto_save(on, now, rows, language, on and switch is None))
+            return {"auto_save": on, "memory_switch": now, "saved_changes": [row["field"] for row in rows]}
         if args.action in ("delete", "forget"):
+            auto_save = profiles.auto_save(user_id)
             (profiles.forget if args.action == "forget" else profiles.delete_profile)(user_id)
             # Nothing is kept now, so saving later keeps every criterion this conversation has.
             work["profile_base"] = {}
             switch = False if args.action == "forget" else switch
-            work["notes"].append(render_profile_deleted(memory_switch(switch), language))
+            work["notes"].append(render_profile_deleted(memory_switch(switch), language, args.action == "forget" and bool(auto_save)))
             return {"memory_switch": memory_switch(switch), "deleted": True}
 
         kept = profiles.active_profile(user_id)
@@ -1088,20 +1158,17 @@ def build_agent(
         if "lease_months" in stated and stated["lease_months"] != preferences.lease_months:
             # A stated lease length is a search criterion, saved as search_listings saves them.
             change = {"lease_months": stated["lease_months"]}
-            work["notes"].append(render_preference_changes(preferences, change, language))
-            if note := render_lease_minimum(stated["lease_months"], language):
-                work["notes"].append(note)
+            before = preferences
             work["preferences"] = preferences = preferences.model_copy(update=change)
             work["preference_sources"] = {
                 **work["preference_sources"],
                 "lease_months": {"quote": args.user_quote, "date": date.today().isoformat()},
             }
+            work["notes"].append(render_preference_changes(before, change, language, saved_automatically(work)))
+            if note := render_lease_minimum(stated["lease_months"], language):
+                work["notes"].append(note)
             # Suggestions and counts from the last search rest on the old criteria.
             work["relaxations"], work["last_search"] = [], None
-            user_id = work.get("user_id")
-            if profiles and user_id and not work["memory_asked"] and profiles.consent(user_id) is None:
-                work["footers"].append(_text(work, *_MEMORY_ASK))
-                work["memory_asked"] = True
         rows = []
         wanted = preferences.lease_months
         for listing, rent, source in targets:
@@ -1182,6 +1249,7 @@ def build_agent(
         memory = (
             {
                 "memory_switch": memory_switch(profiles.consent(state["user_id"])),
+                "auto_save": bool(profiles.auto_save(state["user_id"])),
                 "unsaved_profile_changes": list(profile_changes(state)),
                 "faculty": preferences.faculty,
             }
@@ -1258,7 +1326,6 @@ def build_agent(
             "preference_sources": state.get("preference_sources", {}),
             "budget_statement": state.get("budget_statement"),
             "profile_base": state.get("profile_base", {}),
-            "memory_asked": state.get("memory_asked", False),
             "cost_assumptions": state.get("cost_assumptions", {}),
             "tool_rounds": 0,
             "drafts": [],
@@ -1268,6 +1335,7 @@ def build_agent(
             "observations": [],
             "trace": trace,
             "recommendations": None,
+            "comparison": None,
         }
 
     def agent_node(state: AgentState):
@@ -1317,7 +1385,6 @@ def build_agent(
                 "preference_sources",
                 "budget_statement",
                 "profile_base",
-                "memory_asked",
                 "cost_assumptions",
                 "drafts",
                 "notes",
@@ -1327,6 +1394,8 @@ def build_agent(
                 "trace",
                 "recommendations",
                 "last_recommendations",
+                "comparison",
+                "last_comparison",
             )
         }
         messages = []
@@ -1370,9 +1439,6 @@ def build_agent(
             json.dumps(snapshot(state), ensure_ascii=False, default=str),
         ]
         problems = _reply_problems(reply, sources, language) if reply.strip() else []
-        # The system's question about saving the criteria ends this reply; the model asking too repeats it.
-        if reply.strip() and _text(state, *_MEMORY_ASK) in state["footers"] and re.search(r"remember|long-term profile|记住|长期资料", reply, re.IGNORECASE):
-            problems.append("it asks whether to save the criteria to the long-term profile, which the system already asks at the end of the reply")
         trace = list(state["trace"])
         retried = any(isinstance(message, SystemMessage) for message in messages[_turn_start(messages):])
         if problems and not retried:

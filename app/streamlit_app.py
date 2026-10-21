@@ -45,9 +45,12 @@ h1,h2,h3 { color:#122f4d; letter-spacing:-.025em; }
 button:focus-visible,a:focus-visible {outline:3px solid #107a72!important;outline-offset:3px;}
 [data-testid="stCaptionContainer"] {color:#516477;}
 .st-key-global-rail {position:fixed;left:0;top:0;bottom:0;width:64px!important;padding:20px 9px;background:#edf2f5;border-right:1px solid #dce3e9;z-index:999;gap:14px!important;}
-.st-key-global-rail button {height:44px;width:44px;padding:0;border:0;border-radius:10px;}
+.st-key-global-rail button {height:44px;width:44px;padding:0;border:0;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto;}
 .st-key-global-rail button p {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
 .st-key-global-rail button [data-testid="stIconMaterial"] {font-size:25px;}
+/* Streamlit leaves a right margin on a button icon for its label; the label is hidden here, so without this the icon sits left of centre. */
+.st-key-global-rail button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
+.st-key-global-rail button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
 .st-key-chat-history {position:fixed;left:64px;top:0;bottom:0;width:240px!important;padding:24px 14px;background:#edf2f5;border-right:1px solid #dce3e9;overflow-y:auto;z-index:100;}
 .st-key-chat-history button {text-align:left;}
 .st-key-history-heading {gap:4px!important;}
@@ -57,6 +60,19 @@ body:has(.st-key-chat-history) .stMainBlockContainer {padding-left:328px;}
 body:has(.st-key-chat-thread) [data-testid="stMain"] {height:100dvh;overflow:hidden;}
 .st-key-chat-header button {border:0;background:transparent;}
 .st-key-chat-header button p {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.st-key-auto-save-offer, .st-key-auto-save-done {background:#e8f3f2;border:1px solid #c9e2df;border-radius:14px;padding:4px 4px 4px 14px;}
+.st-key-auto-save-offer p, .st-key-auto-save-done p {font-size:14px;line-height:1.5;margin:0;}
+/* Streamlit pulls a text block up by 1rem to cancel its paragraph margin, which is 0 here. */
+.st-key-auto-save-offer [data-testid="stMarkdownContainer"], .st-key-auto-save-done [data-testid="stMarkdownContainer"] {margin-bottom:0;}
+.st-key-auto-save-close button, .st-key-auto-save-done-close button {border:0;background:transparent;}
+/* The close buttons show only their icon; the label stays for screen readers, as in the rail. */
+.st-key-auto-save-close button [data-testid="stMarkdownContainer"], .st-key-auto-save-done-close button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.st-key-auto-save-close button span:has(> [data-testid="stIconMaterial"]), .st-key-auto-save-done-close button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
+/* The auto-save offer (one line) or confirmation (up to five in a narrow column) above the chat input takes its room from the thread, so the input stays in view; the bar itself never shrinks, so its text is not cut off. */
+[data-testid="stLayoutWrapper"]:has(> .st-key-auto-save-offer), [data-testid="stLayoutWrapper"]:has(> .st-key-auto-save-done) {flex-shrink:0;}
+.st-key-auto-save-offer, .st-key-auto-save-done {overflow:visible!important;}
+body:has(.st-key-auto-save-offer) [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread), body:has(.st-key-auto-save-offer) .st-key-chat-thread {height:calc(100dvh - 312px)!important;flex-basis:calc(100dvh - 312px)!important;}
+body:has(.st-key-auto-save-done) [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread), body:has(.st-key-auto-save-done) .st-key-chat-thread {height:calc(100dvh - 376px)!important;flex-basis:calc(100dvh - 376px)!important;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-global-rail), [data-testid="stLayoutWrapper"]:has(> .st-key-chat-history) {display:contents;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread), [data-testid="stLayoutWrapper"]:has(> .st-key-map-panel), [data-testid="stLayoutWrapper"]:has(> .st-key-listing-panel), .st-key-chat-thread, .st-key-map-panel, .st-key-listing-panel {min-height:0!important;max-height:none!important;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread), .st-key-chat-thread {height:calc(100dvh - 240px)!important;flex-basis:calc(100dvh - 240px)!important;overflow-y:auto;}
@@ -78,9 +94,27 @@ body:has(.st-key-chat-thread) [data-testid="stChatInput"] {border-radius:26px;ba
 body:has(.st-key-chat-thread) [data-testid="stChatInput"] textarea {font-size:16px;line-height:1.5;padding:14px 18px;}
 body:has(.st-key-chat-thread) [data-testid="stChatInputSubmitButton"] {border-radius:50%;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-map-panel), .st-key-map-panel {height:350px!important;flex-basis:350px!important;overflow:hidden;}
+/* The Compare bar between the map and the listings: one button, which pulses three times with a "new" mark when a comparison arrives. */
+.st-key-compare-open button {border:1px solid #dce3e9;border-radius:12px;background:#fff;min-height:44px;font-weight:600;color:#122f4d;}
+.st-key-compare-bar-new .st-key-compare-open button {border-color:#107a72;color:#107a72;animation:compare-pulse 1.4s ease-in-out 3;}
+@keyframes compare-pulse {0%,100% {box-shadow:0 0 0 0 #107a7200;} 50% {box-shadow:0 0 0 6px #107a7233;}}
+@media (prefers-reduced-motion: reduce) {.st-key-compare-bar-new .st-key-compare-open button {animation:none;}}
+/* The bar takes its room from the listing panel below, so the page still fits the screen. */
+body:has(.st-key-compare-bar, .st-key-compare-bar-new) [data-testid="stLayoutWrapper"]:has(> .st-key-listing-panel), body:has(.st-key-compare-bar, .st-key-compare-bar-new) .st-key-listing-panel {height:calc(100dvh - 514px)!important;flex-basis:calc(100dvh - 514px)!important;}
+.comparison-table {width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;}
+.comparison-table th, .comparison-table td {border-bottom:1px solid #dce3e9;padding:8px 10px;text-align:left;vertical-align:top;}
+.comparison-table thead th {color:#122f4d;border-bottom:2px solid #c9d4dd;}
+.comparison-table thead small {color:#516477;font-weight:400;}
+.comparison-table tbody th {width:9.5rem;color:#516477;font-weight:600;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-listing-panel), .st-key-listing-panel {height:calc(100dvh - 454px)!important;flex-basis:calc(100dvh - 454px)!important;overflow-y:auto;}
 .st-key-map-panel {padding:0!important;gap:0!important;}
 .st-key-map-panel iframe {max-width:100%;display:block;}
+/* The Enlarge map button sits over the map's top-right corner (Leaflet's zoom buttons are top-left); its label stays for screen readers. */
+.st-key-map-panel {position:relative;}
+.st-key-map-expand {position:absolute;top:10px;right:10px;z-index:5;width:auto!important;}
+.st-key-map-expand button {width:34px;height:34px;min-height:0;padding:0;border:1px solid #c9d4dd;border-radius:8px;background:#fff;box-shadow:0 1px 4px #142c4333;display:flex;align-items:center;justify-content:center;}
+.st-key-map-expand button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.st-key-map-expand button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
 .st-key-listing-panel h3 {font-size:21px;}
 @media (max-width:1000px) {.st-key-chat-history {width:190px!important;} body:has(.st-key-chat-history) .stMainBlockContainer {padding-left:270px;} }
 @media (max-width:760px) {
@@ -101,6 +135,13 @@ body:has(.st-key-chat-thread) [data-testid="stMain"] {height:auto;overflow:auto;
 /* History actions use dark surfaces. */
 .st-key-chat-history button[kind="primary"], .st-key-chat-history button[kind="secondary"] {background:#173c5b!important;color:#fff!important;border-color:#173c5b!important;}
 .st-key-chat-history button[kind="primary"] *, .st-key-chat-history button[kind="secondary"] * {color:#fff!important;}
+/* The open conversation's delete button: a quiet icon beside its title; the label stays for screen readers. */
+.st-key-chat-history .st-key-delete-conversation button[kind] {width:36px;min-width:36px;min-height:36px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent!important;border-color:transparent!important;}
+.st-key-chat-history .st-key-delete-conversation button[kind] * {color:#173c5b!important;}
+.st-key-chat-history .st-key-delete-conversation button[kind]:hover {background:#dce3e9!important;}
+.st-key-chat-history .st-key-delete-conversation button[kind]:disabled {opacity:.4;}
+.st-key-delete-conversation button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.st-key-delete-conversation button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
 /* Other buttons: use the light Streamlit theme, with accessible foregrounds. */
 .stApp button[kind="primary"] {background:#173c5b!important;color:#fff!important;border-color:#173c5b!important;}
 .stApp button[kind="primary"] p, .stApp button[kind="primary"] span {color:#fff!important;}

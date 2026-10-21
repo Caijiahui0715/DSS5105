@@ -85,8 +85,9 @@ class ServerTest(unittest.TestCase):
         self.assertIn("正在搜索房源", progress)
         name, reply = found[-1]
         self.assertEqual(name, "reply")
-        # The user is known to the agent: it offers to save the criteria to the long-term profile.
-        self.assertIn("要把这些条件存到你的长期资料吗？", reply["text"])
+        # The criteria change in this conversation only; nothing asks whether to save them.
+        self.assertIn("已更新本次对话的条件：每月最高预算 不限 → S$1,300", reply["text"])
+        self.assertNotIn("长期资料吗", reply["text"])
         self.assertEqual(reply["sources"]["max_price_sgd"]["quote"], "预算1300")
         self.assertEqual(reply["steps"][0], "搜索房源")
         # The listings the search showed, for the frontend's cards, in display order.
@@ -142,7 +143,7 @@ class ServerTest(unittest.TestCase):
         thread_id = self.alice.post("/api/conversations").json()["id"]
         self.assertEqual(
             self.alice.get(f"/api/conversations/{thread_id}").json(),
-            {"id": thread_id, "preferences": {}, "sources": {}, "items": [], "profile_changes": [], "recommendations": None, "shortlist": []},
+            {"id": thread_id, "preferences": {}, "sources": {}, "items": [], "profile_changes": [], "recommendations": None, "comparison": None, "shortlist": []},
         )
         # The shortlist is the account's: a favorite saved anywhere shows in every conversation.
         self.assertEqual(self.alice.post("/api/me/shortlist", json={"listing_id": "S002"}).json(), {"shortlist": ["S002"], "excluded": []})
@@ -257,6 +258,47 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((switched["profile"]["memory"], switched["profile"]["preferences"]["max_price_sgd"]), ("on", 1400))
         self.assertEqual(self.bob.post(f"/api/conversations/{thread_id}/profile", json={}).status_code, 401)
 
+    def test_auto_save_is_offered_until_chosen_and_saves_criteria_as_they_change(self):
+        self.sign_up(self.alice, "alice")
+        fresh = self.alice.get("/api/me/profile").json()
+        self.assertEqual((fresh["memory"], fresh["auto_save"], fresh["auto_save_offer"]), ("undecided", False, True))
+        thread_id = self.alice.post("/api/conversations").json()["id"]
+        self.send(
+            self.alice, thread_id, "预算1300",
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content=""),
+        )
+
+        # Switched on from the conversation: memory too, and what it changed so far is saved at once.
+        switched = self.alice.post(f"/api/conversations/{thread_id}/auto-save").json()
+        self.assertEqual([row["field"] for row in switched["changes"]], ["max_price_sgd"])
+        profile = switched["profile"]
+        self.assertEqual((profile["memory"], profile["auto_save"], profile["auto_save_offer"]), ("on", True, False))
+        self.assertEqual(profile["preferences"], {"max_price_sgd": 1300})
+        self.assertEqual(self.alice.get(f"/api/conversations/{thread_id}").json()["profile_changes"], [])
+
+        name, reply = self.send(
+            self.alice, thread_id, "只看D05",
+            tool_calls(("search_listings", {"set": {"district_code": "D05"}, "user_quote": "只看D05"})),
+            AIMessage(content=""),
+        )[-1]
+        self.assertIn("已更新本次对话的条件，并自动存到长期资料：地区 不限 → D05", reply["text"])
+        self.assertEqual(reply["profile_changes"], [])
+        self.assertEqual(self.alice.get("/api/me/profile").json()["preferences"], {"max_price_sgd": 1300, "district_code": "D05"})
+
+        # Switched off on the page: offered again until the offer is closed.
+        off = self.alice.put("/api/me/auto-save", json={"on": False}).json()
+        self.assertEqual((off["auto_save"], off["auto_save_offer"]), (False, True))
+        self.alice.put("/api/me/memory", json={"on": False})
+        self.assertEqual(self.alice.post(f"/api/conversations/{thread_id}/auto-save").status_code, 409)
+
+        # Closing the offer is for good.
+        self.sign_up(self.bob, "bob")
+        self.assertTrue(self.bob.get("/api/me/profile").json()["auto_save_offer"])
+        closed = self.bob.delete("/api/me/auto-save/offer").json()
+        self.assertEqual((closed["memory"], closed["auto_save"], closed["auto_save_offer"]), ("undecided", False, False))
+        self.assertEqual(self.bob.post(f"/api/conversations/{thread_id}/auto-save").status_code, 404)
+
     def test_shortlists_kept_per_conversation_become_the_accounts_once(self):
         from agent import build_agent
         from server import create_app
@@ -289,7 +331,7 @@ class ServerTest(unittest.TestCase):
             AIMessage(content=""),
             language="en",
         )[-1]
-        self.assertIn("Save these criteria to your long-term profile?", reply["text"])
+        self.assertIn("Updated this conversation's criteria: maximum monthly budget any → S$1,300", reply["text"])
         self.assertEqual(reply["preferences"], {"max_price_sgd": 1300})
 
         # A Chinese message is answered in Chinese, whatever the interface language.

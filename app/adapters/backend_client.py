@@ -95,12 +95,16 @@ class BackendClient:
         """The saved criteria (preferences, sources, items), the latest search's listings and the account's shortlist."""
         return self._json('GET', f'/api/conversations/{quote(thread_id, safe="")}')
 
+    def delete_conversation(self, thread_id):
+        """Deletes the conversation and what the agent kept of it; waits for a reply in progress."""
+        return self._json('DELETE', f'/api/conversations/{quote(thread_id, safe="")}')
+
     def messages(self, thread_id):
         return self._json('GET', f'/api/conversations/{quote(thread_id, safe="")}/messages')
 
     # The long-term profile: the criteria new conversations start from while memory is on.
     def profile(self):
-        """{memory: on/off/undecided, saved_on, preferences, sources, budget, items, opening}."""
+        """{memory: on/off/undecided, auto_save, auto_save_offer, saved_on, preferences, sources, budget, items, opening}."""
         return self._json('GET', '/api/me/profile')
 
     def edit_profile(self, changes):
@@ -109,6 +113,12 @@ class BackendClient:
 
     def set_memory(self, on):
         return self._json('PUT', '/api/me/memory', {'on': on})
+
+    def set_auto_save(self, on):
+        return self._json('PUT', '/api/me/auto-save', {'on': on})
+
+    def close_auto_save_offer(self):
+        return self._json('DELETE', '/api/me/auto-save/offer')
 
     def delete_profile(self):
         return self._json('DELETE', '/api/me/profile')
@@ -121,6 +131,11 @@ class BackendClient:
     def save_profile(self, thread_id, switch_on=False):
         path = f'/api/conversations/{quote(thread_id, safe="")}/profile'
         return self._json('POST', path, {'switch_on': switch_on}, TURN_TIMEOUT_SECONDS)
+
+    def auto_save_from(self, thread_id):
+        """Switch automatic saving on and save what this conversation changed so far: {changes, profile}."""
+        path = f'/api/conversations/{quote(thread_id, safe="")}/auto-save'
+        return self._json('POST', path, None, TURN_TIMEOUT_SECONDS)
 
     # The account's shortlist and exclusions, shared by all its conversations: {shortlist, excluded}.
     def my_listings(self):

@@ -25,15 +25,17 @@ def demo_recommendations(api, ids):
 def render(api):
     st.title(t('Favorites', '收藏'))
     if live():
-        st.caption(t('Your favorites, the same in every conversation. The agent sees them too, so you can ask it to compare them; new searches leave them out and say when one still matches.',
-                     '这些是你的收藏，所有对话共用。agent 也能看到，可以让它帮你比较；新的搜索不会重复推荐它们，符合条件时会提一句。'))
+        st.caption(t('Your favorites, the same in every conversation. The agent sees them too, so you can ask it to compare them, or press Compare on two or three; new searches leave them out and say when one still matches.',
+                     '这些是你的收藏，所有对话共用。agent 也能看到，可以让它帮你比较，或者在两三套上点“比较”；新的搜索不会重复推荐它们，符合条件时会提一句。'))
     else:
         st.caption(t('Saved listings persist only during the active Streamlit session.', '收藏只在本次会话中保留。'))
     ids = favorite_ids()
     # Comparison is independent of saved favorites and must remain visible without them.
     comparison_ids = list(dict.fromkeys([*ids, *st.session_state.compare]))
     index = {rec.listing_id: rec for rec in current()['recommendations'] or []} if live() else demo_recommendations(api, comparison_ids)
-    comparison(api,list(index.values()))
+    # With the backend, comparisons are the agent's, in the Compare bar on Home.
+    if not live():
+        comparison(api,list(index.values()))
     if not ids:
         st.info(t('No saved listings yet. Save an option from the listing panel on Home.', '还没有收藏。可以在首页的房源面板里收藏。'))
         return
@@ -50,6 +52,7 @@ def render(api):
                 st.rerun()
             continue
         card(listing,index.get(listing_id),f'fav-{listing_id}')
+    # Only a favorite's details belong here; the selection may come from Home.
     selected = st.session_state.selected_listing
-    if selected:
+    if selected in ids:
         details(api.details(selected),index.get(selected),'fav-selected')

@@ -14,6 +14,17 @@ def safe_image_urls(value):
         return ()
     return tuple(url for url in value if isinstance(url, str) and urlparse(url).scheme in ('http', 'https') and urlparse(url).hostname)
 
+# Listing pages also carry the agent's headshot and the site's own icons; neither shows the home.
+_NOT_THE_HOME = ('/agent/', '/hive-ui')
+
+
+def listing_images(thumbnail, images):
+    """The pictures to show for a listing: its own photos first (the thumbnail, then the rest), then
+    others such as the development's photos; agent headshots and site icons are left out."""
+    urls = [url for url in dict.fromkeys((*thumbnail, *images)) if not any(part in urlparse(url).path for part in _NOT_THE_HOME)]
+    return tuple(sorted(urls, key=lambda url: '/listing/' not in urlparse(url).path))
+
+
 class BackendMapper:
     @staticmethod
     def listing(row, metadata, district, evidence):
@@ -24,9 +35,7 @@ class BackendMapper:
         # titles. Original titles remain untouched in the domain facts.
         english_excerpts = {'25024859':'Super Nice Classic House', '19877684':'Modern GCB at Maryland Drive for Rent'}
         facts['displayTitle'] = english_excerpts.get(str(row['listing_id']), row['title'])
-        images = safe_image_urls(evidence.get('image_urls'))
-        thumbnail = safe_image_urls([evidence.get('thumbnail_url')])
-        images = tuple(dict.fromkeys(thumbnail + images))
+        images = listing_images(safe_image_urls([evidence.get('thumbnail_url')]), safe_image_urls(evidence.get('image_urls')))
         meta = {'availabilityStatus': metadata['availability_status'], 'reviewFlags': list(metadata['review_flags'])}
         ev = {'cardText': evidence.get('card_text'), 'availabilityText': evidence.get('availability_text'), 'sourceUrl': evidence.get('source_url'), 'fieldEvidence': evidence.get('original_field_evidence'), 'ruleEvidence': evidence.get('rule_evidence')}
         provenance = {key: provenance_for(value) for key, value in {**facts, **meta, **ev}.items()}

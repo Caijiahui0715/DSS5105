@@ -37,6 +37,48 @@ class UserProfilesTest(unittest.TestCase):
         self.assertIsNone(profiles.profile("alice"))
         self.assertFalse(profiles.consent("alice"))
 
+    def test_auto_save_acts_only_while_memory_is_on_and_is_offered_until_chosen(self):
+        storage = empty_storage()
+        # A database from before automatic saving gets its columns when the server starts.
+        for column in ("auto_save", "offer_closed"):
+            storage.run(f"ALTER TABLE user_profiles DROP COLUMN IF EXISTS {column}")
+        profiles = UserProfiles(storage)
+        UserProfiles(storage)
+        self.assertIsNone(profiles.auto_save("alice"))
+        self.assertTrue(profiles.offers_auto_save("alice"))
+
+        # Switching it on switches an undecided memory on; then it is no longer offered.
+        profiles.set_auto_save("alice", True)
+        self.assertTrue(profiles.consent("alice") and profiles.saves_automatically("alice"))
+        self.assertFalse(profiles.offers_auto_save("alice"))
+        # Memory off: the setting stays but waits.
+        profiles.set_consent("alice", False)
+        self.assertTrue(profiles.auto_save("alice"))
+        self.assertFalse(profiles.saves_automatically("alice"))
+        profiles.set_consent("alice", True)
+        self.assertTrue(profiles.saves_automatically("alice"))
+        # Off again: offered again. Forgetting switches it off (and memory, so it is not offered);
+        # deleting everything clears it and the closed offer.
+        profiles.set_auto_save("alice", False)
+        self.assertTrue(profiles.offers_auto_save("alice"))
+        profiles.forget("alice")
+        self.assertIs(profiles.auto_save("alice"), False)
+        self.assertFalse(profiles.offers_auto_save("alice"))
+        profiles.close_offer("alice")
+        profiles.delete("alice")
+        self.assertIsNone(profiles.auto_save("alice"))
+        self.assertTrue(profiles.offers_auto_save("alice"))
+
+        # Closing the offer is for good, and switching off without memory leaves memory undecided.
+        profiles.close_offer("bob")
+        self.assertFalse(profiles.offers_auto_save("bob"))
+        self.assertIsNone(profiles.consent("bob"))
+        profiles.set_auto_save("carol", False)
+        self.assertIsNone(profiles.consent("carol"))
+        # Memory off: not offered.
+        profiles.set_consent("dave", False)
+        self.assertFalse(profiles.offers_auto_save("dave"))
+
     def test_the_faculty_is_an_account_setting_cleared_only_with_all_data(self):
         profiles = UserProfiles(empty_storage())
         profiles.set_faculty("alice", "Faculty of Law")

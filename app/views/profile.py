@@ -1,9 +1,9 @@
 from dataclasses import replace
 import streamlit as st
 from components.criteria_panel import criteria_form, other_criteria
-from content.i18n import t, language, value_label, lease_label
+from content.i18n import t, language, value_label
 from domain.criteria import form_changes
-from state.session_store import current, live, faculties, logout, refresh_new_conversations
+from state.session_store import current, live, faculties, logout, read_profile, refresh_new_conversations
 
 
 def choice_label(value):
@@ -25,7 +25,7 @@ def render_account(api):
     st.write(t(f"Signed in as **{st.session_state.profile['name']}**", f"当前账号：**{st.session_state.profile['name']}**"))
     faculty_setting()
     st.divider()
-    long_term_profile(api, client.profile())
+    long_term_profile(api, read_profile())
     st.divider()
     excluded_listings(api)
     st.divider()
@@ -49,8 +49,8 @@ def faculty_setting():
 def long_term_profile(api, profile):
     client = st.session_state.client
     st.subheader(t('Long-term profile', '长期资料'))
-    st.caption(t('While long-term memory is on, every new conversation starts from these criteria. What you change in a conversation stays there until you save it here.',
-                 '长期记忆打开时，每个新对话都会按这些条件开始。对话里改的条件只属于那段对话，存为长期资料后才会改到这里。'))
+    st.caption(t('While long-term memory is on, every new conversation starts from these criteria. What you change in a conversation stays there until you save it here, or comes here as it changes with Auto-save on.',
+                 '长期记忆打开时，每个新对话都会按这些条件开始。对话里改的条件只属于那段对话，存为长期资料后才会改到这里；打开“自动保存”后会自动存过来。'))
     memory = profile['memory']
     st.session_state['memory-switch'] = memory == 'on'
 
@@ -62,6 +62,7 @@ def long_term_profile(api, profile):
                                    else t('Long-term memory is off: what is saved stays, but new conversations do not use it.', '长期记忆已关闭：保存的内容还在，但新对话不会使用。'))
 
     st.toggle(t('Long-term memory', '长期记忆'), key='memory-switch', on_change=switch)
+    auto_save_setting(profile)
     if profile['saved_on']:
         st.caption(t(f"Last saved {profile['saved_on']}", f"最后保存 {profile['saved_on']}"))
     if memory == 'off':
@@ -109,6 +110,30 @@ def long_term_profile(api, profile):
         if cancel.button(t('Cancel', '取消'), key='delete-profile-cancel'):
             st.session_state['confirm-delete-profile'] = False
             st.rerun()
+
+
+def auto_save_setting(profile):
+    """Under the memory switch: saving the criteria changed in conversations automatically. It acts
+    only while memory is on; switching it on switches an undecided memory on too."""
+    memory, on = profile['memory'], profile['auto_save']
+    st.session_state['auto-save-switch'] = on
+
+    def switch():
+        on = st.session_state['auto-save-switch']
+        st.session_state.client.set_auto_save(on)
+        refresh_new_conversations()
+        st.session_state.notice = (t('Auto-save is on: criteria you change in conversations are saved to your long-term profile.', '自动保存已打开：对话里改的条件会自动存进长期资料。') if on
+                                   else t('Auto-save is off: criteria you change in a conversation stay there until you save them.', '自动保存已关闭：对话里改的条件只留在那段对话，保存后才会改到长期资料。'))
+
+    st.toggle(t('Auto-save', '自动保存'), key='auto-save-switch', on_change=switch, disabled=memory == 'off')
+    if memory == 'off':
+        st.caption(t('Paused while long-term memory is off; it resumes when memory is on.', '长期记忆关着，自动保存暂停了；打开长期记忆后会继续。') if on
+                   else t('Switch long-term memory on to use auto-save.', '打开长期记忆后才能用自动保存。'))
+    elif on:
+        st.caption(t('Criteria you change in conversations are saved here as they change.', '对话里改的条件会自动存到这里。'))
+    else:
+        st.caption(t('When on, criteria you change in conversations are saved here as they change.', '打开后，对话里改的条件会自动存到这里。')
+                   + (t(' Switching it on also switches long-term memory on.', '打开时也会同时打开长期记忆。') if memory == 'undecided' else ''))
 
 
 def excluded_listings(api):
@@ -166,10 +191,6 @@ def render_demo(api):
         bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), bedroom_options,
                               index=bedroom_options.index(req.min_bedrooms or 'No minimum'),
                               format_func=lambda v: t('No minimum', '不限') if v == 'No minimum' else str(v))
-        if live():
-            # The agent filters by each advert's shortest lease; a length saved in chat stays selectable.
-            leases = list(dict.fromkeys([None, 6, 12, 24, req.lease_months]))
-            lease = st.columns(3)[0].selectbox(t('Lease length you will sign', '打算签多久的租约'), leases, index=leases.index(req.lease_months), format_func=lease_label)
         st.subheader(t('Soft preferences', '偏好'))
         districts = st.multiselect(t('Preferred districts', '想住的区'),district_codes,default=pref.districts,
                                    format_func=lambda code:f'{code} · {district_names[code]}')
@@ -185,8 +206,7 @@ def render_demo(api):
         submitted = save.form_submit_button(t('Save profile', '保存'),type='primary')
         canceled = cancel.form_submit_button(t('Cancel changes', '取消修改'))
     if submitted:
-        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=None if bedrooms == 'No minimum' else int(bedrooms),
-                          lease_months=lease if live() else req.lease_months)
+        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=None if bedrooms == 'No minimum' else int(bedrooms))
         new_pref = replace(pref,districts=districts,mrt_distance=int(mrt) if mrt is not None else None,commute_minutes=int(commute) if commute is not None else None,property_type=property_type,**values)
         if not name.strip() or '@' not in email:
             st.error(t('Provide your name and a valid email.', '请填写姓名和有效邮箱。'))

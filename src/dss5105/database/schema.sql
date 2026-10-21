@@ -40,10 +40,10 @@ CREATE TABLE listings (
     district_code VARCHAR(3) NOT NULL,
     address TEXT NOT NULL,
 
-    mrt_station TEXT NOT NULL,
+    mrt_station TEXT,
     mrt_distance_m NUMERIC(10, 2),
     mrt_minutes_reported SMALLINT,
-    mrt_operation_status TEXT NOT NULL,
+    mrt_operation_status TEXT,
 
     listed_date DATE NOT NULL,
     collected_at TIMESTAMP NOT NULL,

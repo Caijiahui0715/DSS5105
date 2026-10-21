@@ -118,6 +118,71 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(min(observation["rent_above_cheapest_sgd"].values()), 0)
         self.assertIn("综合排名更靠前", result["response"])
 
+    def test_a_comparison_is_a_table_in_the_chosen_order_and_the_table_is_pointed_out_once(self):
+        profiles = UserProfiles(empty_storage())
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
+            AIMessage(content=""),
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009", "S003"]})),
+            AIMessage(content="S010 离 MRT 更近，S009 更便宜。"),
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009"]})),
+            AIMessage(content="差别不大。"),
+            tool_calls(("compare_listings", {"listing_ids": ["S001", "S002", "S003", "S004"]})),
+            AIMessage(content="一次最多比较三套，你想比较哪三套？"),
+        )
+        with closing(create_mock_database()) as connection:
+            graph = memory_agent(connection, model, profiles)
+            say(graph, "first", "预算1300")
+            first = say(graph, "first", "比较 S010、S009 和 S003")
+            again = say(graph, "second", "比较 S010 和 S009")
+            many = say(graph, "second", "比较 S001 到 S004")
+
+        view = first["comparison"]
+        self.assertEqual(view["listing_ids"], ["S010", "S009", "S003"])
+        self.assertEqual(first["shown_listing_ids"], ["S010", "S009", "S003"])
+        self.assertEqual(first["last_comparison"], view)
+        rows = {row["label"]["zh"]: row["values"] for row in view["rows"]}
+        self.assertEqual(rows["月租"]["S009"], {"zh": "S$1,250（最便宜）", "en": "S$1,250 (cheapest)"})
+        self.assertEqual(rows["月租"]["S003"]["zh"], "S$1,700（比最便宜的贵 S$450）")
+        self.assertEqual(rows["是否符合条件（按比较时的条件）"]["S003"]["zh"], "不符合：预算")
+        self.assertEqual(rows["链接"]["S010"]["zh"], "有效")
+        self.assertEqual(view["summary"]["zh"], "S009 最便宜（S$1,250）；S010 离 MRT 最近（约 4 分钟）；S003 不符合当前条件")
+        # The system points to the table the first time only, before the model's analysis.
+        self.assertTrue(first["response"].startswith("对比表在右侧“比较”栏，点开就能看到。\n\nS010 离 MRT 更近"))
+        self.assertEqual(again["response"], "差别不大。")
+        self.assertEqual(again["comparison"]["listing_ids"], ["S010", "S009"])
+        # More than three: nothing compared, the model asks which three.
+        self.assertIn("At most three", json.loads(many["observations"][0])["error"])
+        self.assertIsNone(many["comparison"])
+        self.assertEqual(many["last_comparison"]["listing_ids"], ["S010", "S009"])
+
+    def test_listings_left_out_of_a_comparison_are_named(self):
+        def links(listing_id, url):
+            if listing_id == "S009":
+                return {"status": "inactive", "final_url": url, "http_status": 404, "error_reason": "http_404"}
+            return active_links(listing_id, url)
+
+        model = ScriptedModel(
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009", "S003"]})),
+            AIMessage(content="S010 更便宜。"),
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009", "NOPE"]})),
+            AIMessage(content="请再选一套。"),
+        )
+        with closing(create_mock_database()) as connection:
+            # No cached link checks, so the checker decides.
+            connection.run("DELETE FROM listing_health")
+            graph = build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])), listing_checker=links)
+            config = {"configurable": {"thread_id": "left-out"}}
+            two = graph.invoke({"message": "比较 S010、S009 和 S003"}, config=config)
+            one = graph.invoke({"message": "比较 S010、S009 和 NOPE"}, config=config)
+
+        self.assertEqual(two["comparison"]["listing_ids"], ["S010", "S003"])
+        self.assertTrue(two["response"].startswith("S009 的原链接已失效，没有加入比较。"))
+        # One listing left: not compared; the table keeps it so the page can ask for another.
+        self.assertEqual(one["comparison"]["listing_ids"], ["S010"])
+        self.assertEqual(json.loads(one["observations"][0])["left_out"], {"S009": "inactive", "NOPE": "missing"})
+        self.assertTrue(one["response"].startswith("S009 的原链接已失效，没有加入比较。 NOPE 不在当前房源数据中，没有加入比较。"))
+
     def test_one_turn_can_shortlist_and_show_another_listing(self):
         model = ScriptedModel(
             tool_calls(
@@ -278,7 +343,7 @@ class AgentTest(unittest.TestCase):
 
         shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
         # Food takes 70%, so the busiest food areas lead even over the cheapest room.
-        self.assertEqual([item["listing_id"] for item in shown], ["24970286", "60186053", "500029855"])
+        self.assertEqual([item["listing_id"] for item in shown], ["24970286", "24203641", "60186053"])
         self.assertEqual(shown[0]["nearby_1km"], {"fnb": 1282, "hawker_centres": 8, "healthcare": 15})
         self.assertIn("排序偏好 均衡 → 吃饭方便", result["response"])
         self.assertIn("周边餐饮 70%", result["response"])
@@ -410,7 +475,7 @@ class AgentTest(unittest.TestCase):
         observation = json.loads(result["observations"][0])
         self.assertEqual(observation["rental_scope_mix"]["shown_scopes"], ["room"])
         self.assertTrue(result["response"].endswith(
-            "提示：展示的都是合租房间；数据库里符合条件的整租有 65 套，最低 S$1,900。想只看一种，告诉我要整租还是合租即可。"
+            "提示：展示的都是合租房间；数据库里符合条件的整租有 123 套，最低 S$1,350。想只看一种，告诉我要整租还是合租即可。"
         ))
         # The note already asks the question, so the draft does not repeat it.
         self.assertNotIn("rental_scope", observation["missing_refinements"])
@@ -469,11 +534,11 @@ class AgentTest(unittest.TestCase):
 
     def test_explain_listing_quotes_the_source_text(self):
         model = ScriptedModel(
-            tool_calls(("explain_listing", {"listing_id": "25558367"})),
+            tool_calls(("explain_listing", {"listing_id": "12059415"})),
             AIMessage(content=""),
         )
         with closing(create_database()) as connection:
-            (result,) = run_agent(connection, model, "为什么推荐 25558367？")
+            (result,) = run_agent(connection, model, "为什么推荐 12059415？")
 
         observation = json.loads(result["observations"][0])
         self.assertIn("card_text", observation["evidence"])
@@ -782,19 +847,82 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(later["preferences"].max_price_sgd, 800)
         self.assertTrue(later["response"].startswith("你之前填写的入住日期 2026-11-01 已经过去，如需更新请告诉我。"))
 
-    def test_the_save_question_is_not_repeated_by_the_model(self):
+    def test_auto_save_saves_criteria_as_they_change_until_switched_off(self):
+        profiles = UserProfiles(empty_storage())
         model = ScriptedModel(
-            tool_calls(("search_listings", {"set": {"max_price_sgd": 1300}, "user_quote": "预算1300"})),
-            AIMessage(content="预算已保存。要我记住这些条件吗？"),
-            AIMessage(content="预算已保存。"),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 2500}, "user_quote": "预算2500"})),
+            AIMessage(content=""),
+            tool_calls(("user_memory", {"action": "auto_on", "user_quote": "打开自动保存"})),
+            AIMessage(content="好的。"),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1800}, "user_quote": "预算改成1800"})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500}, "preview": True})),
+            AIMessage(content=""),
+            tool_calls(("estimate_costs", {"lease_months": 6, "rent": {"amount": 1800}, "user_quote": "租6个月"})),
+            AIMessage(content=""),
+            tool_calls(("user_memory", {"action": "auto_off", "user_quote": "关闭自动保存"})),
+            AIMessage(content="好的。"),
+            tool_calls(("search_listings", {"set": {"district_code": "D05"}, "user_quote": "只看D05"})),
+            AIMessage(content=""),
         )
         with closing(create_mock_database()) as connection:
-            asked = say(memory_agent(connection, model, UserProfiles(empty_storage())), "first", "预算1300")
+            graph = memory_agent(connection, model, profiles)
+            first = say(graph, "auto", "预算2500")
+            self.assertIn("已更新本次对话的条件：", first["response"])
+            self.assertNotIn("长期资料吗", first["response"])
+            self.assertIsNone(profiles.profile("alice"))
+            switched = say(graph, "auto", "打开自动保存")
+            # Switching it on switches an undecided memory on and saves what changed so far.
+            self.assertTrue(profiles.consent("alice") and profiles.auto_save("alice"))
+            self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 2500})
+            changed = say(graph, "auto", "预算改成1800")
+            self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 1800})
+            self.assertEqual(profiles.profile("alice")["sources"]["max_price_sgd"]["quote"], "预算改成1800")
+            # A preview is never saved.
+            say(graph, "auto", "如果预算1500呢")
+            self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 1800})
+            costs = say(graph, "auto", "租6个月")
+            self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 1800, "lease_months": 6})
+            off = say(graph, "auto", "关闭自动保存")
+            later = say(graph, "auto", "只看D05")
 
-        # The model's own question is sent back once; the system's fixed question ends the reply.
-        self.assertEqual(asked["response"].count("要把这些条件存到你的长期资料吗"), 1)
-        self.assertNotIn("要我记住", asked["response"])
-        self.assertTrue(asked["response"].endswith("也可以在“个人资料”页查看和修改。"))
+        self.assertTrue(switched["response"].startswith(
+            "已开启自动保存和长期记忆：之后对话里改的条件会自动存进长期资料。刚才的 1 项改动已存：每月最高预算 不限 → S$2,500。"
+            "想停止，在个人资料页关掉“自动保存”，或者在对话里说“关闭自动保存”。"
+        ))
+        self.assertIn("已更新本次对话的条件，并自动存到长期资料：每月最高预算 S$2,500 → S$1,800", changed["response"])
+        self.assertIn("已更新本次对话的条件，并自动存到长期资料：签约租期（月） 不限 → 6", costs["response"])
+        self.assertTrue(off["response"].startswith("已关闭自动保存："))
+        self.assertFalse(profiles.auto_save("alice"))
+        # Off: a change stays in the conversation.
+        self.assertIn("已更新本次对话的条件：地区 不限 → D05", later["response"])
+        self.assertNotIn("district_code", profiles.profile("alice")["preferences"])
+        self.assertIn('"auto_save": false', model.calls[-1][0].content)
+
+    def test_auto_save_waits_while_memory_is_off(self):
+        profiles = UserProfiles(empty_storage())
+        profiles.set_auto_save("alice", True)
+        profiles.set_consent("alice", False)
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1800}, "user_quote": "预算1800"})),
+            AIMessage(content=""),
+            tool_calls(("user_memory", {"action": "on", "user_quote": "打开长期记忆"})),
+            AIMessage(content="好的。"),
+            tool_calls(("search_listings", {"set": {"rental_scope": "room"}, "user_quote": "合租"})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            graph = memory_agent(connection, model, profiles)
+            paused = say(graph, "paused", "预算1800")
+            self.assertIsNone(profiles.profile("alice"))
+            on = say(graph, "paused", "打开长期记忆")
+            resumed = say(graph, "paused", "合租")
+
+        self.assertIn("已更新本次对话的条件：每月最高预算", paused["response"])
+        self.assertIn("自动保存继续", on["response"])
+        self.assertIn("并自动存到长期资料：出租方式 不限 → 合租/单间", resumed["response"])
+        # Everything this conversation changed since it started is saved, as saving by hand would.
+        self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 1800, "rental_scope": "room"})
 
     def test_criteria_are_saved_only_when_asked_with_the_users_words(self):
         profiles = UserProfiles(empty_storage())
@@ -815,14 +943,14 @@ class AgentTest(unittest.TestCase):
             later = say(graph, "first", "只看D05，收藏 S001")
 
         self.assertIn("user_memory", [tool["function"]["name"] for tool in model.tools])
-        self.assertTrue(asked["response"].endswith("要把这些条件存到你的长期资料吗？存了以后，新对话会自动按它们开始，也可以在“个人资料”页查看和修改。"))
+        # Nothing asks whether to save; the page offers automatic saving.
+        self.assertNotIn("长期资料吗", asked["response"])
         # Saving switches memory on for a user who never decided, and says what changed.
         self.assertTrue(saved["response"].startswith(
             "已存到长期资料：每月最高预算 不限 → S$1,300；出租方式 不限 → 合租/单间。之后的新对话会按这些条件开始。长期记忆已打开。"
         ))
         self.assertTrue(profiles.consent("alice"))
-        # A later change stays in the conversation until it is saved, and the question is not asked again.
-        self.assertNotIn("长期资料吗", later["response"])
+        # A later change stays in the conversation until it is saved.
         kept = profiles.profile("alice")
         self.assertEqual(kept["preferences"], {"max_price_sgd": 1300, "rental_scope": "room"})
         self.assertEqual(kept["sources"]["max_price_sgd"]["quote"], "预算1300，合租")
@@ -912,8 +1040,6 @@ class AgentTest(unittest.TestCase):
             saved = say(graph, "fourth", "要")
 
         self.assertIn("长期记忆已关闭，要打开并保存吗？", json.loads(asked["observations"][1])["error"])
-        # Memory off is a decision already made, so the system does not ask to save either.
-        self.assertNotIn("长期资料吗", asked["response"])
         self.assertTrue(profiles.consent("alice"))
         self.assertEqual(profiles.profile("alice")["preferences"], {"max_price_sgd": 1500})
         self.assertIn("长期记忆已打开。", saved["response"])
@@ -921,6 +1047,7 @@ class AgentTest(unittest.TestCase):
     def test_forget_deletes_the_criteria_and_switches_memory_off_but_keeps_listings(self):
         profiles = UserProfiles(empty_storage())
         profiles.save("alice", {"preferences": {"max_price_sgd": 1300}, "saved_on": "2026-10-05"})
+        profiles.set_auto_save("alice", True)
         model = ScriptedModel(
             tool_calls(("shortlist", {"add": ["S001"]}), ("exclude_listings", {"exclude": ["S002"]})),
             AIMessage(content="好的。"),
@@ -935,7 +1062,8 @@ class AgentTest(unittest.TestCase):
         self.assertIsNone(profiles.profile("alice"))
         self.assertFalse(profiles.consent("alice"))
         self.assertEqual(profiles.listings("alice"), (["S001"], ["S002"]))
-        self.assertTrue(forgotten["response"].startswith("已删除长期资料里的条件，长期记忆现在关着。收藏和排除的房源不受影响。"))
+        self.assertTrue(forgotten["response"].startswith("已删除长期资料里的条件，长期记忆现在关着。收藏和排除的房源不受影响。自动保存也关了。"))
+        self.assertFalse(profiles.auto_save("alice"))
 
     def test_the_shortlist_is_shared_and_shortlisted_matches_are_named_after_the_results(self):
         profiles = UserProfiles(empty_storage())

@@ -32,6 +32,7 @@ class HttpAgentApi:
             reply['text'], requirements, preferences, recommendations(found), steps=reply.get('steps') or [],
             shortlist=reply.get('shortlist'), preview=bool(found and found.get('preview')),
             criteria={key: reply.get(key) or empty for key, empty in (('preferences', {}), ('sources', {}), ('items', []), ('profile_changes', []))},
+            comparison=reply.get('comparison'),
         )
 
 

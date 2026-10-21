@@ -204,6 +204,10 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         saved, sources = kept.get("preferences", {}), kept.get("sources", {})
         return {
             "memory": memory_switch(consent),
+            # The automatic-saving switch as set (it waits while memory is off), and whether Home
+            # offers to switch it on.
+            "auto_save": bool(profiles.auto_save(user_id)),
+            "auto_save_offer": profiles.offers_auto_save(user_id),
             "saved_on": kept.get("saved_on"),
             "preferences": saved,
             "sources": sources,
@@ -244,6 +248,19 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     def switch_memory(body: MemoryIn, user_id: str = Depends(current_user)):
         """Switch long-term memory on or off; what is kept stays either way."""
         profiles.set_consent(user_id, body.on)
+        return profile_view(user_id)
+
+    @app.put("/api/me/auto-save")
+    def switch_auto_save(body: MemoryIn, user_id: str = Depends(current_user)):
+        """Switch automatic saving on or off. On switches an undecided memory on; while memory is off
+        the setting is kept but waits."""
+        profiles.set_auto_save(user_id, body.on)
+        return profile_view(user_id)
+
+    @app.delete("/api/me/auto-save/offer")
+    def close_auto_save_offer(user_id: str = Depends(current_user)):
+        """Home no longer offers automatic saving to this account."""
+        profiles.close_offer(user_id)
         return profile_view(user_id)
 
     @app.delete("/api/me/profile")
@@ -328,13 +345,15 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     @app.get("/api/conversations/{thread_id}")
     def conversation(thread_id: str, user_id: str = Depends(current_user)):
         """What a frontend needs to reopen a conversation: the saved criteria, the latest search's
-        listings (as in each reply's recommendations) and the account's shortlist."""
+        listings (as in each reply's recommendations), the latest comparison table and the account's
+        shortlist."""
         owned(user_id, thread_id)
         values = agent.get_state(config(thread_id)).values
         return {
             "id": thread_id,
             **criteria(user_id, values),
             "recommendations": values.get("last_recommendations"),
+            "comparison": values.get("last_comparison"),
             "shortlist": profiles.listings(user_id)[0],
         }
 
@@ -360,8 +379,24 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
             if not values.get("preferences"):
                 return {"changes": [], "profile": profile_view(user_id)}
             rows, base = save_to_profile(profiles, user_id, values)
-            # Later saves from here count changes from what was just saved; the question is not asked again.
-            agent.update_state(config(thread_id), {"profile_base": base, "memory_asked": True}, as_node="finalize")
+            # Later saves from here count changes from what was just saved.
+            agent.update_state(config(thread_id), {"profile_base": base}, as_node="finalize")
+        return {"changes": rows, "profile": profile_view(user_id)}
+
+    @app.post("/api/conversations/{thread_id}/auto-save")
+    def auto_save_from(thread_id: str, user_id: str = Depends(current_user)):
+        """Switch automatic saving on from a conversation (and an undecided memory with it), saving
+        what this conversation changed so far at once."""
+        owned(user_id, thread_id)
+        with lock_for(thread_id):
+            if profiles.consent(user_id) is False:
+                raise HTTPException(409, "长期记忆已关闭，打开后才能自动保存。")
+            profiles.set_auto_save(user_id, True)
+            values = agent.get_state(config(thread_id)).values
+            rows = []
+            if values.get("preferences"):
+                rows, base = save_to_profile(profiles, user_id, values)
+                agent.update_state(config(thread_id), {"profile_base": base}, as_node="finalize")
         return {"changes": rows, "profile": profile_view(user_id)}
 
     @app.get("/api/conversations/{thread_id}/messages")
@@ -411,6 +446,8 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
                         "text": final["response"],
                         "steps": steps,
                         "recommendations": final.get("recommendations"),
+                        # The comparison table compare_listings made this turn; None without one.
+                        "comparison": final.get("comparison"),
                         **criteria(user_id, final),
                         # The agent can change the shortlist in chat too; read again, since the
                         # page or another conversation may have changed it during the turn.

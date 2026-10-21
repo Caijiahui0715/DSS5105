@@ -33,7 +33,7 @@ class ToolsTest(unittest.TestCase):
             listings = load_listings(connection)
         by_id = {listing["listing_id"]: listing for listing in listings}
 
-        self.assertEqual(len(listings), 327)
+        self.assertEqual(len(listings), 457)
         # The V2 columns with lease_term, derived ranks and commutes, metadata and link checks.
         self.assertEqual(len(listings[0]), 73)
         self.assertIn("availability_status", listings[0])
@@ -51,12 +51,12 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual((card_only["rent_monthly_sgd"], card_only["rent_monthly_sgd_now"]), (card_only["rent_monthly_sgd_card"], None))
         # The 80 sqft check runs on V2 areas; 7.43 sqm is an 80 sqft room.
         self.assertIn("area_outside_review_range", by_id["25107881"]["review_flags"])
-        self.assertNotIn("area_outside_review_range", by_id["25558367"]["review_flags"])
+        self.assertNotIn("area_outside_review_range", by_id["12059415"]["review_flags"])
         # V2.3 adds coordinates and nearby counts; food_rank is derived at load time.
-        self.assertEqual(by_id["25558367"]["coord_source"], "onemap_postcode")
+        self.assertEqual(by_id["12059415"]["coord_source"], "onemap_postcode")
         # The lease term the advert states, kept as written; empty cells are NULL.
         terms = [listing["lease_term"] for listing in listings]
-        self.assertEqual((terms.count("2 years"), terms.count("1 year"), terms.count(None)), (134, 27, 104))
+        self.assertEqual((terms.count("2 years"), terms.count("1 year"), terms.count(None)), (172, 38, 155))
         self.assertTrue(all(listing["poi_fnb_1km"] is not None for listing in listings))
         # food_rank averages the F&B and hawker positions: 0 is the most choice, 1 the least.
         self.assertLess(by_id["24970286"]["food_rank"], 0.05)   # 1282 F&B, 8 hawker centres

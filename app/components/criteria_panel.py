@@ -63,8 +63,10 @@ def criteria_form(api, saved, key, submit_label, on_submit, disabled=False):
         scope = b.selectbox(t('Rental scope', '租住方式'), scopes, index=scopes.index(requirements.rental_scope), disabled=disabled,
                             format_func=lambda v: {'room': t('Room in a shared home', '合租单间'), 'entire_unit': t('Entire unit', '整租')}.get(v, any_label))
         source(b, 'rental_scope')
-        bedrooms = c.number_input(t('Minimum bedrooms', '最少卧室数'), min_value=1, max_value=20, placeholder=any_label, disabled=disabled,
-                                  value=None if requirements.min_bedrooms is None else min(20, max(1, requirements.min_bedrooms)))
+        # As on the sign-up form; a count saved in chat outside 1-20 stays selectable.
+        counts = list(dict.fromkeys([None, *range(1, 21), requirements.min_bedrooms]))
+        bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), counts, index=counts.index(requirements.min_bedrooms), disabled=disabled,
+                               format_func=lambda v: t('No minimum', '不限') if v is None else str(v))
         source(c, 'min_bedrooms')
         a, b, c = st.columns(3)
         # The agent filters by each advert's shortest lease; a length saved in chat stays selectable.

@@ -8,6 +8,10 @@ the Profile page), and the budget as stated; never conversation text.
 Long-term memory is a switch (consent): undecided until the user saves or answers, on, or off. Off
 pauses it: what is kept stays and can be seen or deleted, but is neither used nor changed.
 
+Automatic saving is a second switch: while it and memory are on, criteria changed in a conversation
+are saved as they change. Undecided until the user first switches it; the Home page offers it while
+it is off, until the user closes the offer for good.
+
 Shortlisted and excluded listings belong to the account and are shared by all its conversations,
 whatever the switch. The NUS faculty is an account setting too, used for commute times everywhere.
 """
@@ -38,6 +42,11 @@ class UserProfiles:
             "user_id TEXT NOT NULL, listing_id TEXT NOT NULL, kind TEXT NOT NULL, seq BIGSERIAL, "
             "PRIMARY KEY (user_id, listing_id))"
         )
+        # auto_save: NULL until the user first switches it, then 1 or 0; acts only while consent is 1.
+        # offer_closed: 1 once the user closed the Home page's offer to switch it on.
+        # compare_hint_shown: 1 once a reply told the user where the comparison table is.
+        for column in ("auto_save", "offer_closed", "compare_hint_shown"):
+            storage.run(f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS {column} INTEGER")
         # One-time data moves that already ran.
         storage.run("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY, done_at TEXT NOT NULL)")
 
@@ -85,12 +94,60 @@ class UserProfiles:
         self.storage.run("UPDATE user_profiles SET profile = NULL, updated_at = %s WHERE user_id = %s", (_now(), user_id))
 
     def forget(self, user_id: str) -> None:
-        """Delete the kept criteria and switch memory off; listings and the faculty stay."""
+        """Delete the kept criteria and switch memory and automatic saving off; listings and the faculty stay."""
         self.delete_profile(user_id)
         self.set_consent(user_id, False)
+        self.set_auto_save(user_id, False)
+
+    # Automatic saving.
+
+    def auto_save(self, user_id: str) -> bool | None:
+        """The automatic-saving switch as set: None until the user first switches it."""
+        return self._setting(user_id, "auto_save")
+
+    def saves_automatically(self, user_id: str) -> bool:
+        """Whether criteria changed in a conversation are saved now: both switches on."""
+        return bool(self.consent(user_id) and self.auto_save(user_id))
+
+    def set_auto_save(self, user_id: str, on: bool) -> None:
+        """Switching it on also switches memory on for a user who never decided; while memory is off it
+        is kept but waits."""
+        if on and self.consent(user_id) is None:
+            self.set_consent(user_id, True)
+        self._set(user_id, "auto_save", on)
+
+    def offers_auto_save(self, user_id: str) -> bool:
+        """Whether the Home page offers automatic saving: it is not on, the offer was not closed, and
+        memory is not off."""
+        rows = self.storage.rows("SELECT consent, auto_save, offer_closed FROM user_profiles WHERE user_id = %s", (user_id,))
+        consent, auto_save, closed = rows[0] if rows else (None, None, None)
+        return consent != 0 and not auto_save and not closed
+
+    def close_offer(self, user_id: str) -> None:
+        self._set(user_id, "offer_closed", True)
+
+    # Telling the user once where the comparison table is.
+
+    def compare_hint_shown(self, user_id: str) -> bool:
+        return bool(self._setting(user_id, "compare_hint_shown"))
+
+    def mark_compare_hint_shown(self, user_id: str) -> None:
+        self._set(user_id, "compare_hint_shown", True)
+
+    def _setting(self, user_id: str, column: str) -> bool | None:
+        rows = self.storage.rows(f"SELECT {column} FROM user_profiles WHERE user_id = %s", (user_id,))
+        return None if not rows or rows[0][0] is None else bool(rows[0][0])
+
+    def _set(self, user_id: str, column: str, on: bool) -> None:
+        self.storage.run(
+            f"INSERT INTO user_profiles (user_id, {column}, updated_at) VALUES (%s, %s, %s) "
+            f"ON CONFLICT (user_id) DO UPDATE SET {column} = excluded.{column}, updated_at = excluded.updated_at",
+            (user_id, int(on), _now()),
+        )
 
     def delete(self, user_id: str) -> None:
-        """Remove every trace: the switch, the kept criteria, listings and the faculty."""
+        """Remove every trace: both switches, the closed offer, the comparison hint, the kept criteria,
+        listings and the faculty."""
         for table in ("user_profiles", "user_faculties", "user_listings"):
             self.storage.run(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
 

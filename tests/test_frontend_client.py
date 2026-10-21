@@ -74,7 +74,7 @@ class FrontendClientTest(unittest.TestCase):
 
         self.assertTrue(conversation["thread_id"])
         self.assertIn("Understanding your request", progress)
-        self.assertIn("Save these criteria to your long-term profile?", response.text)
+        self.assertIn("Updated this conversation's criteria: maximum monthly budget any → S$1,300", response.text)
         self.assertEqual(response.requirements.max_budget, 1300)
         self.assertEqual(response.criteria["preferences"], {"max_price_sgd": 1300})
         self.assertEqual(response.criteria["items"][0]["field"], "max_price_sgd")
@@ -84,13 +84,21 @@ class FrontendClientTest(unittest.TestCase):
         self.assertIn(first.evaluation.status, {"pass", "needs_confirmation"})
         self.assertEqual(first.facts["listing_id"], first.listing_id)
 
+        self.assertIsNone(response.comparison)
         thread_id = conversation["thread_id"]
+        # A comparison reaches the page as its table, and stays with the conversation.
+        pair = [rec.listing_id for rec in response.recommendations[:2]]
+        self.model.steps.extend([tool_calls(("compare_listings", {"listing_ids": pair})), AIMessage(content="")])
+        compared = HttpAgentApi(self.client).respond(conversation, f"Compare {pair[0]} and {pair[1]}.", "en")
+        self.assertEqual(compared.comparison["listing_ids"], pair)
+        self.assertEqual(compared.comparison["rows"][0]["label"]["en"], "Monthly rent")
+        self.assertEqual(self.client.conversation(thread_id)["comparison"], compared.comparison)
         self.assertEqual(self.client.shortlist_add(first.listing_id), {"shortlist": [first.listing_id], "excluded": []})
         snapshot = self.client.conversation(thread_id)
         self.assertEqual(from_backend(snapshot["preferences"])[0].max_budget, 1300)
         self.assertEqual([rec.listing_id for rec in recommendations(snapshot["recommendations"])], [rec.listing_id for rec in response.recommendations])
         self.assertEqual(snapshot["shortlist"], [first.listing_id])
-        self.assertEqual([message["role"] for message in self.client.messages(thread_id)], ["user", "assistant"])
+        self.assertEqual([message["role"] for message in self.client.messages(thread_id)], ["user", "assistant", "user", "assistant"])
         self.assertEqual([thread["id"] for thread in self.client.conversations()], [thread_id])
         self.assertEqual(self.client.shortlist_remove(first.listing_id)["shortlist"], [])
         self.assertEqual(self.client.my_listings(), {"shortlist": [], "excluded": []})
@@ -108,6 +116,12 @@ class FrontendClientTest(unittest.TestCase):
         started = self.client.new_conversation("en")
         self.assertEqual(self.client.conversation(started)["preferences"], {"max_price_sgd": 1500, "district_code": "D05"})
         self.assertEqual(self.client.delete_profile()["preferences"], {})
+
+        # One conversation is deleted; the others stay.
+        extra = self.client.new_conversation("en")
+        self.assertEqual(self.client.delete_conversation(extra), {"ok": True})
+        self.assertNotIn(extra, [thread["id"] for thread in self.client.conversations()])
+        self.assertIn(thread_id, [thread["id"] for thread in self.client.conversations()])
 
         self.client.delete_my_data()
         with self.assertRaises(SessionExpired):

@@ -33,6 +33,7 @@ SCRIPT_FOLDER = ROOT / "src" / "dss5105" / "database"
 DATA_FILES = [ROOT / "output-final-delivery" / name for name in ("rental_data_v1.json", "rental_data_v2.csv", "removed_listings.csv")]
 _HAS_TABLE = "SELECT to_regclass(%s) IS NOT NULL"
 _HAS_COLUMN = "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s AND column_name = %s)"
+_MRT_NULLABLE = "SELECT is_nullable = 'YES' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s AND column_name = %s"
 # The pipeline's table scripts in the order they must run, each with what shows it has run.
 TABLE_SCRIPTS = (
     ("schema.sql", _HAS_TABLE, ("public.listings",)),
@@ -41,6 +42,7 @@ TABLE_SCRIPTS = (
     ("migration_listing_commutes.sql", _HAS_TABLE, ("public.listing_commutes",)),
     ("migration_commute_benchmark.sql", _HAS_COLUMN, ("listing_commutes", "benchmark_date")),
     ("migration_lease_term.sql", _HAS_COLUMN, ("listings", "lease_term")),
+    ("migration_mrt_nullable.sql", _MRT_NULLABLE, ("listings", "mrt_station")),
 )
 
 

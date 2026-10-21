@@ -207,7 +207,7 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual(explanation["conditions"], {"max_price_sgd": "pass"})
         # Every current listing's rent was rechecked after collection.
         self.assertEqual(explanation["sources"]["rent_monthly_sgd"], "rechecked_listing")
-        self.assertIn("S$", explanation["evidence"]["card_text"])
+        self.assertIsNone(explanation["evidence"])
 
     def test_explanation_names_the_rent_source(self):
         preferences = SearchPreferences(max_price_sgd=6000)
@@ -405,11 +405,11 @@ class DecisionTest(unittest.TestCase):
         with closing(create_database()) as connection:
             strict, _ = search_with_unknowns(connection, preferences)
             shown = [item["listing"] for item in rank_listings(strict, preferences)[:3]]
-            room_only, _ = search_with_unknowns(connection, preferences.model_copy(update={"max_price_sgd": 1500}))
+            room_only, _ = search_with_unknowns(connection, preferences.model_copy(update={"max_price_sgd": 1000}))
 
         mix = rental_scope_mix(preferences, strict, shown)
         self.assertEqual(mix["shown_scopes"], ["room"])
-        self.assertEqual(mix["entire_unit"], {"database_count": 65, "cheapest_sgd": 1900})
+        self.assertEqual(mix["entire_unit"], {"database_count": 123, "cheapest_sgd": 1350})
         self.assertIsNone(rental_scope_mix(preferences.model_copy(update={"rental_scope": "room"}), strict, shown))
         # Under S$1,500 every match is a room, so there is no mix to mention.
         self.assertIsNone(rental_scope_mix(preferences, room_only, room_only[:3]))

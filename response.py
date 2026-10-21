@@ -1,4 +1,5 @@
 import re
+from datetime import date
 
 from models import (
     Listing,
@@ -459,6 +460,165 @@ def render_comparison(
     return "\n".join(lines)
 
 
+_ROOM_TEXT = {
+    "common_room": ("普通房", "common room"),
+    "master_room": ("主人房", "master room"),
+    "shared_room": ("合住房间", "shared room"),
+    "studio": ("Studio", "studio"),
+    "room_unspecified": ("房型未注明", "room type not stated"),
+}
+_SCOPE_TEXT = {"room": ("合租/单间", "room in a shared home"), "entire_unit": ("整租", "whole unit")}
+
+
+def comparison_view(
+    items: list[RankingResult],
+    criteria: dict[str, tuple[str, list[str]]],
+    left_out: dict[str, str],
+    has_faculty: bool,
+) -> dict:
+    """The comparison table a page shows next to the agent's reply. items are the compared listings
+    in the order the user chose; criteria gives each one's (match, confirm, fail or none, the
+    conditions to confirm or failed); left_out maps a listing not compared to why (inactive or
+    missing). Every text is in both languages: rows of {label, values by listing}, summary (the
+    key differences in a line) and a note per listing left out."""
+    both = ("zh", "en")
+    ids = [item["listing"]["listing_id"] for item in items]
+    rows = [
+        {"label": {language: label for language, label in zip(both, labels)}, "values": {
+            listing_id: {language: values[language][index] for language in both} for index, listing_id in enumerate(ids)
+        }}
+        for labels, values in _comparison_rows(items, criteria, has_faculty)
+    ]
+    return {
+        "listing_ids": ids,
+        "titles": {item["listing"]["listing_id"]: item["listing"].get("title") for item in items},
+        "rows": rows,
+        "summary": {language: _comparison_summary(items, criteria, language) for language in both},
+        "left_out": [{"listing_id": listing_id, "note": {language: _left_out_text(listing_id, reason, language) for language in both}} for listing_id, reason in left_out.items()],
+        "date": date.today().isoformat(),
+    }
+
+
+def _comparison_rows(items, criteria, has_faculty):
+    """((zh label, en label), {language: one value per listing}) for each row of the table."""
+    listings = [item["listing"] for item in items]
+    rents = [listing.get("rent_monthly_sgd") for listing in listings]
+    cheapest = min((rent for rent in rents if isinstance(rent, (int, float))), default=None)
+
+    def rent(listing, language):
+        price = listing.get("rent_monthly_sgd")
+        if not isinstance(price, (int, float)):
+            return _text(language, "未知", "unknown")
+        if len(items) > 1 and price == cheapest:
+            return _text(language, f"{_sgd(price)}（最便宜）", f"{_sgd(price)} (cheapest)")
+        return _text(language, f"{_sgd(price)}（比最便宜的贵 {_sgd(price - cheapest)}）", f"{_sgd(price)} ({_sgd(price - cheapest)} more than the cheapest)")
+
+    def commute(item, language):
+        trip = item.get("commute") or {}
+        if trip.get("minutes") is None:
+            return _text(language, "没有数据", "no data") if has_faculty else _text(language, "未设置学院", "no faculty set")
+        if trip.get("mode") == "walk":
+            return _text(language, f"步行约 {trip['minutes']:g} 分钟", f"about {trip['minutes']:g} min on foot")
+        return _text(language, f"公共交通约 {trip['minutes']:g} 分钟", f"about {trip['minutes']:g} min by public transport")
+
+    def scope(listing, language):
+        parts = [_text(language, *text) for text in (_SCOPE_TEXT.get(listing.get("rental_scope")), _ROOM_TEXT.get(listing.get("room_type"))) if text]
+        return " · ".join(parts) or _text(language, "未注明", "not stated")
+
+    def bathroom(listing, language):
+        private = {"yes": ("独立卫浴", "private bathroom"), "no": ("共用卫浴", "shared bathroom")}.get(listing.get("private_bathroom"))
+        count = listing.get("bathrooms")
+        text = _text(language, *private) if private else _text(language, "未注明是否独立", "private or shared not stated")
+        return text + (_text(language, f"，共 {count} 个卫生间", f", {count} in the home") if count is not None else "")
+
+    def furnishing(listing, language):
+        return _RESTRICTION_TEXT[language].get(("furnishing", listing.get("furnishing")), _text(language, "未注明", "not stated"))
+
+    def fits(listing, language):
+        status, fields = criteria.get(listing["listing_id"], ("none", []))
+        labels = ("、" if language == "zh" else ", ").join(_CONDITION_LABELS[language].get(field, field) for field in fields)
+        if status == "match":
+            return _text(language, "符合", "meets them")
+        if status == "confirm":
+            return _text(language, f"待确认：{labels}", f"to confirm: {labels}")
+        if status == "fail":
+            return _text(language, f"不符合：{labels}", f"does not meet: {labels}") if labels else _text(language, "不符合", "does not meet them")
+        return _text(language, "还没有条件", "no criteria yet")
+
+    def mrt(listing, language):
+        station = _display(listing.get("mrt_station"), _text(language, "车站未知", "unknown station"))
+        return f"{station}{'，' if language == 'zh' else ', '}{_mrt_text(listing, language)}"
+
+    def link(listing, language):
+        if (listing.get("live_status") or "unknown") == "active":
+            return _text(language, "有效", "active")
+        reason = str(listing.get("live_error_reason") or "")
+        code = reason[5:] if reason.startswith("http_") else None
+        return _text(language, f"暂时无法确认（HTTP {code}）", f"could not be checked (HTTP {code})") if code else _text(language, "暂时无法确认", "could not be checked")
+
+    columns = [
+        (("月租", "Monthly rent"), lambda item, language: rent(item["listing"], language)),
+        (("到学院通勤", "Commute to your faculty"), commute),
+        (("MRT", "MRT"), lambda item, language: mrt(item["listing"], language)),
+        (("租住方式和房型", "Rental type and room"), lambda item, language: scope(item["listing"], language)),
+        (("面积", "Area"), lambda item, language: _area_text(item["listing"], language)),
+        (("卫浴", "Bathroom"), lambda item, language: bathroom(item["listing"], language)),
+        (("家具", "Furnishing"), lambda item, language: furnishing(item["listing"], language)),
+        (("租期", "Lease"), lambda item, language: lease_text(item["listing"], language)),
+        (("可入住", "Availability"), lambda item, language: _availability_text(item["listing"], language)),
+        (("是否符合条件（按比较时的条件）", "Your criteria (as when compared)"), lambda item, language: fits(item["listing"], language)),
+        (("链接", "Link"), lambda item, language: link(item["listing"], language)),
+    ]
+    return [(labels, {language: [value(item, language) for item in items] for language in ("zh", "en")}) for labels, value in columns]
+
+
+def _comparison_summary(items, criteria, language: ResponseLanguage) -> str:
+    """The key differences in a line, worked out from the data."""
+    parts = []
+    priced = [item["listing"] for item in items if isinstance(item["listing"].get("rent_monthly_sgd"), (int, float))]
+    if len(priced) > 1:
+        cheapest = min(priced, key=lambda listing: listing["rent_monthly_sgd"])
+        parts.append(_text(language, f"{cheapest['listing_id']} 最便宜（{_sgd(cheapest['rent_monthly_sgd'])}）", f"{cheapest['listing_id']} is cheapest ({_sgd(cheapest['rent_monthly_sgd'])})"))
+    walks = [(item["listing"]["listing_id"], mrt_minutes(item["listing"])) for item in items if mrt_minutes(item["listing"]) is not None]
+    if len(walks) > 1:
+        closest, minutes = min(walks, key=lambda walk: walk[1])
+        parts.append(_text(language, f"{closest} 离 MRT 最近（约 {minutes} 分钟）", f"{closest} is closest to an MRT station (about {minutes} min)"))
+    trips = [(item["listing"]["listing_id"], item["commute"]["minutes"]) for item in items if (item.get("commute") or {}).get("minutes") is not None]
+    if len(trips) > 1:
+        fastest, minutes = min(trips, key=lambda trip: trip[1])
+        parts.append(_text(language, f"{fastest} 到学院最快（约 {minutes:g} 分钟）", f"{fastest} has the shortest commute (about {minutes:g} min)"))
+    for item in items:
+        listing_id = item["listing"]["listing_id"]
+        status, fields = criteria.get(listing_id, ("none", []))
+        if status == "confirm":
+            parts.append(_text(language, f"{listing_id} 有 {len(fields)} 项条件待确认", f"{listing_id} has {len(fields)} condition{'s' if len(fields) > 1 else ''} to confirm"))
+        elif status == "fail":
+            parts.append(_text(language, f"{listing_id} 不符合当前条件", f"{listing_id} does not meet your criteria"))
+    return ("；" if language == "zh" else "; ").join(parts)
+
+
+def _left_out_text(listing_id: str, reason: str, language: ResponseLanguage) -> str:
+    if reason == "inactive":
+        return _text(language, f"{listing_id} 的原链接已失效，没有加入比较。", f"{listing_id}'s original link is inactive, so it was not compared.")
+    return _text(language, f"{listing_id} 不在当前房源数据中，没有加入比较。", f"{listing_id} is not in the current listing data, so it was not compared.")
+
+
+def render_comparison_summary(view: dict, language: ResponseLanguage = "zh") -> str:
+    """The reply when the model's own fails: the key differences, the table being on the page."""
+    ids = ("、" if language == "zh" else ", ").join(view["listing_ids"])
+    summary = view["summary"][language]
+    return _text(language, f"已比较 {ids}。关键差异：{summary or '没有明显差异'}。", f"Compared {ids}. Key differences: {summary or 'none stand out'}.")
+
+
+def render_left_out(view: dict, language: ResponseLanguage = "zh") -> str:
+    return " ".join(item["note"][language] for item in view["left_out"])
+
+
+def render_compare_hint(language: ResponseLanguage = "zh") -> str:
+    """Shown once per account, after its first comparison."""
+    return _text(language, "对比表在右侧“比较”栏，点开就能看到。", "The comparison table is in the Compare bar on the right; click it to open.")
+
+
 def render_listing_details(
     listing: Listing,
     restrictions: RestrictionSummary,
@@ -882,26 +1042,54 @@ def render_kept_profile(profile: dict | None, consent: bool | None, language: Re
     )
 
 
-def render_memory_switch(on: bool, has_profile: bool, language: ResponseLanguage = "zh") -> str:
+def render_memory_switch(on: bool, has_profile: bool, language: ResponseLanguage = "zh", auto_save: bool = False) -> str:
+    """auto_save: whether automatic saving is set, which waits while memory is off."""
     if not on:
         return _text(
             language,
             "长期记忆已关闭：保存的条件还在，但新对话不会使用，也不会保存新的改动；随时可以再打开。",
             "Long-term memory is off: what is saved stays, but new conversations will not use it and nothing new is saved; you can switch it on again at any time.",
-        )
+        ) + (_text(language, "自动保存也暂停了，打开长期记忆后会继续。", " Auto-save is paused too and resumes when memory is on again.") if auto_save else "")
     return _text(language, "长期记忆已打开，新对话会按你的长期资料开始。", "Long-term memory is on: new conversations will start from your long-term profile.") + (
         "" if has_profile else _text(language, "目前还没有保存的条件，说“存到我的资料”就能保存这段对话的条件。", " Nothing is saved yet; say \"save to my profile\" to keep this conversation's criteria.")
+    ) + (_text(language, "自动保存继续：对话里改的条件会自动存进长期资料。", " Auto-save resumes: criteria you change in conversations are saved to it.") if auto_save else "")
+
+
+def render_auto_save(on: bool, memory: str, rows: list[dict], language: ResponseLanguage = "zh", memory_switched_on: bool = False) -> str:
+    """Automatic saving switched in a conversation. memory is the memory switch afterwards, and
+    memory_switched_on says switching automatic saving on also switched an undecided one on; rows are
+    what switching it on saved at once, as the rows of profile_change_rows."""
+    if not on:
+        return _text(
+            language,
+            "已关闭自动保存：之后对话里改的条件只留在那段对话，想保存时说“存到我的资料”，或者在主页“本次对话的条件”里保存。",
+            "Auto-save is off: criteria you change in a conversation now stay in it; to keep them, say \"save to my profile\" or save them under \"This conversation's criteria\" on Home.",
+        )
+    if memory == "off":
+        return _text(
+            language,
+            "已设为自动保存，但长期记忆现在关着，所以暂时不会保存；打开长期记忆后就会开始自动保存。",
+            "Auto-save is set, but long-term memory is off, so nothing is saved for now; it starts once long-term memory is on.",
+        )
+    separator = "；" if language == "zh" else "; "
+    changed = separator.join(f"{row['label'][language]} {row['before'][language]} → {row['after'][language]}" for row in rows)
+    return (
+        _text(language, "已开启自动保存" + ("和长期记忆" if memory_switched_on else ""), "Auto-save is on" + (" and so is long-term memory" if memory_switched_on else ""))
+        + _text(language, "：之后对话里改的条件会自动存进长期资料。", ": criteria you change in conversations are now saved to your long-term profile.")
+        + (_text(language, f"刚才的 {len(rows)} 项改动已存：{changed}。", f" The {len(rows)} change{'s' if len(rows) > 1 else ''} made so far {'were' if len(rows) > 1 else 'was'} saved: {changed}.") if rows else "")
+        + _text(language, "想停止，在个人资料页关掉“自动保存”，或者在对话里说“关闭自动保存”。", " To stop, switch off \"Auto-save\" on the Profile page, or say \"turn off auto-save\" here.")
     )
 
 
-def render_profile_deleted(switch: str, language: ResponseLanguage = "zh") -> str:
-    """switch is the memory switch afterwards: on, off or undecided."""
+def render_profile_deleted(switch: str, language: ResponseLanguage = "zh", auto_save_off: bool = False) -> str:
+    """switch is the memory switch afterwards: on, off or undecided. auto_save_off: forgetting also
+    switched automatic saving off."""
     state = _text(language, *{"on": ("开着", "on"), "off": ("关着", "off"), "undecided": ("未开启", "not on")}[switch])
     return _text(
         language,
         f"已删除长期资料里的条件，长期记忆现在{state}。收藏和排除的房源不受影响。",
         f"Deleted the criteria in your long-term profile; long-term memory is {state}. Shortlisted and excluded listings are not affected.",
-    )
+    ) + (_text(language, "自动保存也关了。", " Auto-save is off too.") if auto_save_off else "")
 
 
 def render_shortlist_matches(listing_ids: list[str], language: ResponseLanguage = "zh") -> str:
@@ -923,13 +1111,17 @@ def render_preference_changes(
     before: SearchPreferences,
     changes: dict,
     language: ResponseLanguage = "zh",
+    saved: bool = False,
 ) -> str:
-    """What changed in this conversation's criteria; the long-term profile changes only when saved."""
+    """What changed in this conversation's criteria; saved: also saved to the long-term profile, as
+    automatic saving does. Otherwise the long-term profile changes only when the user saves."""
     separator = "；" if language == "zh" else "; "
     changed = separator.join(
         f"{PREFERENCE_LABELS[language][field]} {_criterion_value(field, getattr(before, field), language)} → {_criterion_value(field, value, language)}"
         for field, value in changes.items()
     )
+    if saved:
+        return _text(language, f"已更新本次对话的条件，并自动存到长期资料：{changed}", f"Updated this conversation's criteria and saved them to your long-term profile: {changed}")
     return _text(language, f"已更新本次对话的条件：{changed}", f"Updated this conversation's criteria: {changed}")
 
 

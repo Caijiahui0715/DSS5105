@@ -3,7 +3,7 @@ from data.demo_enrichment import DEMO
 from data.image_loader import source_image
 from domain.provenance import display
 from content.i18n import t, lease_term_label
-from state.session_store import toggle_favorite, toggle_compare, favorite_ids, live, current_faculty
+from state.session_store import toggle_favorite, toggle_compare, favorite_ids, compare_ids, live, current, current_faculty, busy
 from components.source_notes import source_notes
 
 
@@ -88,9 +88,13 @@ def actions(listing, key):
     if b.button(t('Unsave', '取消收藏') if saved else t('Save', '收藏'), key=f'save-{key}', help=save_help, width='stretch'):
         toggle_favorite(listing.id)
         st.rerun()
-    comparing = listing.id in st.session_state.compare
-    compare_help = t('Remove this listing from the comparison table in Favorites', '从收藏夹的对比表中移除这套房源') if comparing else t('Add to the comparison table in Favorites (up to 3 listings; no need to save first)', '加入收藏夹中的对比表（最多 3 套，无需先收藏）')
-    if c.button(t('Remove compare', '移出比较') if comparing else t('Compare', '比较'), key=f'compare-{key}', help=compare_help, width='stretch'):
+    comparing = listing.id in compare_ids()
+    if live():
+        compare_help = t('Remove this listing from the comparison', '从比较中移除这套房源') if comparing else t('Compare up to 3 listings: choosing a second one asks the agent to compare them, and the table opens from the Compare bar on Home', '最多比较 3 套：选第二套时会让 agent 比较，对比表在首页的“比较”栏里')
+    else:
+        compare_help = t('Remove this listing from the comparison table in Favorites', '从收藏夹的对比表中移除这套房源') if comparing else t('Add to the comparison table in Favorites (up to 3 listings; no need to save first)', '加入收藏夹中的对比表（最多 3 套，无需先收藏）')
+    # One comparison at a time: not while the agent is still replying.
+    if c.button(t('Remove compare', '移出比较') if comparing else t('Compare', '比较'), key=f'compare-{key}', help=compare_help, width='stretch', disabled=live() and busy(current())):
         toggle_compare(listing.id)
         st.rerun()
 

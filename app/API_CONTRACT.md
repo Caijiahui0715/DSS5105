@@ -34,15 +34,19 @@ server, so a change on either side that breaks the other fails there.
 | GET /api/listings?limit=200&offset=N | map and selectors, in pages | `{total, listings}` |
 | GET /api/listings/{id} | listing details with photos and page text | `{listing, source_evidence}`; 404 when gone |
 | GET /api/conversations | the conversation panel after sign-in | `[{id, title, created_at, updated_at}]` |
+| DELETE /api/conversations/{id} | the open conversation's delete button, after confirming; waits for a reply in progress | `{ok}`; 404 when already gone |
 | POST /api/conversations | at a conversation's first message `{language}`; while long-term memory is on it starts from the long-term profile, with a first message in that language | `{id, title}` |
-| GET /api/conversations/{id} | reopening a conversation | `{id, preferences, sources, items, profile_changes, recommendations, shortlist}` |
+| GET /api/conversations/{id} | reopening a conversation | `{id, preferences, sources, items, profile_changes, recommendations, comparison, shortlist}`; `comparison` is the latest comparison table, as in a reply |
 | GET /api/conversations/{id}/messages | reopening a conversation | `[{role, text, steps?}]` |
 | POST /api/conversations/{id}/messages | a message `{message, language}`; `language` is the interface language, used when the message shows none | Server-Sent Events, below |
 | GET /api/conversations/{id}/profile | Home "Save to long-term profile": what saving would change | `{memory, changes: [{field, label, before, after}]}` |
 | POST /api/conversations/{id}/profile | saving it `{switch_on}` (true only after the user agreed to switch memory on; 409 while it is off otherwise) | `{changes, profile}` |
-| GET /api/me/profile | Profile page, and a new conversation before its first message | `{memory, saved_on, preferences, sources, budget, items, opening}` |
+| POST /api/conversations/{id}/auto-save | Home offer "Auto-save": switches auto-save on (and memory, when undecided) and saves what the conversation changed so far; 409 while memory is off | `{changes, profile}` |
+| GET /api/me/profile | Profile page, a new conversation before its first message, and the Home auto-save offer | `{memory, auto_save, auto_save_offer, saved_on, preferences, sources, budget, items, opening}` |
 | PUT /api/me/profile | Profile form `{changes: {criterion: value or null}}`; 409 while memory is off | the profile, as GET |
 | PUT /api/me/memory | Profile memory switch `{on}` | the profile, as GET |
+| PUT /api/me/auto-save | Profile auto-save switch `{on}`; on switches an undecided memory on; it waits while memory is off | the profile, as GET |
+| DELETE /api/me/auto-save/offer | Home offer "×": never offered again | the profile, as GET |
 | DELETE /api/me/profile | Profile "Delete long-term profile" | the profile, as GET |
 | GET /api/me/listings | the account's favorites and exclusions | `{shortlist, excluded}` |
 | POST /api/me/shortlist | Save `{listing_id}`; an excluded listing is no longer excluded | `{shortlist, excluded}` |
@@ -67,6 +71,16 @@ then one `event: reply` (or `event: error` with `{"message"}`):
   "profile_changes": [{"field": "max_price_sgd", "label": {"zh": "每月最高预算", "en": "maximum monthly budget"},
                        "before": {"zh": "S$2,500", "en": "S$2,500"}, "after": {"zh": "S$1,800", "en": "S$1,800"}}],
   "shortlist": ["500253628"],
+  "comparison": {
+    "listing_ids": ["500253628", "24970286"],
+    "titles": {"500253628": "Chwee Chian View", "24970286": "People's Park Complex"},
+    "rows": [{"label": {"zh": "月租", "en": "Monthly rent"},
+              "values": {"500253628": {"zh": "S$1,850（比最便宜的贵 S$450）", "en": "S$1,850 (S$450 more than the cheapest)"},
+                         "24970286": {"zh": "S$1,400（最便宜）", "en": "S$1,400 (cheapest)"}}}],
+    "summary": {"zh": "24970286 最便宜（S$1,400）；…", "en": "24970286 is cheapest (S$1,400); …"},
+    "left_out": [{"listing_id": "60120062", "note": {"zh": "60120062 的原链接已失效，没有加入比较。", "en": "…"}}],
+    "date": "2026-10-20"
+  },
   "recommendations": {
     "preview": false,
     "listings": [{
@@ -103,3 +117,14 @@ list. `profile_changes` is what saving this conversation's criteria would change
 long-term profile (Home shows the count above the criteria panel). `shortlist` is the
 account's, shared by every conversation. Cost estimates (total rent, stamp
 duty, deposit, what is paid at signing) arrive as part of `text`.
+
+`comparison` is `null` unless the turn compared listings (`compare_listings`, two or
+three at a time). It is the table Home shows from its Compare bar: `listing_ids` in
+the order the user chose, then one row per fact (rent and how much more than the
+cheapest, commute, MRT, rental type and room, area, bathroom, furnishing, lease,
+availability, whether each meets the criteria as of `date`, link check), every
+label and value in both languages. `summary` is the key differences in a line,
+worked out from the data. `left_out` names listings not compared (an inactive link,
+or no longer in the data); with fewer than two left, `listing_ids` holds the one
+left and nothing was compared. The reply's text carries the agent's analysis and,
+the first time an account compares, a line saying where the table is.

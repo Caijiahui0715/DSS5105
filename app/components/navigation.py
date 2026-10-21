@@ -1,6 +1,7 @@
 import streamlit as st
-from content.i18n import t, language_switch
-from state.session_store import navigate, new_conversation, logout, title
+from content.i18n import t, language_switch, describe
+from domain.models import ApiError
+from state.session_store import navigate, new_conversation, logout, title, live, busy, delete_conversation
 
 
 def navigation(compact=False):
@@ -19,6 +20,31 @@ def open_conversation(key):
     st.rerun()
 
 
+def confirm_delete(key):
+    """Asks before deleting a conversation, naming it: deleting cannot be undone."""
+    conv = st.session_state.conversations[key]
+    if busy(conv):
+        # A click from before the agent started replying: not while it replies.
+        st.session_state.notice = t('Delete once the reply has arrived.', '回复完成后才能删除。')
+        return
+
+    def body():
+        st.write(t(f'Delete the conversation “{title(conv)}”? This cannot be undone.', f'删除对话「{title(conv)}」？删除后无法恢复。'))
+        st.caption(t('Your long-term profile, favorites, exclusions and faculty stay.', '长期资料、收藏、排除和学院都不受影响。'))
+        delete, cancel = st.columns(2)
+        if delete.button(t('Delete', '删除'), type='primary', key='delete-conversation-confirm', width='stretch'):
+            try:
+                delete_conversation(key)
+            except ApiError as error:
+                st.error(describe(error))
+                return
+            st.rerun()
+        if cancel.button(t('Cancel', '取消'), key='delete-conversation-cancel', width='stretch'):
+            st.rerun()
+
+    st.dialog(t('Delete conversation', '删除对话'))(body)()
+
+
 def conversation_sidebar():
     with st.container(key='chat-history'):
         if st.button(t('Hide conversation history', '收起对话记录'), icon=':material/left_panel_close:', key='close-history', width='stretch'):
@@ -33,7 +59,18 @@ def conversation_sidebar():
             st.caption(t('History', '历史对话'))
             st.divider()
         for key, conv in reversed(list(st.session_state.conversations.items())):
-            if st.button(title(conv), key=f'recent-{key}', width='stretch', type='primary' if key == st.session_state.active_conversation else 'secondary'):
+            active = key == st.session_state.active_conversation
+            # The open conversation, once started, has a delete button on its row. The row never
+            # wraps: a long title is cut short instead of pushing the button below it.
+            if active and live() and conv['thread_id']:
+                with st.container(key='open-conversation', horizontal=True, wrap=False, vertical_alignment='center', gap='small'):
+                    if st.button(title(conv), key=f'recent-{key}', width='stretch', type='primary'):
+                        open_conversation(key)
+                    working = busy(conv)
+                    if st.button(t('Delete this conversation', '删除这段对话'), icon=':material/delete:', key='delete-conversation', disabled=working,
+                                 help=t('Delete once the reply has arrived', '回复完成后才能删除') if working else t('Delete this conversation', '删除这段对话')):
+                        confirm_delete(key)
+            elif st.button(title(conv), key=f'recent-{key}', width='stretch', type='primary' if active else 'secondary'):
                 open_conversation(key)
         st.divider()
         language_switch('language-sidebar')

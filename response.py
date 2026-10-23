@@ -111,6 +111,7 @@ PREFERENCE_LABELS = {
         "furnished_required": "需要家具",
         "air_conditioning_required": "需要空调",
         "max_commute_minutes": "到学院公共交通上限（分钟）",
+        "other_destination": "另一个通勤目的地",
         "ranking_priority": "排序偏好",
     },
     "en": {
@@ -132,6 +133,7 @@ PREFERENCE_LABELS = {
         "furnished_required": "furnished",
         "air_conditioning_required": "air conditioning",
         "max_commute_minutes": "public-transport limit to your faculty (minutes)",
+        "other_destination": "other commute destination",
         "ranking_priority": "ranking priority",
     },
 }
@@ -189,14 +191,14 @@ _FACTOR_FORMULAS = {
     "zh": {
         "price": "月租 ÷ 预算上限",
         "mrt": "到已通车 MRT 站的步行米数 ÷ 参考距离（米数上限或分钟上限 × 85 米，两者取小；均未指定时 850 米）",
-        "commute": "到学院的分钟数（公共交通按工作日 8:30 出发；1.5 公里内步行更快时按步行）÷ 通勤上限（没给上限时 45 分钟）",
+        "commute": "到学院的分钟数（公共交通按工作日 8:30 出发；1.5 公里内步行更快时按步行）÷ 通勤上限（没给上限时 45 分钟）；有另一个目的地时，和到它的分钟数 ÷ 它的上限比，取较大的一个",
         "food": "按 1 公里内餐饮和小贩中心数在全部房源里的排位",
         "space": "同一出租方式和面积口径内，广告面积从大到小的百分位（0 最大）",
     },
     "en": {
         "price": "rent ÷ budget",
         "mrt": "walking metres to an operating MRT station ÷ reference (metres limit or minutes × 85 m, the smaller when both are given; 850 m without either)",
-        "commute": "minutes to your faculty (public transport leaving 8:30 on a weekday, or walking within 1.5 km when faster) ÷ commute limit (45 minutes without a limit)",
+        "commute": "minutes to your faculty (public transport leaving 8:30 on a weekday, or walking within 1.5 km when faster) ÷ commute limit (45 minutes without a limit); with another destination, the larger of that and minutes to it ÷ its limit",
         "food": "position among all listings on F&B and hawker centres within 1 km",
         "space": "descending area percentile within the same rental type and area scope (0 is largest)",
     },
@@ -225,6 +227,7 @@ for language, index in (("zh", 0), ("en", 1)):
         _NO_DATA_FACTOR[language][name] = _NO_DATA_FACTOR[language]["food"]
     _FACTOR_FORMULAS[language]["school_distance"] = "最近学校步行分钟 ÷ 参考上限（未指定时 10 分钟）" if language == "zh" else "walking minutes to the nearest school ÷ limit (10 minutes without a limit)"
     _NO_DATA_FACTOR[language]["school_distance"] = _NO_DATA_FACTOR[language]["commute"]
+    _CONDITION_LABELS[language]["max_other_commute_minutes"] = "到另一个目的地的通勤时间" if language == "zh" else "commute time to your other destination"
     _RESTRICTION_TEXT[language].update({
         ("pets", "allowed"): "允许宠物" if language == "zh" else "pets allowed",
         ("pets", "not_allowed"): "不允许宠物" if language == "zh" else "no pets",
@@ -317,8 +320,9 @@ def render_response(
                 ),
             ]
         )
-        if commute := _commute_text(item.get("commute"), language):
-            lines.append(f"   {commute}")
+        for trip in (item.get("commute"), item.get("other_commute")):
+            if commute := _commute_text(trip, language):
+                lines.append(f"   {commute}")
         lines.append(_text(language, f"   面积：{_area_text(listing, language)}", f"   Area: {_area_text(listing, language)}"))
         if listing.get("bathrooms") is not None:
             lines.append(_text(language, f"   卫生间：{listing['bathrooms']} 个", f"   Bathrooms: {listing['bathrooms']}"))
@@ -513,10 +517,10 @@ def _comparison_rows(items, criteria, has_faculty):
             return _text(language, f"{_sgd(price)}（最便宜）", f"{_sgd(price)} (cheapest)")
         return _text(language, f"{_sgd(price)}（比最便宜的贵 {_sgd(price - cheapest)}）", f"{_sgd(price)} ({_sgd(price - cheapest)} more than the cheapest)")
 
-    def commute(item, language):
-        trip = item.get("commute") or {}
+    def commute(item, language, key="commute"):
+        trip = item.get(key) or {}
         if trip.get("minutes") is None:
-            return _text(language, "没有数据", "no data") if has_faculty else _text(language, "未设置学院", "no faculty set")
+            return _text(language, "没有数据", "no data") if has_faculty or key != "commute" else _text(language, "未设置学院", "no faculty set")
         if trip.get("mode") == "walk":
             return _text(language, f"步行约 {trip['minutes']:g} 分钟", f"about {trip['minutes']:g} min on foot")
         return _text(language, f"公共交通约 {trip['minutes']:g} 分钟", f"about {trip['minutes']:g} min by public transport")
@@ -569,6 +573,11 @@ def _comparison_rows(items, criteria, has_faculty):
         (("是否符合条件（按比较时的条件）", "Your criteria (as when compared)"), lambda item, language: fits(item["listing"], language)),
         (("链接", "Link"), lambda item, language: link(item["listing"], language)),
     ]
+    # The other destination, when there is one, under the trip to the faculty.
+    other = next((item["other_commute"] for item in items if item.get("other_commute")), None)
+    if other:
+        labels = tuple(f"到{destination_label(other, 'zh')}通勤" if language == "zh" else f"Commute to {destination_label(other, 'en')}" for language in ("zh", "en"))
+        columns.insert(2, (labels, lambda item, language: commute(item, language, "other_commute")))
     return [(labels, {language: [value(item, language) for item in items] for language in ("zh", "en")}) for labels, value in columns]
 
 
@@ -587,6 +596,11 @@ def _comparison_summary(items, criteria, language: ResponseLanguage) -> str:
     if len(trips) > 1:
         fastest, minutes = min(trips, key=lambda trip: trip[1])
         parts.append(_text(language, f"{fastest} 到学院最快（约 {minutes:g} 分钟）", f"{fastest} has the shortest commute (about {minutes:g} min)"))
+    others = [(item["listing"]["listing_id"], item["other_commute"]) for item in items if (item.get("other_commute") or {}).get("minutes") is not None]
+    if len(others) > 1:
+        fastest, trip = min(others, key=lambda other: other[1]["minutes"])
+        place = destination_label(trip, language)
+        parts.append(_text(language, f"{fastest} 到{place}最快（约 {trip['minutes']:g} 分钟）", f"{fastest} is quickest to {place} (about {trip['minutes']:g} min)"))
     for item in items:
         listing_id = item["listing"]["listing_id"]
         status, fields = criteria.get(listing_id, ("none", []))
@@ -624,6 +638,7 @@ def render_listing_details(
     restrictions: RestrictionSummary,
     language: ResponseLanguage = "zh",
     commute: dict | None = None,
+    other_commute: dict | None = None,
 ) -> str:
     price = listing.get("rent_monthly_sgd")
     bedrooms = listing.get("bedrooms")
@@ -643,6 +658,7 @@ def render_listing_details(
         _text(language, f"- 地址：{listing.get('address') or '未知'}", f"- Address: {listing.get('address') or 'unknown'}"),
         _text(language, f"- MRT：{listing.get('mrt_station') or '车站未知'}，{_mrt_text(listing, language)}", f"- MRT: {listing.get('mrt_station') or 'unknown station'}, {_mrt_text(listing, language)}"),
         f"- {line}" if (line := _commute_text(commute, language)) else "",
+        f"- {line}" if (line := _commute_text(other_commute, language)) else "",
         _text(language, f"- 入住状态：{_availability_text(listing, language)}", f"- Availability: {_availability_text(listing, language)}"),
         _nearby_text(listing, language),
         _text(language, f"- 链接状态：{_link_status_text(listing, language)}", f"- Link status: {_link_status_text(listing, language)}"),
@@ -745,8 +761,10 @@ def render_decision_context(rows: list[dict], language: ResponseLanguage = "zh")
         limit = row.get("smallest_limit_with_a_match")
         if limit is not None and row["condition"] == "max_price_sgd":
             line += _text(language, f"；预算至少 {_sgd(limit)} 才有完全符合的房源", f"; a budget of at least {_sgd(limit)} gives a full match")
-        elif limit is not None:
+        elif limit is not None and row["condition"] == "max_mrt_minutes":
             line += _text(language, f"；MRT 步行上限至少 {limit} 分钟才有完全符合的房源", f"; an MRT limit of at least {limit} minutes gives a full match")
+        elif limit is not None:
+            line += _text(language, f"；通勤上限至少 {limit} 分钟才有完全符合的房源", f"; a commute limit of at least {limit} minutes gives a full match")
         lines.append(line)
     return "\n".join(lines)
 
@@ -783,6 +801,9 @@ def render_listing_explanation(explanation: dict, language: ResponseLanguage = "
     commute_source = explanation["sources"].get("commute_minutes")
     place = faculty_label(explanation.get("faculty"), language)
     commute = _text(language, f"，到{place}通勤时间来自{_SOURCE_TEXT['zh'][commute_source]}", f", commute to {place} from {_SOURCE_TEXT['en'][commute_source]}") if commute_source else ""
+    if other_source := explanation["sources"].get("other_commute_minutes"):
+        other = destination_label(explanation.get("other_destination"), language)
+        commute += _text(language, f"，到{other}通勤时间来自{_SOURCE_TEXT['zh'][other_source]}", f", commute to {other} from {_SOURCE_TEXT['en'][other_source]}")
     lines.append(
         _text(
             language,
@@ -1156,6 +1177,8 @@ def _preference_value(value: object, language: ResponseLanguage) -> str:
     if isinstance(value, dict) and "radius_m" in value:
         anchor = value.get("query") or f"({value.get('latitude')}, {value.get('longitude')})"
         return _text(language, f"{anchor} 直线 {value['radius_m']:g} 米内", f"within {value['radius_m']:g} m straight-line of {anchor}")
+    if isinstance(value, dict) and "query" in value:
+        return destination_label(value, language)
     if value is None:
         return _text(language, "不限", "any")
     if isinstance(value, bool):
@@ -1223,11 +1246,23 @@ def _mrt_text(listing: dict, language: ResponseLanguage) -> str:
     return _text(language, f"房源描述约 {minutes} 分钟{suffix}", f"about {minutes} minutes according to the listing{suffix}") if minutes is not None else _text(language, "时间未知", "walking time unknown")
 
 
+def destination_label(destination: dict | None, language: ResponseLanguage) -> str:
+    """The other destination as replies name it: the faculty or place, after what it is to the user,
+    e.g. 室友的学院（人文与社会科学院）or 健身房（Tiong Bahru Plaza）."""
+    if not destination:
+        return ""
+    place = faculty_label(destination["faculty"], language) if destination.get("faculty") else destination["query"]
+    name = destination.get("name")
+    return _text(language, f"{name}（{place}）", f"{name} ({place})") if name else place
+
+
 def _commute_text(commute: dict | None, language: ResponseLanguage) -> str:
-    """One listing's trip to the user's faculty, e.g. 到计算机学院：公共交通约 23 分钟（工作日 8:30 出发）."""
+    """One listing's trip to the user's faculty or the other destination, e.g. 到计算机学院：公共交通约
+    23 分钟（工作日 8:30 出发）."""
     if not commute or commute.get("minutes") is None:
         return ""
-    place, minutes = faculty_label(commute["faculty"], language), commute["minutes"]
+    place = destination_label(commute, language) if "query" in commute else faculty_label(commute["faculty"], language)
+    minutes = commute["minutes"]
     if commute.get("mode") == "walk":
         return _text(language, f"到{place}：步行约 {minutes:g} 分钟", f"To {place}: about {minutes:g} minutes on foot")
     return _text(
@@ -1353,6 +1388,9 @@ def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLangu
         return _text(language, f"将最高预算从 {_sgd(suggestion['current'])} 提高到 {_sgd(suggestion['suggested'])}", f"raising the maximum budget from {_sgd(suggestion['current'])} to {_sgd(suggestion['suggested'])}")
     if field == "max_mrt_minutes":
         return _text(language, f"将 MRT 步行上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the MRT walking limit from {suggestion['current']} to {suggestion['suggested']} minutes")
+    if field in ("max_commute_minutes", "max_other_commute_minutes"):
+        place = _text(language, "学院", "your faculty") if field == "max_commute_minutes" else _text(language, "另一个目的地", "your other destination")
+        return _text(language, f"将到{place}的通勤上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the commute limit to {place} from {suggestion['current']} to {suggestion['suggested']} minutes")
     if field == "lease_months":
         return _text(
             language,

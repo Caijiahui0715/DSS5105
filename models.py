@@ -91,6 +91,26 @@ class NearbyLocation(BaseModel):
         return self
 
 
+class Destination(BaseModel):
+    """Besides the user's faculty, one more place the commute must suit."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    query: str = Field(min_length=1, description="The place: an NUS faculty's English name from the list (such as a roommate's faculty), or a Singapore address, building name or postcode in English. The system locates it; never invent coordinates.")
+    name: str | None = Field(None, min_length=1, description="What the place is to the user, in their words, such as 室友的学院, 健身房 or 公司.")
+    # Set by the system when it locates the place: the recorded faculty it names, if any, and where it is.
+    faculty: SkipJsonSchema[str | None] = None
+    latitude: SkipJsonSchema[float | None] = None
+    longitude: SkipJsonSchema[float | None] = None
+
+    @field_validator("query", "name")
+    @classmethod
+    def _strip(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("A destination needs a place.")
+        return value.strip() if value is not None else None
+
+
 class SearchPreferences(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -181,6 +201,15 @@ class SearchPreferences(BaseModel):
         gt=0,
         description="Maximum public-transport minutes to the user's NUS faculty; null when absent.",
     )
+    other_destination: Destination | None = Field(
+        default=None,
+        description="Besides the user's faculty, at most one more place the commute must suit, such as a roommate's NUS faculty, a gym or an office. Alone it filters nothing: its times are shown, and it counts with max_other_commute_minutes or the commute priority.",
+    )
+    max_other_commute_minutes: int | None = Field(
+        default=None,
+        gt=0,
+        description="Maximum minutes from the listing to other_destination (public transport leaving 08:30 on a weekday, or walking within 1.5 km when faster); needs other_destination.",
+    )
     min_bathrooms: int | None = Field(None, ge=0, description="Minimum advertised bathrooms; this does not imply a private bathroom.")
     private_bathroom_required: bool = Field(False, description="True only when an explicitly private bathroom is required; never infer it from master_room.")
     pets_allowed_required: bool = Field(False, description="True when the user needs to bring pets; unknown policy does not mean pets are allowed.")
@@ -211,7 +240,8 @@ class SearchPreferences(BaseModel):
         description=(
             "Up to three soft preferences the user explicitly asked for, in the order stated; empty "
             "means balanced. price for lower rent, mrt for nearer MRT, amenities for more places to "
-            "eat nearby (吃饭方便), commute for a shorter public-transport trip to the user's NUS faculty, space for more "
+            "eat nearby (吃饭方便), commute for a shorter public-transport trip to the user's NUS faculty (with other_destination, "
+            "the longer of the two trips counts), space for more "
             "rental area, food_places/hawker/libraries/sports/healthcare/community/schools for more of "
             "that facility, school_distance for a shorter walk to the nearest reported school (not "
             "specifically NUS). The named priorities share 70% of the ranking weight equally."

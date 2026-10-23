@@ -68,6 +68,8 @@ body:has(.st-key-chat-thread) [data-testid="stMain"] {height:100dvh;overflow:hid
 /* The close buttons show only their icon; the label stays for screen readers, as in the rail. */
 .st-key-auto-save-close button [data-testid="stMarkdownContainer"], .st-key-auto-save-done-close button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
 .st-key-auto-save-close button span:has(> [data-testid="stIconMaterial"]), .st-key-auto-save-done-close button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
+/* The buttons sit at the bar's right end, after the text. */
+.st-key-auto-save-offer > .st-key-auto-save-on, .st-key-auto-save-done > .st-key-auto-save-done-close {margin-left:auto;}
 /* The auto-save offer (one line) or confirmation (up to five in a narrow column) above the chat input takes its room from the thread, so the input stays in view; the bar itself never shrinks, so its text is not cut off. */
 [data-testid="stLayoutWrapper"]:has(> .st-key-auto-save-offer), [data-testid="stLayoutWrapper"]:has(> .st-key-auto-save-done) {flex-shrink:0;}
 .st-key-auto-save-offer, .st-key-auto-save-done {overflow:visible!important;}
@@ -142,6 +144,8 @@ body:has(.st-key-chat-thread) [data-testid="stMain"] {height:auto;overflow:auto;
 .st-key-chat-history .st-key-delete-conversation button[kind]:disabled {opacity:.4;}
 .st-key-delete-conversation button [data-testid="stMarkdownContainer"] {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
 .st-key-delete-conversation button span:has(> [data-testid="stIconMaterial"]) {margin:0!important;}
+/* A conversation the agent is replying in: Streamlit's spinner, white on the dark button. */
+.st-key-chat-history button [data-testid="stSpinnerIcon"] {border-color:rgba(255,255,255,.3)!important;border-top-color:#fff!important;}
 /* Other buttons: use the light Streamlit theme, with accessible foregrounds. */
 .stApp button[kind="primary"] {background:#173c5b!important;color:#fff!important;border-color:#173c5b!important;}
 .stApp button[kind="primary"] p, .stApp button[kind="primary"] span {color:#fff!important;}

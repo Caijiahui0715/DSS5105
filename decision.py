@@ -24,9 +24,13 @@ from tools import (
     _enum,
     commute,
     commute_minutes,
+    destination_trip,
+    destination_view,
     extra_condition_status,
     mrt_distance_m,
     mrt_minutes,
+    other_commute_minutes,
+    own_commute_needed,
     rank_listings,
     rental_area_sqm,
     resolve_search_location,
@@ -187,9 +191,39 @@ def search_with_unknowns(
 
 
 def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
-    """Name each stated ranking priority this listing has no data for."""
-    checks = [_PRIORITY_DATA[name] for name in preferences.ranking_priority if name in _PRIORITY_DATA]
+    """Name each stated ranking priority this listing has no data for; ranking by commute needs the
+    trip to each destination there is."""
+    checks = [_PRIORITY_DATA[name] for name in preferences.ranking_priority if name in _PRIORITY_DATA and name != "commute"]
+    if "commute" in preferences.ranking_priority:
+        if own_commute_needed(preferences):
+            checks.append(_PRIORITY_DATA["commute"])
+        if preferences.other_destination is not None:
+            checks.append(("max_other_commute_minutes", other_commute_minutes))
     return [label for label, data in checks if data(listing, preferences) is None]
+
+
+def route_candidates(
+    connection: Database,
+    preferences: SearchPreferences,
+    excluded_listing_ids: list[str] | None = None,
+) -> list[Listing]:
+    """The listings a search with these preferences may show, ask to confirm or suggest relaxing to:
+    those not known to fail a condition, leaving out the commute limits and the conditions a
+    relaxation suggests changing (MRT, lease), with the budget 10% higher as a relaxation suggests.
+    Routes to the other destination are worked out for these (place_routes.py)."""
+    budget = preferences.max_price_sgd
+    base = preferences.model_copy(
+        update={
+            "max_commute_minutes": None,
+            "max_other_commute_minutes": None,
+            "max_mrt_minutes": None,
+            "lease_months": None,
+            "ranking_priority": (),
+            "max_price_sgd": None if budget is None else (budget * 11 + 9) // 10,
+        }
+    )
+    strict, pending = search_with_unknowns(connection, base, excluded_listing_ids)
+    return strict + pending
 
 
 def diagnose_conditions(
@@ -217,7 +251,12 @@ def diagnose_conditions(
             "known_fail": statuses["fail"],
             "unknown": statuses["unknown"],
         }
-        limit_of = {"max_price_sgd": lambda listing: listing["rent_monthly_sgd"], "max_mrt_minutes": mrt_minutes}
+        limit_of = {
+            "max_price_sgd": lambda listing: listing["rent_monthly_sgd"],
+            "max_mrt_minutes": mrt_minutes,
+            "max_commute_minutes": lambda listing: commute_minutes(listing, preferences),
+            "max_other_commute_minutes": lambda listing: other_commute_minutes(listing, preferences),
+        }
         if field in limit_of:
             values = [value for value in map(limit_of[field], candidates) if value is not None]
             row["smallest_limit_with_a_match"] = whole(min(values)) if values else None
@@ -294,7 +333,7 @@ def explain_listing(
         "factor_formulas": {
             "price": "rent_monthly_sgd / max_price_sgd",
             "mrt": "walking metres to an operating MRT station / max_mrt_distance_m or max_mrt_minutes x 85 m (the smaller if both, 850 m without either); no data or an unopened station counts as 1",
-            "commute": "minutes to the user's faculty (public transport leaving 08:30 on a weekday, or walking within 1.5 km when faster) / max_commute_minutes (45 without a limit); no data counts as 1",
+            "commute": "minutes to the user's faculty (public transport leaving 08:30 on a weekday, or walking within 1.5 km when faster) / max_commute_minutes (45 without a limit); with other_destination, the larger of that and minutes to it / max_other_commute_minutes (45 without a limit); no data counts as 1",
             "food": "position among all listings on nearby F&B and hawker centres within 1 km (0 is the most choice)",
             "space": "descending area percentile within the same rental_scope and area_scope (0 is largest); unstated rental area counts as 0.5",
             **{name: f"descending position among all listings with {field} data (lower means more choice)" for name, field in AMENITY_FIELDS.items()},
@@ -318,6 +357,9 @@ def explain_listing(
         "faculty": preferences.faculty,
         "commute_minutes": whole(commute_minutes(listing, preferences)),
         "commute_mode": (commute(listing, preferences.faculty) or {}).get("mode"),
+        "other_destination": destination_view(preferences.other_destination),
+        "other_commute_minutes": whole(other_commute_minutes(listing, preferences)),
+        "other_commute_mode": (destination_trip(listing, preferences.other_destination) or {}).get("mode"),
         "sources": {
             "rent_monthly_sgd": (
                 "rechecked_listing"
@@ -336,11 +378,19 @@ def explain_listing(
                 "walk": "onemap_walking_route",
                 "transit_google": "google_public_transport_route",
             }.get((commute(listing, preferences.faculty) or {}).get("mode")),
+            "other_commute_minutes": _ROUTE_SOURCES.get((destination_trip(listing, preferences.other_destination) or {}).get("mode")),
         },
         "collected_at": listing.get("collected_at"),
         "listing_url": listing.get("listing_url"),
         "evidence": evidence,
     }
+
+
+_ROUTE_SOURCES = {
+    "transit": "onemap_public_transport_route",
+    "walk": "onemap_walking_route",
+    "transit_google": "google_public_transport_route",
+}
 
 
 @cache

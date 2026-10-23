@@ -10,12 +10,17 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+import tempfile
+from pathlib import Path
+
 from agent import build_agent, opening_state, save_to_profile
-from mock_db import create_database, create_mock_database, empty_storage, set_listing
+from mock_db import DEFAULT_FIXTURE, create_database, create_mock_database, empty_storage, set_listing
 from exchange import CurrencyConversionError, UnknownCurrencyError
 from models import SearchPreferences
+from onemap import OneMapError
 from profiles import UserProfiles, merged
-from tools import get_listings_by_ids
+from sessions import STATE_MODULES
+from tools import get_listings_by_ids, rank_listings
 
 
 class ScriptedModel:
@@ -55,7 +60,7 @@ def memory_agent(connection, model, profiles):
     return build_agent(
         connection,
         model,
-        MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])),
+        MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])),
         listing_checker=active_links,
         profiles=profiles,
     )
@@ -71,7 +76,7 @@ def run_agent(connection, model, *messages):
         model,
         MemorySaver(
             serde=JsonPlusSerializer(
-                allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")]
+                allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")]
             )
         ),
         listing_checker=active_links,
@@ -171,7 +176,7 @@ class AgentTest(unittest.TestCase):
         with closing(create_mock_database()) as connection:
             # No cached link checks, so the checker decides.
             connection.run("DELETE FROM listing_health")
-            graph = build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])), listing_checker=links)
+            graph = build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])), listing_checker=links)
             config = {"configurable": {"thread_id": "left-out"}}
             two = graph.invoke({"message": "比较 S010、S009 和 S003"}, config=config)
             one = graph.invoke({"message": "比较 S010、S009 和 NOPE"}, config=config)
@@ -475,7 +480,7 @@ class AgentTest(unittest.TestCase):
         observation = json.loads(result["observations"][0])
         self.assertEqual(observation["rental_scope_mix"]["shown_scopes"], ["room"])
         self.assertTrue(result["response"].endswith(
-            "提示：展示的都是合租房间；数据库里符合条件的整租有 123 套，最低 S$1,350。想只看一种，告诉我要整租还是合租即可。"
+            "提示：展示的都是合租房间；数据库里符合条件的整租有 115 套，最低 S$1,350。想只看一种，告诉我要整租还是合租即可。"
         ))
         # The note already asks the question, so the draft does not repeat it.
         self.assertNotIn("rental_scope", observation["missing_refinements"])
@@ -806,7 +811,7 @@ class AgentTest(unittest.TestCase):
 
     def test_a_resumed_conversation_drops_delisted_shortlist_entries(self):
         memory = MemorySaver(
-            serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])
+            serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])
         )
         config = {"configurable": {"thread_id": "resume"}}
         first = ScriptedModel(tool_calls(("shortlist", {"add": ["S001", "S010"]})), AIMessage(content="已收藏。"))
@@ -829,7 +834,7 @@ class AgentTest(unittest.TestCase):
             AIMessage(content="好的，有需要再告诉我。"),
         )
         memory = MemorySaver(
-            serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")])
+            serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])
         )
         config = {"configurable": {"thread_id": "later-day"}}
         with closing(create_mock_database()) as connection:
@@ -1517,6 +1522,167 @@ class CostAndLeaseTest(unittest.TestCase):
         self.assertNotIn("S002", result["shown_listing_ids"])
         self.assertIn("提示：新加坡规定私人住宅最短租期 3 个月", result["response"])
         self.assertIn("   租期：灵活", result["response"])
+
+
+def two_faculty_database():
+    """The made-up listings with trips to NUS Business School too, a roommate's faculty."""
+    data = json.loads(DEFAULT_FIXTURE.read_text(encoding="utf-8"))
+    business = {"S001": 20, "S003": 12, "S004": 15, "S010": 40, "S011": 22}
+    for row in data["listings"]:
+        if row["listing_id"] in business:
+            row["commutes"]["NUS Business School"] = {"minutes": business[row["listing_id"]], "mode": "transit"}
+    path = Path(tempfile.mkdtemp()) / "listings.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return create_mock_database(path)
+
+
+class FakeRoutes:
+    """Routes to a place by listing: minutes, None for no route, or "fail" for a OneMap error."""
+
+    def __init__(self, minutes):
+        self.minutes, self.calls = minutes, []
+
+    def __call__(self, listing, destination):
+        self.calls.append(listing["listing_id"])
+        minutes = self.minutes.get(listing["listing_id"])
+        if minutes == "fail":
+            raise OneMapError("OneMap /api/public/routingsvc/route failed: HTTP 502.")
+        return None if minutes is None else {"minutes": minutes, "mode": "transit"}
+
+
+class OtherDestinationTest(unittest.TestCase):
+    """Besides the user's faculty, one more place the commute must suit."""
+
+    def agent(self, connection, model, profiles, routes=None):
+        return build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=STATE_MODULES)),
+                           listing_checker=active_links, profiles=profiles, place_router=routes or FakeRoutes({}))
+
+    def test_a_roommates_faculty_has_its_own_limit_shows_everywhere_and_can_be_kept(self):
+        profiles = UserProfiles(empty_storage())
+        profiles.set_faculty("alice", "School of Computing")
+        profiles.set_consent("alice", True)
+        quote = "预算1500，我在计算机学院，室友在商学院，两边都30分钟以内"
+        destination = {"query": "NUS Business School", "name": "室友的学院"}
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500, "max_commute_minutes": 30, "other_destination": destination,
+                                                    "max_other_commute_minutes": 30}, "user_quote": quote})),
+            AIMessage(content=""),
+            tool_calls(("compare_listings", {"listing_ids": ["S006", "S010"]})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"clear": ["other_destination"], "user_quote": "不用管室友了"})),
+            AIMessage(content=""),
+        )
+        with closing(two_faculty_database()) as connection:
+            graph = self.agent(connection, model, profiles)
+            first = say(graph, "t", quote)
+            save_to_profile(profiles, "alice", first)
+            second = say(graph, "t", "比较 S006 和 S010")
+            third = say(graph, "t", "不用管室友了")
+            opening = opening_state(profiles, "alice", "zh")
+
+        observation = json.loads(first["observations"][0])
+        # S010 is 28 minutes from SoC but 40 from the Business School.
+        self.assertEqual([row["listing_id"] for row in observation["strict_matches"]["listings"]], ["S006"])
+        self.assertNotIn("S010", [row["listing_id"] for row in observation["needs_confirmation"]["listings"]])
+        self.assertEqual(observation["strict_matches"]["listings"][0]["other_commute"]["minutes"], 9)
+        self.assertEqual(first["preferences"].other_destination.faculty, "NUS Business School")
+        self.assertIn("另一个通勤目的地 不限 → 室友的学院（商学院）", first["response"])
+        self.assertIn("到计算机学院：公共交通约 25 分钟", first["response"])
+        self.assertIn("到室友的学院（商学院）：步行约 9 分钟", first["response"])
+        # The comparison table has a row for it, and the key differences name the quicker one.
+        rows = {row["label"]["zh"]: row["values"] for row in second["comparison"]["rows"]}
+        self.assertEqual(rows["到室友的学院（商学院）通勤"]["S010"]["zh"], "公共交通约 40 分钟")
+        self.assertIn("S006 到室友的学院（商学院）最快（约 9 分钟）", second["comparison"]["summary"]["zh"])
+        # Kept in the long-term profile, a new conversation starts with it.
+        self.assertIn("另一个通勤目的地 室友的学院（商学院）", opening["messages"][0].content)
+        self.assertEqual(opening["preferences"].other_destination.faculty, "NUS Business School")
+        # Dropping it drops its limit too.
+        self.assertIsNone(third["preferences"].other_destination)
+        self.assertIsNone(third["preferences"].max_other_commute_minutes)
+
+    def test_commute_ranking_counts_the_longer_trip(self):
+        with closing(two_faculty_database()) as connection:
+            listings = get_listings_by_ids(connection, ["S001", "S010"])
+        preferences = SearchPreferences(
+            ranking_priority=("commute",), faculty="School of Computing",
+            other_destination={"query": "NUS Business School", "faculty": "NUS Business School", "latitude": 1.2933, "longitude": 103.7741},
+        )
+        ranked = {item["listing"]["listing_id"]: item for item in rank_listings(listings, preferences)}
+        # S001: 35 to SoC, 20 to the Business School; S010: 28 and 40.
+        self.assertEqual(ranked["S001"]["factors"]["commute"]["ratio"], round(35 / 45, 3))
+        self.assertEqual(ranked["S010"]["factors"]["commute"]["ratio"], round(40 / 45, 3))
+
+    def test_a_new_place_replaces_the_other_destination_only_once_the_user_agrees_and_its_routes_are_worked_out(self):
+        profiles = UserProfiles(empty_storage())
+        profiles.set_faculty("alice", "School of Computing")
+        gym = {"query": "Tiong Bahru Plaza", "name": "健身房"}
+        change = {"set": {"other_destination": gym, "ranking_priority": ["commute"]}}
+        routes = FakeRoutes({"S001": 18, "S004": None, "S006": 12, "S010": "fail"})
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500, "other_destination": {"query": "NUS Business School", "name": "室友的学院"},
+                                                    "max_other_commute_minutes": 30}, "user_quote": "预算1500，室友在商学院，30分钟以内"})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {**change, "user_quote": "健身房"})),
+            AIMessage(content="要换吗？"),
+            tool_calls(("search_listings", {**change, "replace_destination": True, "user_quote": "好"})),
+            AIMessage(content="要等吗？"),
+            tool_calls(("search_listings", {**change, "replace_destination": True, "wait_for_routes": True, "user_quote": "可以等"})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {})),
+            AIMessage(content=""),
+        )
+        with closing(two_faculty_database()) as connection:
+            # S003 has a position too, but is over the budget even 10% higher; S011's data is flagged.
+            for listing_id, position in {"S001": (1.31, 103.76), "S003": (1.30, 103.78), "S004": (1.28, 103.79), "S006": (1.311, 103.765),
+                                         "S010": (1.312, 103.766), "S011": (1.30, 103.75)}.items():
+                set_listing(connection, listing_id, latitude=position[0], longitude=position[1])
+            graph = self.agent(connection, model, profiles, routes)
+            with patch("tools.geocode_location", return_value=(1.2865, 103.8270)), patch("place_routes.ASK_ABOVE", 2):
+                say(graph, "t", "预算1500，室友在商学院，30分钟以内")
+                asked = say(graph, "t", "我健身房在 Tiong Bahru Plaza，也要方便")
+                agreed = say(graph, "t", "好")
+                calls_before_waiting = list(routes.calls)
+                worked = say(graph, "t", "可以等")
+                again = say(graph, "t", "再看看")
+            kept = connection.query("SELECT listing_id, minutes FROM place_routes ORDER BY listing_id")
+
+        error = json.loads(asked["observations"][0])["error"]
+        self.assertIn("除了你的学院，最多只能再加一个目的地，现在已经有「室友的学院（商学院）」。要把它换成「健身房（Tiong Bahru Plaza）」吗？", error)
+        self.assertEqual(asked["preferences"].other_destination.faculty, "NUS Business School")
+        # Agreed, but four listings need routes: asked whether to wait, and nothing is worked out or saved yet.
+        self.assertIn("符合其他条件的有 4 套房源", json.loads(agreed["observations"][0])["error"])
+        self.assertEqual(calls_before_waiting, [])
+        self.assertEqual(agreed["preferences"].other_destination.faculty, "NUS Business School")
+        # Only the listings within the budget (10% higher) with a position are worked out.
+        self.assertEqual(sorted(routes.calls[:4]), ["S001", "S004", "S006", "S010"])
+        self.assertEqual(worked["preferences"].other_destination.query, "Tiong Bahru Plaza")
+        self.assertEqual((worked["preferences"].other_destination.latitude, worked["preferences"].other_destination.longitude), (1.2865, 103.8270))
+        # The roommate's limit went with the roommate.
+        self.assertIsNone(worked["preferences"].max_other_commute_minutes)
+        strict = json.loads(worked["observations"][0])["strict_matches"]["listings"]
+        self.assertEqual(strict[0]["listing_id"], "S006")
+        self.assertIn("到健身房（Tiong Bahru Plaza）：公共交通约 12 分钟", worked["response"])
+        self.assertIn("有 1 套房源暂时算不出到「健身房（Tiong Bahru Plaza）」的通勤时间", worked["response"])
+        # Kept: the next search asks OneMap only for the one that failed.
+        self.assertEqual(routes.calls[4:], ["S010"])
+        # S004 has no route: kept as such, it needs confirmation rather than being asked again, as do
+        # S010 (failed) and the listings without a position (S002, S005, S009).
+        self.assertEqual({row["listing_id"]: row["minutes"] for row in kept}, {"S001": 18, "S004": None, "S006": 12})
+        self.assertEqual(json.loads(worked["observations"][0])["needs_confirmation"]["database_count"], 5)
+        self.assertIn("S006", [row["listing_id"] for row in json.loads(again["observations"][0])["strict_matches"]["listings"]])
+
+    def test_a_commute_limit_is_suggested_ten_minutes_longer(self):
+        profiles = UserProfiles(empty_storage())
+        profiles.set_faculty("alice", "School of Computing")
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 1500, "max_commute_minutes": 20}, "user_quote": "预算1500，到学校20分钟以内"})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            result = say(self.agent(connection, model, profiles), "t", "预算1500，到学校20分钟以内")
+
+        self.assertIn("将到学院的通勤上限从 20 分钟放宽到 30 分钟", result["response"])
+        self.assertEqual([item["suggested"] for item in result["relaxations"] if item["field"] == "max_commute_minutes"], [30])
 
 
 if __name__ == "__main__":

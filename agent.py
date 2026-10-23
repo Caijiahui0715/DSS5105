@@ -35,9 +35,11 @@ from decision import (
     load_source_evidence,
     mrt_minutes,
     rental_scope_mix,
+    route_candidates,
     search_with_unknowns,
     whole,
 )
+import place_routes
 from costs import lease_costs
 from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
 from faculties import FACULTIES, find_faculty
@@ -54,7 +56,7 @@ from graph import (
     _text,
 )
 from group_db import Database
-from models import ResponseLanguage, SearchPreferences
+from models import Destination, ResponseLanguage, SearchPreferences
 from onemap import OneMapError
 from parser import PREFERENCE_GUIDANCE
 from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
@@ -64,6 +66,7 @@ from response import (
     _link_status_text,
     _render_relaxations,
     comparison_view,
+    destination_label,
     profile_change_rows,
     render_auto_save,
     render_budget_check,
@@ -102,10 +105,12 @@ from tools import (
     check_listing_url,
     commute,
     commute_minutes,
+    destination_view,
     extract_restrictions,
     get_listings_by_ids,
     lease_term,
     mrt_distance_m,
+    own_commute_needed,
     rank_listings,
     location_distance_m,
     rent_percentile_sgd,
@@ -211,8 +216,19 @@ Using tools
 - Commute times are minutes from each listing to the user's NUS faculty (faculty in the
   conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
   is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 sets
-  max_commute_minutes=40; a short commute adds commute to ranking_priority. For a destination
-  that is not an NUS faculty, say commute times only cover NUS faculties and set nothing.
+  max_commute_minutes=40; a short commute adds commute to ranking_priority.
+- Besides the user's faculty, other_destination holds one more place the commute must suit: a
+  roommate's NUS faculty (its English name from the list in query), or a Singapore place such as a
+  gym or office (an English address, building name or postcode in query; ask when a Chinese place
+  name cannot be reliably resolved). Put what it is to the user (室友的学院, 健身房, 公司) in name.
+  A limit for it goes in max_other_commute_minutes; 两边都 30 分钟以内 sets both limits to 30.
+  都方便 or 通勤近 without a number adds commute to ranking_priority, which ranks by the longer of
+  the two trips. Without a limit or that priority, its times are only shown.
+- Only one other destination: when the user names more than one besides their faculty, say so and
+  ask which to keep. When one is saved and the user names another, call search_listings with it:
+  the tool says what to ask, and replace_destination=true is only for after they agree.
+- When search_listings says commute times to a place still need working out and gives a question,
+  ask exactly that; call again with wait_for_routes=true only after the user agrees to wait.
 - Ranking always weighs MRT walking distance, and rent when there is a budget; the named
   priorities share 70% of the weight. A listing without MRT data or near a station that is not
   open yet counts as a 10-minute walk.
@@ -378,6 +394,8 @@ class SearchArgs(BaseModel):
     )
     budget: Budget | None = Field(None, description="A budget in a currency other than SGD, or one covering more than a month in any currency.")
     preview: bool = Field(False, description="True only for hypothetical what-if questions; saved preferences stay unchanged.")
+    replace_destination: bool = Field(False, description="True only after the user agreed to replace the saved other_destination with the new one.")
+    wait_for_routes: bool = Field(False, description="True only after the user agreed to wait while commute times to a new place are worked out.")
     user_quote: str = Field("", description="The user's words from the latest message that ask for the saved change.")
 
 
@@ -466,8 +484,49 @@ def build_agent(
     listing_checker=check_listing_url,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
     profiles: UserProfiles | None = None,
+    place_router=None,
 ):
-    """With profiles, a user_id in the input enables long-term memory for that user."""
+    """With profiles, a user_id in the input enables long-term memory for that user. place_router
+    (listing, destination) gives the trip to a place the user names; OneMap without it."""
+    route = place_router or place_routes.onemap_router()
+
+    def routes_to(work, destination, listings, ask: bool) -> bool:
+        """Work out the routes from listings to a place destination that are not on file. With ask,
+        too many first stop the call with a question for the user. True when any were worked out."""
+        if destination is None or destination.faculty is not None:
+            return False
+        needed = place_routes.missing(connection, destination, listings)
+        if not needed:
+            return False
+        label = destination_label(destination_view(destination), work["response_language"])
+        count = len(needed)
+        if ask and count > place_routes.ASK_ABOVE:
+            seconds = place_routes.seconds_for(count)
+            question = _text(
+                work,
+                f"到「{label}」的通勤时间还没算过：符合其他条件的有 {count} 套房源，全部算完大约要 {seconds} 秒。"
+                "可以先再加一个条件缩小范围，也可以直接说“可以等”，我就开始算。",
+                f"Commute times to \"{label}\" are not worked out yet: {count} listings meet your other criteria, and "
+                f"working them all out takes about {seconds} seconds. You can add another condition first, or say \"go ahead\" and I will start.",
+            )
+            raise ToolError(
+                f"Commute times to the other destination still need working out for {count} listings; nothing was "
+                f"saved. Ask the user exactly this: {question} If they agree to wait, call search_listings again with "
+                "the same changes and wait_for_routes=true; if they add a condition, search with it."
+            )
+
+        def progress(done, total):
+            _progress(f"正在计算到{label}的通勤时间（{done}/{total}）", f"Working out commute times to {label} ({done}/{total})")
+
+        result = place_routes.work_out(connection, destination, needed, route, progress)
+        work["trace"].append(f"[routes] {label}: {result['worked_out']} worked out, {result['failed']} failed")
+        if result["failed"]:
+            work["notes"].append(_text(
+                work,
+                f"有 {result['failed']} 套房源暂时算不出到「{label}」的通勤时间，下次搜索会再算。",
+                f"Commute times to \"{label}\" could not be worked out for {result['failed']} listings right now; the next search tries again.",
+            ))
+        return result["worked_out"] > 0
 
     def validate(ranked, **limits):
         checked_links = 0
@@ -567,6 +626,7 @@ def build_agent(
                 if field not in replaced and getattr(current, field) != getattr(defaults, field)
             }
         )
+        destination_changes(work, current, given, changes, args)
         conversion = None
         if args.budget:
             amount = args.budget.amount
@@ -638,6 +698,8 @@ def build_agent(
         except OneMapError as error:
             raise ToolError(f"Cannot resolve the requested place: {error}. Ask for a more precise address/postcode or user-supplied coordinates; do not invent them.") from error
         changes = {field: getattr(preferences, field) for field in changes}
+        if preferences.max_other_commute_minutes is not None and preferences.other_destination is None:
+            raise ToolError("max_other_commute_minutes needs other_destination: set the place the user named.")
         if not _has_search_criteria(preferences):
             raise ToolError(
                 "The budget was not used: the system already told the user it is far below every rent and "
@@ -647,6 +709,7 @@ def build_agent(
             )
 
         excluded = _search_exclusions(work)
+        routes_to(work, preferences.other_destination, route_candidates(connection, preferences, excluded), ask=not args.wait_for_routes)
         # Shortlisted listings are left out of the results so new ones fill them; those meeting every
         # condition are named after the results instead.
         strict, pending = search_with_unknowns(connection, preferences, work["excluded_listing_ids"])
@@ -708,8 +771,7 @@ def build_agent(
                 *([render_shortlist_matches(shortlisted_matches, language)] if shortlisted_matches else []),
             ]
             # Commute criteria measure to the user's faculty; without one they cannot be checked.
-            commute_asked = preferences.max_commute_minutes is not None or "commute" in preferences.ranking_priority
-            if profiles and work.get("user_id") and commute_asked and not preferences.faculty:
+            if profiles and work.get("user_id") and own_commute_needed(preferences) and not preferences.faculty:
                 work["footers"].append(render_no_faculty(language))
             work["last_search"] = {
                 "strict_database_count": len(strict),
@@ -816,6 +878,8 @@ def build_agent(
 
     def details(work, args: ListingArgs):
         listing = one_listing(args.listing_id)
+        if routes_to(work, work["preferences"].other_destination, [listing], ask=False):
+            listing = one_listing(args.listing_id)
         listing_id = listing["listing_id"]
         work["viewed_listing_id"] = listing_id
         ranked = checked(work, validate(rank_listings([listing], work["preferences"]), candidate_limit=1))
@@ -823,7 +887,7 @@ def build_agent(
             work["drafts"].append(_text(work, f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。", f"Listing {listing_id} is no longer available at its original link and will not be recommended."))
             return {"listing_id": listing_id, "link_status": "inactive"}
         listing = ranked[0]["listing"]
-        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"], ranked[0]["commute"]))
+        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"], ranked[0]["commute"], ranked[0]["other_commute"]))
         preferences = work["preferences"]
         return {
             **_facts(ranked[0], work["response_language"]),
@@ -854,6 +918,8 @@ def build_agent(
         if len(wanted) > 3:
             raise ToolError("At most three listings can be compared at once: ask the user which three.")
         listings = get_listings_by_ids(connection, wanted)
+        if routes_to(work, work["preferences"].other_destination, listings, ask=False):
+            listings = get_listings_by_ids(connection, wanted)
         ranked = checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings))) if listings else []
         by_id = {item["listing"]["listing_id"]: item for item in ranked}
         found = {listing["listing_id"] for listing in listings}
@@ -1501,6 +1567,54 @@ def build_agent(
     return graph.compile(checkpointer=checkpointer)
 
 
+def destination_changes(work, current: SearchPreferences, given: dict, changes: dict, args) -> None:
+    """The other destination among a search's changes, in place. The same place again changes at most
+    what it is called. A new one replaces a saved one only once the user agrees, and its limit goes
+    with it unless a new one is given; dropping the destination drops its limit too."""
+    if "other_destination" not in changes:
+        return
+    old, value = current.other_destination, changes["other_destination"]
+    keep_limit = "max_other_commute_minutes" in given or current.max_other_commute_minutes is None
+    if value is None:
+        if not keep_limit:
+            changes["max_other_commute_minutes"] = None
+        return
+    new = Destination.model_validate(value)
+    named = find_faculty(new.query)
+    if named and named["name"] == current.faculty:
+        raise ToolError("That is the user's own faculty, whose commute times are already used; tell the user and set nothing.")
+    if old is None:
+        same = False
+    elif named or old.faculty:
+        same = named is not None and named["name"] == old.faculty
+    else:
+        same = new.query.casefold() == old.query.casefold()
+    if same:
+        if new.name and new.name != old.name:
+            changes["other_destination"] = old.model_copy(update={"name": new.name}).model_dump()
+        else:
+            del changes["other_destination"]
+        return
+    if old is None or args.preview:
+        return
+    if not args.replace_destination:
+        language = work["response_language"]
+        before = destination_label(destination_view(old), language)
+        after = destination_label({"faculty": named and named["name"], "query": new.query, "name": new.name}, language)
+        question = _text(
+            work,
+            f"除了你的学院，最多只能再加一个目的地，现在已经有「{before}」。要把它换成「{after}」吗？",
+            f"Besides your faculty, only one more destination can be added, and \"{before}\" is already set. Replace it with \"{after}\"?",
+        )
+        raise ToolError(
+            "Besides the user's faculty only one other destination can be set, and one already is; nothing was saved. "
+            f"Ask the user exactly this: {question} Call search_listings again with the new destination and "
+            "replace_destination=true only after they agree, quoting their agreement in user_quote."
+        )
+    if not keep_limit:
+        changes["max_other_commute_minutes"] = None
+
+
 def _progress(zh: str, en: str) -> None:
     """Tell a streaming caller, such as the web server, what is happening; nothing otherwise."""
     try:
@@ -1627,6 +1741,8 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
         "mrt_from_onemap": listing.get("mrt_walk_minutes") is not None,
         "commute_minutes_to_faculty": whole((item.get("commute") or {}).get("minutes")),
         "commute_mode": (item.get("commute") or {}).get("mode"),
+        # The trip to the other destination, with what it is: {faculty, query, name, minutes, mode}.
+        "other_commute": item.get("other_commute") and {**item["other_commute"], "minutes": whole(item["other_commute"]["minutes"])},
         "availability_note": _availability_text(listing, language),
         "nearby_1km": {
             key: listing[field]

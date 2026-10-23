@@ -51,7 +51,7 @@ _FOOD_RANK = "food_rank"
 # where lower is better, or None when the listing lacks the data.
 _RANKING_CRITERIA = {
     "mrt": lambda listing, preferences: _ratio(mrt_distance_m(listing), _mrt_reference_m(preferences)),
-    "commute": lambda listing, preferences: _ratio(commute_minutes(listing, preferences), _commute_reference(preferences)),
+    "commute": lambda listing, preferences: _commute_ratio(listing, preferences),
     "food": lambda listing, preferences: listing.get(_FOOD_RANK),
     "space": lambda listing, preferences: listing.get("space_rank"),
     "price": lambda listing, preferences: _ratio(listing.get("rent_monthly_sgd"), preferences.max_price_sgd),
@@ -97,6 +97,7 @@ EXTRA_CONDITION_LABELS = {
     "cooking_level": ("烹饪强度", "cooking level"),
     "gender_preference": ("房东明确偏好的租客性别", "advertised preferred tenant gender"),
     "lease_months": ("签约租期（月）", "lease length (months)"),
+    "max_other_commute_minutes": ("到另一个目的地的通勤上限（分钟）", "commute limit to your other destination (minutes)"),
 }
 _MINIMUM_COLUMNS = {
     "min_bathrooms": "bathrooms", "min_mrt_stations": "pg_mrt_count",
@@ -110,6 +111,9 @@ _MAXIMUM_COLUMNS = {"max_school_walk_m": "pg_school_nearest_walk_m", "max_school
 
 def extra_condition_status(field: str, listing: Listing, preferences: SearchPreferences) -> str:
     wanted = getattr(preferences, field)
+    if field == "max_other_commute_minutes":
+        minutes = other_commute_minutes(listing, preferences)
+        return "unknown" if minutes is None else "pass" if minutes <= wanted else "fail"
     if field == "lease_months":
         # Whether the user can sign a lease of this many months: a stated term is the shortest the
         # landlord accepts, and a longer lease fits it. A short-term listing may not take a long lease.
@@ -182,12 +186,21 @@ def _location_coordinates(query: str) -> tuple[float, float]:
 
 
 def resolve_search_location(preferences: SearchPreferences) -> SearchPreferences:
+    """Locate the places the preferences name: the nearby location, and the other destination,
+    which is a recorded faculty (its commutes are worked out in advance) or a place found on OneMap."""
+    update = {}
     location = preferences.nearby_location
     if location is not None and location.latitude is None:
         latitude, longitude = _location_coordinates(location.query)
-        location = type(location).model_validate({**location.model_dump(), "latitude": latitude, "longitude": longitude})
-        return preferences.model_copy(update={"nearby_location": location})
-    return preferences
+        update["nearby_location"] = type(location).model_validate({**location.model_dump(), "latitude": latitude, "longitude": longitude})
+    destination = preferences.other_destination
+    if destination is not None and destination.latitude is None:
+        faculty = find_faculty(destination.query)
+        latitude, longitude = (faculty["latitude"], faculty["longitude"]) if faculty else geocode_location(destination.query)
+        update["other_destination"] = destination.model_copy(
+            update={"faculty": faculty and faculty["name"], "latitude": latitude, "longitude": longitude}
+        )
+    return preferences.model_copy(update=update) if update else preferences
 
 
 def location_distance_m(listing: Listing, location) -> float | None:
@@ -312,15 +325,27 @@ def search_listings(
     active = [field for field in EXTRA_CONDITION_LABELS if getattr(preferences, field) != SearchPreferences.model_fields[field].default]
     # ponytail: Python filtering is sufficient for this 519-row prototype; use SQL at larger scale.
     candidates = [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
-    # Commutes depend on the user's faculty, so they are checked here rather than in SQL.
-    if preferences.max_commute_minutes is not None or "commute" in preferences.ranking_priority:
+    # Commutes depend on the user's faculty, so they are checked here rather than in SQL. Ranking by
+    # commute needs the trip to each destination there is (the other destination's limit is an extra
+    # condition above).
+    if own_commute_needed(preferences):
         limit = preferences.max_commute_minutes
         candidates = [
             listing
             for listing in candidates
             if (minutes := commute_minutes(listing, preferences)) is not None and (limit is None or minutes <= limit)
         ]
+    if "commute" in preferences.ranking_priority and preferences.other_destination is not None:
+        candidates = [listing for listing in candidates if other_commute_minutes(listing, preferences) is not None]
     return candidates
+
+
+def own_commute_needed(preferences: SearchPreferences) -> bool:
+    """Whether a search needs each listing's trip to the user's faculty: for its limit, or to rank by
+    commute, unless only the other destination is known."""
+    return preferences.max_commute_minutes is not None or (
+        "commute" in preferences.ranking_priority and (preferences.faculty is not None or preferences.other_destination is None)
+    )
 
 
 def commute(listing: Listing, faculty: str | None) -> dict | None:
@@ -332,6 +357,35 @@ def commute_minutes(listing: Listing, preferences: SearchPreferences) -> float |
     """Minutes from the listing to the user's faculty, when both are known."""
     trip = commute(listing, preferences.faculty)
     return trip["minutes"] if trip else None
+
+
+def place_key(latitude: float, longitude: float) -> str:
+    """How routes to a place are filed (place_routes.py): its position to about a metre."""
+    return f"{latitude:.5f},{longitude:.5f}"
+
+
+def destination_trip(listing: Listing, destination) -> dict | None:
+    """The trip from the listing to the other destination, {"minutes", "mode"}: from the faculty
+    commutes for a faculty, otherwise from the routes worked out to that place."""
+    if destination is None:
+        return None
+    if destination.faculty:
+        return commute(listing, destination.faculty)
+    if destination.latitude is None:
+        return None
+    return (listing.get("place_commutes") or {}).get(place_key(destination.latitude, destination.longitude))
+
+
+def other_commute_minutes(listing: Listing, preferences: SearchPreferences) -> float | None:
+    """Minutes from the listing to the other destination, when known."""
+    trip = destination_trip(listing, preferences.other_destination)
+    return trip["minutes"] if trip else None
+
+
+def destination_view(destination) -> dict | None:
+    """The other destination as replies and pages name it: the faculty it is, or the place and what
+    it is to the user."""
+    return destination and {"faculty": destination.faculty, "query": destination.query, "name": destination.name}
 
 
 def refresh_mrt_walk_data(
@@ -414,6 +468,12 @@ def analyze_relaxations(
             None
             if preferences.max_mrt_minutes is None
             else preferences.max_mrt_minutes + 5,
+        ),
+        # Ten more minutes to each destination with a limit.
+        *(
+            (field, getattr(preferences, field) + 10)
+            for field in ("max_commute_minutes", "max_other_commute_minutes")
+            if getattr(preferences, field) is not None
         ),
         # Signing for longer: a 1-year lease, then a 2-year one, the terms most listings ask for.
         *(
@@ -504,8 +564,12 @@ def rank_listings(
                 "rank_value": rank_value,
                 "factors": factors,
                 "warnings": list(listing.get("review_flags", [])),
-                # For listing cards: the trip to the user's faculty, when one is saved.
+                # For listing cards: the trip to the user's faculty, when one is saved, and to the other destination.
                 "commute": preferences.faculty and {"faculty": preferences.faculty, "minutes": None, "mode": None, **(commute(listing, preferences.faculty) or {})},
+                "other_commute": preferences.other_destination and {
+                    **destination_view(preferences.other_destination), "minutes": None, "mode": None,
+                    **(destination_trip(listing, preferences.other_destination) or {}),
+                },
             }
         )
     ranked.sort(key=_rank_key)
@@ -765,7 +829,7 @@ def _ranking_factors(preferences: SearchPreferences) -> list[str]:
     priorities = preferences.ranking_priority
     asked = {
         "mrt": True,
-        "commute": preferences.max_commute_minutes is not None or "commute" in priorities,
+        "commute": preferences.max_commute_minutes is not None or preferences.max_other_commute_minutes is not None or "commute" in priorities,
         "food": "amenities" in priorities,
         "space": "space" in priorities,
         "price": preferences.max_price_sgd is not None,
@@ -795,6 +859,20 @@ def _mrt_reference_m(preferences: SearchPreferences) -> float:
 
 def _commute_reference(preferences: SearchPreferences) -> int:
     return max(preferences.max_commute_minutes or _SOFT_COMMUTE_REFERENCE_MINUTES, 1)
+
+
+def _commute_ratio(listing: Listing, preferences: SearchPreferences) -> float | None:
+    """The longer trip, each over its own limit (45 minutes without one): to the user's faculty and
+    to the other destination, whichever there are. A trip without data counts as its limit, 1."""
+    parts = []
+    if preferences.faculty is not None or preferences.other_destination is None:
+        parts.append(_ratio(commute_minutes(listing, preferences), _commute_reference(preferences)))
+    if preferences.other_destination is not None:
+        limit = max(preferences.max_other_commute_minutes or _SOFT_COMMUTE_REFERENCE_MINUTES, 1)
+        parts.append(_ratio(other_commute_minutes(listing, preferences), limit))
+    if all(part is None for part in parts):
+        return None
+    return max(1.0 if part is None else part for part in parts)
 
 
 def _rank_key(result: RankingResult) -> tuple:

@@ -3,7 +3,7 @@ from data.demo_enrichment import DEMO
 from data.image_loader import source_image
 from domain.provenance import display
 from content.i18n import t, lease_term_label
-from state.session_store import toggle_favorite, toggle_compare, favorite_ids, compare_ids, live, current, current_faculty, busy
+from state.session_store import toggle_favorite, toggle_compare, favorite_ids, compare_ids, live, current, current_faculty, busy, faculties
 from components.source_notes import source_notes
 
 
@@ -23,21 +23,50 @@ def heading(rec):
 
 
 def commute_text(listing, rec=None):
-    """The trip to the user's faculty from the backend's commute data; the demo estimate offline."""
+    """The trips to the user's faculty and to the conversation's other destination, from the backend's
+    commute data; the demo estimate offline."""
     if not live():
         commute = DEMO.get(listing.id, {}).get('commute')
         return t(f'Estimated demo commute: {commute} min', f'演示通勤估计：{commute} 分钟') if commute is not None else t('NUS commute: Not available', 'NUS 通勤：无数据')
     faculty = current_faculty()
     if faculty is None:
-        return t('Choose your faculty in Profile to see commute times.', '在个人资料里选择学院后可以看到通勤时间。')
-    name, zh = faculty['name'], faculty['zh']
-    trip = (listing.facts.get('commutes') or {}).get(name)
+        text = t('Choose your faculty in Profile to see commute times.', '在个人资料里选择学院后可以看到通勤时间。')
+    else:
+        text = _trip_text((listing.facts.get('commutes') or {}).get(faculty['name']), t(faculty['name'], faculty['zh']))
+    if other := other_commute_text(listing, rec):
+        text += t('; ', '；') + other
+    return text
+
+
+def other_commute_text(listing, rec=None):
+    """The trip to the other destination (a roommate's faculty, a gym) the conversation names; '' without one."""
+    destination = (current().get('criteria') or {}).get('preferences', {}).get('other_destination')
+    if not destination:
+        return ''
+    trip = rec.facts.get('other_commute') if rec else None
+    if trip is None and destination.get('faculty'):
+        trip = (listing.facts.get('commutes') or {}).get(destination['faculty'])
+    elif trip is None and destination.get('latitude') is not None:
+        # Routes to a place are filed by its position, as the backend's place_key does.
+        trip = (listing.facts.get('place_commutes') or {}).get(f"{destination['latitude']:.5f},{destination['longitude']:.5f}")
+    return _trip_text(trip, destination_text(destination))
+
+
+def destination_text(destination):
+    """The other destination as cards name it: what it is to the user, then the faculty or place."""
+    faculty = next((item for item in faculties() if item['name'] == destination.get('faculty')), None)
+    place = t(faculty['name'], faculty['zh']) if faculty else destination['query']
+    name = destination.get('name')
+    return t(f'{name} ({place})', f'{name}（{place}）') if name else place
+
+
+def _trip_text(trip, place):
     if not trip or trip.get('minutes') is None:
-        return t(f'No commute time to {name} for this listing.', f'这套房源没有到{zh}的通勤数据。')
+        return t(f'No commute time to {place} for this listing.', f'这套房源没有到{place}的通勤数据。')
     minutes = round(trip['minutes'])
     if trip.get('mode') == 'walk':
-        return t(f'About {minutes} min walk to {name}', f'步行到{zh}约 {minutes} 分钟')
-    return t(f'About {minutes} min by public transport to {name}', f'坐公共交通到{zh}约 {minutes} 分钟')
+        return t(f'About {minutes} min walk to {place}', f'步行到{place}约 {minutes} 分钟')
+    return t(f'About {minutes} min by public transport to {place}', f'坐公共交通到{place}约 {minutes} 分钟')
 
 
 def mrt_text(listing, rec=None):
@@ -60,12 +89,17 @@ def link_note(rec):
 
 
 
-def image(listing):
+def image(listing, width=500):
+    """The listing's first photo, fetched by the server, which shows a placeholder when it fails."""
     content = source_image(listing.images[0]) if listing.images else None
-    if content:
+    if content and live():
+        st.image(content, width=width)
+        # The photos are PropertyGuru's: say so, with the way to the original listing.
+        st.caption(f"[{t('Photo from the original PropertyGuru listing', '图片来自 PropertyGuru 原房源')} ↗]({listing.facts['listingUrl']})")
+    elif content:
         st.image(
             content,
-            width=500,
+            width=width,
             caption=t(
                 'Historical V1 source listing image',
                 '历史 V1 来源图片'

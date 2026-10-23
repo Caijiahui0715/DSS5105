@@ -1,4 +1,4 @@
-listing_id,faculty,minutes,mode,departure
+﻿listing_id,faculty,minutes,mode,departure
 12059415,NUS Business School,11,transit,2026-10-07 08:30
 12059415,College of Design and Engineering,14,transit,2026-10-07 08:30
 12059415,Faculty of Dentistry,19,transit,2026-10-07 08:30
@@ -15,22 +15,6 @@ listing_id,faculty,minutes,mode,departure
 12059415,School of Computing,12,walk,2026-10-07 08:30
 12059415,Saw Swee Hock School of Public Health,19,transit,2026-10-07 08:30
 12059415,Yong Siew Toh Conservatory of Music,14,transit,2026-10-07 08:30
-12239071,NUS Business School,41,transit,2026-10-07 08:30
-12239071,College of Design and Engineering,36,transit,2026-10-07 08:30
-12239071,Faculty of Dentistry,39,transit,2026-10-07 08:30
-12239071,Duke-NUS Medical School,58,transit,2026-10-07 08:30
-12239071,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-12239071,NUS Institute of Systems Science,50,transit,2026-10-07 08:30
-12239071,Faculty of Law,30,transit,2026-10-07 08:30
-12239071,Lee Kuan Yew School of Public Policy,45,transit,2026-10-07 08:30
-12239071,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-12239071,NUS College,30,transit,2026-10-07 08:30
-12239071,NUS Graduate School,44,transit,2026-10-07 08:30
-12239071,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-12239071,Faculty of Science,46,transit,2026-10-07 08:30
-12239071,School of Computing,38,transit,2026-10-07 08:30
-12239071,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-12239071,Yong Siew Toh Conservatory of Music,37,transit,2026-10-07 08:30
 13321730,NUS Business School,41,transit,2026-10-07 08:30
 13321730,College of Design and Engineering,51,transit,2026-10-07 08:30
 13321730,Faculty of Dentistry,37,transit,2026-10-07 08:30
@@ -47,22 +31,6 @@ listing_id,faculty,minutes,mode,departure
 13321730,School of Computing,48,transit,2026-10-07 08:30
 13321730,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
 13321730,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
-13883947,NUS Business School,34,transit,2026-10-07 08:30
-13883947,College of Design and Engineering,44,transit,2026-10-07 08:30
-13883947,Faculty of Dentistry,31,transit,2026-10-07 08:30
-13883947,Duke-NUS Medical School,47,transit,2026-10-07 08:30
-13883947,Faculty of Arts and Social Sciences,39,transit,2026-10-07 08:30
-13883947,NUS Institute of Systems Science,40,transit,2026-10-07 08:30
-13883947,Faculty of Law,45,transit,2026-10-07 08:30
-13883947,Lee Kuan Yew School of Public Policy,52,transit,2026-10-07 08:30
-13883947,Yong Loo Lin School of Medicine,32,transit,2026-10-07 08:30
-13883947,NUS College,45,transit,2026-10-07 08:30
-13883947,NUS Graduate School,34,transit,2026-10-07 08:30
-13883947,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-13883947,Faculty of Science,37,transit,2026-10-07 08:30
-13883947,School of Computing,41,transit,2026-10-07 08:30
-13883947,Saw Swee Hock School of Public Health,37,transit,2026-10-07 08:30
-13883947,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 14842811,NUS Business School,50,transit,2026-10-07 08:30
 14842811,College of Design and Engineering,42,transit,2026-10-07 08:30
 14842811,Faculty of Dentistry,45,transit,2026-10-07 08:30
@@ -79,54 +47,6 @@ listing_id,faculty,minutes,mode,departure
 14842811,School of Computing,41,transit,2026-10-07 08:30
 14842811,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
 14842811,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-16275185,NUS Business School,52,transit,2026-10-07 08:30
-16275185,College of Design and Engineering,57,transit,2026-10-07 08:30
-16275185,Faculty of Dentistry,43,transit,2026-10-07 08:30
-16275185,Duke-NUS Medical School,28,transit,2026-10-07 08:30
-16275185,Faculty of Arts and Social Sciences,57,transit,2026-10-07 08:30
-16275185,NUS Institute of Systems Science,57,transit,2026-10-07 08:30
-16275185,Faculty of Law,52,transit,2026-10-07 08:30
-16275185,Lee Kuan Yew School of Public Policy,42,transit,2026-10-07 08:30
-16275185,Yong Loo Lin School of Medicine,44,transit,2026-10-07 08:30
-16275185,NUS College,52,transit,2026-10-07 08:30
-16275185,NUS Graduate School,47,transit,2026-10-07 08:30
-16275185,School of Continuing and Lifelong Education,51,transit,2026-10-07 08:30
-16275185,Faculty of Science,49,transit,2026-10-07 08:30
-16275185,School of Computing,59,transit,2026-10-07 08:30
-16275185,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-16275185,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-17908333,NUS Business School,91,transit,2026-10-07 08:30
-17908333,College of Design and Engineering,87,transit,2026-10-07 08:30
-17908333,Faculty of Dentistry,78,transit,2026-10-07 08:30
-17908333,Duke-NUS Medical School,68,transit,2026-10-07 08:30
-17908333,Faculty of Arts and Social Sciences,94,transit,2026-10-07 08:30
-17908333,NUS Institute of Systems Science,96,transit,2026-10-07 08:30
-17908333,Faculty of Law,89,transit,2026-10-07 08:30
-17908333,Lee Kuan Yew School of Public Policy,82,transit,2026-10-07 08:30
-17908333,Yong Loo Lin School of Medicine,78,transit,2026-10-07 08:30
-17908333,NUS College,89,transit,2026-10-07 08:30
-17908333,NUS Graduate School,85,transit,2026-10-07 08:30
-17908333,School of Continuing and Lifelong Education,89,transit,2026-10-07 08:30
-17908333,Faculty of Science,85,transit,2026-10-07 08:30
-17908333,School of Computing,92,transit,2026-10-07 08:30
-17908333,Saw Swee Hock School of Public Health,83,transit,2026-10-07 08:30
-17908333,Yong Siew Toh Conservatory of Music,97,transit,2026-10-07 08:30
-18102910,NUS Business School,96,transit,2026-10-07 08:30
-18102910,College of Design and Engineering,108,transit,2026-10-07 08:30
-18102910,Faculty of Dentistry,93,transit,2026-10-07 08:30
-18102910,Duke-NUS Medical School,79,transit,2026-10-07 08:30
-18102910,Faculty of Arts and Social Sciences,92,transit,2026-10-07 08:30
-18102910,NUS Institute of Systems Science,101,transit,2026-10-07 08:30
-18102910,Faculty of Law,102,transit,2026-10-07 08:30
-18102910,Lee Kuan Yew School of Public Policy,113,transit,2026-10-07 08:30
-18102910,Yong Loo Lin School of Medicine,94,transit,2026-10-07 08:30
-18102910,NUS College,102,transit,2026-10-07 08:30
-18102910,NUS Graduate School,98,transit,2026-10-07 08:30
-18102910,School of Continuing and Lifelong Education,100,transit,2026-10-07 08:30
-18102910,Faculty of Science,100,transit,2026-10-07 08:30
-18102910,School of Computing,103,transit,2026-10-07 08:30
-18102910,Saw Swee Hock School of Public Health,99,transit,2026-10-07 08:30
-18102910,Yong Siew Toh Conservatory of Music,107,transit,2026-10-07 08:30
 18200678,NUS Business School,15,transit,2026-10-07 08:30
 18200678,College of Design and Engineering,25,transit,2026-10-07 08:30
 18200678,Faculty of Dentistry,14,transit,2026-10-07 08:30
@@ -143,22 +63,6 @@ listing_id,faculty,minutes,mode,departure
 18200678,School of Computing,22,transit,2026-10-07 08:30
 18200678,Saw Swee Hock School of Public Health,19,transit,2026-10-07 08:30
 18200678,Yong Siew Toh Conservatory of Music,27,transit,2026-10-07 08:30
-19368411,NUS Business School,49,transit,2026-10-07 08:30
-19368411,College of Design and Engineering,47,transit,2026-10-07 08:30
-19368411,Faculty of Dentistry,45,transit,2026-10-07 08:30
-19368411,Duke-NUS Medical School,60,transit,2026-10-07 08:30
-19368411,Faculty of Arts and Social Sciences,42,transit,2026-10-07 08:30
-19368411,NUS Institute of Systems Science,58,transit,2026-10-07 08:30
-19368411,Faculty of Law,35,transit,2026-10-07 08:30
-19368411,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-19368411,Yong Loo Lin School of Medicine,48,transit,2026-10-07 08:30
-19368411,NUS College,34,transit,2026-10-07 08:30
-19368411,NUS Graduate School,44,transit,2026-10-07 08:30
-19368411,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-19368411,Faculty of Science,46,transit,2026-10-07 08:30
-19368411,School of Computing,41,transit,2026-10-07 08:30
-19368411,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-19368411,Yong Siew Toh Conservatory of Music,37,transit,2026-10-07 08:30
 19433767,NUS Business School,33,transit,2026-10-07 08:30
 19433767,College of Design and Engineering,47,transit,2026-10-07 08:30
 19433767,Faculty of Dentistry,28,transit,2026-10-07 08:30
@@ -223,22 +127,6 @@ listing_id,faculty,minutes,mode,departure
 19877684,School of Computing,37,transit,2026-10-07 08:30
 19877684,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
 19877684,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
-20047653,NUS Business School,49,transit,2026-10-07 08:30
-20047653,College of Design and Engineering,49,transit,2026-10-07 08:30
-20047653,Faculty of Dentistry,37,transit,2026-10-07 08:30
-20047653,Duke-NUS Medical School,29,transit,2026-10-07 08:30
-20047653,Faculty of Arts and Social Sciences,47,transit,2026-10-07 08:30
-20047653,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-20047653,Faculty of Law,46,transit,2026-10-07 08:30
-20047653,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-20047653,Yong Loo Lin School of Medicine,38,transit,2026-10-07 08:30
-20047653,NUS College,45,transit,2026-10-07 08:30
-20047653,NUS Graduate School,39,transit,2026-10-07 08:30
-20047653,School of Continuing and Lifelong Education,43,transit,2026-10-07 08:30
-20047653,Faculty of Science,42,transit,2026-10-07 08:30
-20047653,School of Computing,46,transit,2026-10-07 08:30
-20047653,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
-20047653,Yong Siew Toh Conservatory of Music,48,transit,2026-10-07 08:30
 20350452,NUS Business School,28,transit,2026-10-07 08:30
 20350452,College of Design and Engineering,33,transit,2026-10-07 08:30
 20350452,Faculty of Dentistry,31,transit,2026-10-07 08:30
@@ -255,38 +143,6 @@ listing_id,faculty,minutes,mode,departure
 20350452,School of Computing,35,transit,2026-10-07 08:30
 20350452,Saw Swee Hock School of Public Health,34,transit,2026-10-07 08:30
 20350452,Yong Siew Toh Conservatory of Music,31,transit,2026-10-07 08:30
-20438135,NUS Business School,55,transit,2026-10-07 08:30
-20438135,College of Design and Engineering,52,transit,2026-10-07 08:30
-20438135,Faculty of Dentistry,42,transit,2026-10-07 08:30
-20438135,Duke-NUS Medical School,21,transit,2026-10-07 08:30
-20438135,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-20438135,NUS Institute of Systems Science,60,transit,2026-10-07 08:30
-20438135,Faculty of Law,46,transit,2026-10-07 08:30
-20438135,Lee Kuan Yew School of Public Policy,42,transit,2026-10-07 08:30
-20438135,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-20438135,NUS College,46,transit,2026-10-07 08:30
-20438135,NUS Graduate School,47,transit,2026-10-07 08:30
-20438135,School of Continuing and Lifelong Education,51,transit,2026-10-07 08:30
-20438135,Faculty of Science,50,transit,2026-10-07 08:30
-20438135,School of Computing,54,transit,2026-10-07 08:30
-20438135,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-20438135,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-20571770,NUS Business School,46,transit,2026-10-07 08:30
-20571770,College of Design and Engineering,58,transit,2026-10-07 08:30
-20571770,Faculty of Dentistry,38,transit,2026-10-07 08:30
-20571770,Duke-NUS Medical School,31,transit,2026-10-07 08:30
-20571770,Faculty of Arts and Social Sciences,49,transit,2026-10-07 08:30
-20571770,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-20571770,Faculty of Law,47,transit,2026-10-07 08:30
-20571770,Lee Kuan Yew School of Public Policy,36,transit,2026-10-07 08:30
-20571770,Yong Loo Lin School of Medicine,39,transit,2026-10-07 08:30
-20571770,NUS College,47,transit,2026-10-07 08:30
-20571770,NUS Graduate School,42,transit,2026-10-07 08:30
-20571770,School of Continuing and Lifelong Education,46,transit,2026-10-07 08:30
-20571770,Faculty of Science,44,transit,2026-10-07 08:30
-20571770,School of Computing,49,transit,2026-10-07 08:30
-20571770,Saw Swee Hock School of Public Health,43,transit,2026-10-07 08:30
-20571770,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
 20843936,NUS Business School,42,transit,2026-10-07 08:30
 20843936,College of Design and Engineering,37,transit,2026-10-07 08:30
 20843936,Faculty of Dentistry,40,transit,2026-10-07 08:30
@@ -479,86 +335,6 @@ listing_id,faculty,minutes,mode,departure
 21616245,School of Computing,51,transit,2026-10-07 08:30
 21616245,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
 21616245,Yong Siew Toh Conservatory of Music,48,transit,2026-10-07 08:30
-21700377,NUS Business School,41,transit,2026-10-07 08:30
-21700377,College of Design and Engineering,38,transit,2026-10-07 08:30
-21700377,Faculty of Dentistry,39,transit,2026-10-07 08:30
-21700377,Duke-NUS Medical School,48,transit,2026-10-07 08:30
-21700377,Faculty of Arts and Social Sciences,38,transit,2026-10-07 08:30
-21700377,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-21700377,Faculty of Law,32,transit,2026-10-07 08:30
-21700377,Lee Kuan Yew School of Public Policy,55,transit,2026-10-07 08:30
-21700377,Yong Loo Lin School of Medicine,40,transit,2026-10-07 08:30
-21700377,NUS College,31,transit,2026-10-07 08:30
-21700377,NUS Graduate School,41,transit,2026-10-07 08:30
-21700377,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-21700377,Faculty of Science,43,transit,2026-10-07 08:30
-21700377,School of Computing,40,transit,2026-10-07 08:30
-21700377,Saw Swee Hock School of Public Health,45,transit,2026-10-07 08:30
-21700377,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-21705023,NUS Business School,41,transit,2026-10-07 08:30
-21705023,College of Design and Engineering,40,transit,2026-10-07 08:30
-21705023,Faculty of Dentistry,30,transit,2026-10-07 08:30
-21705023,Duke-NUS Medical School,14,walk,2026-10-07 08:30
-21705023,Faculty of Arts and Social Sciences,40,transit,2026-10-07 08:30
-21705023,NUS Institute of Systems Science,45,transit,2026-10-07 08:30
-21705023,Faculty of Law,35,transit,2026-10-07 08:30
-21705023,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-21705023,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-21705023,NUS College,34,transit,2026-10-07 08:30
-21705023,NUS Graduate School,32,transit,2026-10-07 08:30
-21705023,School of Continuing and Lifelong Education,36,transit,2026-10-07 08:30
-21705023,Faculty of Science,34,transit,2026-10-07 08:30
-21705023,School of Computing,39,transit,2026-10-07 08:30
-21705023,Saw Swee Hock School of Public Health,36,transit,2026-10-07 08:30
-21705023,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-21715160,NUS Business School,42,transit,2026-10-07 08:30
-21715160,College of Design and Engineering,52,transit,2026-10-07 08:30
-21715160,Faculty of Dentistry,33,transit,2026-10-07 08:30
-21715160,Duke-NUS Medical School,35,transit,2026-10-07 08:30
-21715160,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-21715160,NUS Institute of Systems Science,47,transit,2026-10-07 08:30
-21715160,Faculty of Law,41,transit,2026-10-07 08:30
-21715160,Lee Kuan Yew School of Public Policy,31,transit,2026-10-07 08:30
-21715160,Yong Loo Lin School of Medicine,34,transit,2026-10-07 08:30
-21715160,NUS College,41,transit,2026-10-07 08:30
-21715160,NUS Graduate School,40,transit,2026-10-07 08:30
-21715160,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-21715160,Faculty of Science,39,transit,2026-10-07 08:30
-21715160,School of Computing,44,transit,2026-10-07 08:30
-21715160,Saw Swee Hock School of Public Health,38,transit,2026-10-07 08:30
-21715160,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-21762885,NUS Business School,28,transit,2026-10-07 08:30
-21762885,College of Design and Engineering,39,transit,2026-10-07 08:30
-21762885,Faculty of Dentistry,24,transit,2026-10-07 08:30
-21762885,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-21762885,Faculty of Arts and Social Sciences,32,transit,2026-10-07 08:30
-21762885,NUS Institute of Systems Science,33,transit,2026-10-07 08:30
-21762885,Faculty of Law,38,transit,2026-10-07 08:30
-21762885,Lee Kuan Yew School of Public Policy,45,transit,2026-10-07 08:30
-21762885,Yong Loo Lin School of Medicine,25,transit,2026-10-07 08:30
-21762885,NUS College,35,transit,2026-10-07 08:30
-21762885,NUS Graduate School,30,transit,2026-10-07 08:30
-21762885,School of Continuing and Lifelong Education,34,transit,2026-10-07 08:30
-21762885,Faculty of Science,30,transit,2026-10-07 08:30
-21762885,School of Computing,35,transit,2026-10-07 08:30
-21762885,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
-21762885,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-21848858,NUS Business School,33,transit,2026-10-07 08:30
-21848858,College of Design and Engineering,43,transit,2026-10-07 08:30
-21848858,Faculty of Dentistry,26,transit,2026-10-07 08:30
-21848858,Duke-NUS Medical School,23,transit,2026-10-07 08:30
-21848858,Faculty of Arts and Social Sciences,42,transit,2026-10-07 08:30
-21848858,NUS Institute of Systems Science,38,transit,2026-10-07 08:30
-21848858,Faculty of Law,37,transit,2026-10-07 08:30
-21848858,Lee Kuan Yew School of Public Policy,53,transit,2026-10-07 08:30
-21848858,Yong Loo Lin School of Medicine,27,transit,2026-10-07 08:30
-21848858,NUS College,36,transit,2026-10-07 08:30
-21848858,NUS Graduate School,30,transit,2026-10-07 08:30
-21848858,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-21848858,Faculty of Science,32,transit,2026-10-07 08:30
-21848858,School of Computing,41,transit,2026-10-07 08:30
-21848858,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
-21848858,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
 21896182,NUS Business School,49,transit,2026-10-07 08:30
 21896182,College of Design and Engineering,60,transit,2026-10-07 08:30
 21896182,Faculty of Dentistry,37,transit,2026-10-07 08:30
@@ -607,22 +383,6 @@ listing_id,faculty,minutes,mode,departure
 22003154,School of Computing,57,transit,2026-10-07 08:30
 22003154,Saw Swee Hock School of Public Health,62,transit,2026-10-07 08:30
 22003154,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
-22151404,NUS Business School,67,transit,2026-10-07 08:30
-22151404,College of Design and Engineering,74,transit,2026-10-07 08:30
-22151404,Faculty of Dentistry,60,transit,2026-10-07 08:30
-22151404,Duke-NUS Medical School,50,transit,2026-10-07 08:30
-22151404,Faculty of Arts and Social Sciences,72,transit,2026-10-07 08:30
-22151404,NUS Institute of Systems Science,72,transit,2026-10-07 08:30
-22151404,Faculty of Law,68,transit,2026-10-07 08:30
-22151404,Lee Kuan Yew School of Public Policy,61,transit,2026-10-07 08:30
-22151404,Yong Loo Lin School of Medicine,60,transit,2026-10-07 08:30
-22151404,NUS College,68,transit,2026-10-07 08:30
-22151404,NUS Graduate School,64,transit,2026-10-07 08:30
-22151404,School of Continuing and Lifelong Education,68,transit,2026-10-07 08:30
-22151404,Faculty of Science,67,transit,2026-10-07 08:30
-22151404,School of Computing,71,transit,2026-10-07 08:30
-22151404,Saw Swee Hock School of Public Health,65,transit,2026-10-07 08:30
-22151404,Yong Siew Toh Conservatory of Music,73,transit,2026-10-07 08:30
 22193801,NUS Business School,41,transit,2026-10-07 08:30
 22193801,College of Design and Engineering,48,transit,2026-10-07 08:30
 22193801,Faculty of Dentistry,37,transit,2026-10-07 08:30
@@ -671,22 +431,6 @@ listing_id,faculty,minutes,mode,departure
 22397299,School of Computing,28,transit,2026-10-07 08:30
 22397299,Saw Swee Hock School of Public Health,24,transit,2026-10-07 08:30
 22397299,Yong Siew Toh Conservatory of Music,31,transit,2026-10-07 08:30
-22416054,NUS Business School,67,transit,2026-10-07 08:30
-22416054,College of Design and Engineering,71,transit,2026-10-07 08:30
-22416054,Faculty of Dentistry,57,transit,2026-10-07 08:30
-22416054,Duke-NUS Medical School,59,transit,2026-10-07 08:30
-22416054,Faculty of Arts and Social Sciences,70,transit,2026-10-07 08:30
-22416054,NUS Institute of Systems Science,73,transit,2026-10-07 08:30
-22416054,Faculty of Law,64,transit,2026-10-07 08:30
-22416054,Lee Kuan Yew School of Public Policy,60,transit,2026-10-07 08:30
-22416054,Yong Loo Lin School of Medicine,58,transit,2026-10-07 08:30
-22416054,NUS College,63,transit,2026-10-07 08:30
-22416054,NUS Graduate School,62,transit,2026-10-07 08:30
-22416054,School of Continuing and Lifelong Education,66,transit,2026-10-07 08:30
-22416054,Faculty of Science,63,transit,2026-10-07 08:30
-22416054,School of Computing,69,transit,2026-10-07 08:30
-22416054,Saw Swee Hock School of Public Health,63,transit,2026-10-07 08:30
-22416054,Yong Siew Toh Conservatory of Music,71,transit,2026-10-07 08:30
 22729218,NUS Business School,32,transit,2026-10-07 08:30
 22729218,College of Design and Engineering,33,transit,2026-10-07 08:30
 22729218,Faculty of Dentistry,23,transit,2026-10-07 08:30
@@ -703,22 +447,6 @@ listing_id,faculty,minutes,mode,departure
 22729218,School of Computing,31,transit,2026-10-07 08:30
 22729218,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
 22729218,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-22750126,NUS Business School,57,transit,2026-10-07 08:30
-22750126,College of Design and Engineering,52,transit,2026-10-07 08:30
-22750126,Faculty of Dentistry,48,transit,2026-10-07 08:30
-22750126,Duke-NUS Medical School,63,transit,2026-10-07 08:30
-22750126,Faculty of Arts and Social Sciences,57,transit,2026-10-07 08:30
-22750126,NUS Institute of Systems Science,62,transit,2026-10-07 08:30
-22750126,Faculty of Law,50,transit,2026-10-07 08:30
-22750126,Lee Kuan Yew School of Public Policy,49,transit,2026-10-07 08:30
-22750126,Yong Loo Lin School of Medicine,49,transit,2026-10-07 08:30
-22750126,NUS College,49,transit,2026-10-07 08:30
-22750126,NUS Graduate School,52,transit,2026-10-07 08:30
-22750126,School of Continuing and Lifelong Education,53,transit,2026-10-07 08:30
-22750126,Faculty of Science,49,transit,2026-10-07 08:30
-22750126,School of Computing,56,transit,2026-10-07 08:30
-22750126,Saw Swee Hock School of Public Health,53,transit,2026-10-07 08:30
-22750126,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
 22849642,NUS Business School,42,transit,2026-10-07 08:30
 22849642,College of Design and Engineering,42,transit,2026-10-07 08:30
 22849642,Faculty of Dentistry,32,transit,2026-10-07 08:30
@@ -799,38 +527,6 @@ listing_id,faculty,minutes,mode,departure
 23220393,School of Computing,31,transit,2026-10-07 08:30
 23220393,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
 23220393,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-23251698,NUS Business School,53,transit,2026-10-07 08:30
-23251698,College of Design and Engineering,56,transit,2026-10-07 08:30
-23251698,Faculty of Dentistry,37,transit,2026-10-07 08:30
-23251698,Duke-NUS Medical School,34,transit,2026-10-07 08:30
-23251698,Faculty of Arts and Social Sciences,56,transit,2026-10-07 08:30
-23251698,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-23251698,Faculty of Law,49,transit,2026-10-07 08:30
-23251698,Lee Kuan Yew School of Public Policy,36,transit,2026-10-07 08:30
-23251698,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-23251698,NUS College,49,transit,2026-10-07 08:30
-23251698,NUS Graduate School,48,transit,2026-10-07 08:30
-23251698,School of Continuing and Lifelong Education,52,transit,2026-10-07 08:30
-23251698,Faculty of Science,43,transit,2026-10-07 08:30
-23251698,School of Computing,55,transit,2026-10-07 08:30
-23251698,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
-23251698,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
-23383219,NUS Business School,29,transit,2026-10-07 08:30
-23383219,College of Design and Engineering,42,transit,2026-10-07 08:30
-23383219,Faculty of Dentistry,26,transit,2026-10-07 08:30
-23383219,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-23383219,Faculty of Arts and Social Sciences,33,transit,2026-10-07 08:30
-23383219,NUS Institute of Systems Science,34,transit,2026-10-07 08:30
-23383219,Faculty of Law,39,transit,2026-10-07 08:30
-23383219,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-23383219,Yong Loo Lin School of Medicine,27,transit,2026-10-07 08:30
-23383219,NUS College,36,transit,2026-10-07 08:30
-23383219,NUS Graduate School,31,transit,2026-10-07 08:30
-23383219,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-23383219,Faculty of Science,32,transit,2026-10-07 08:30
-23383219,School of Computing,38,transit,2026-10-07 08:30
-23383219,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
-23383219,Yong Siew Toh Conservatory of Music,38,transit,2026-10-07 08:30
 23452220,NUS Business School,49,transit,2026-10-07 08:30
 23452220,College of Design and Engineering,60,transit,2026-10-07 08:30
 23452220,Faculty of Dentistry,40,transit,2026-10-07 08:30
@@ -847,22 +543,6 @@ listing_id,faculty,minutes,mode,departure
 23452220,School of Computing,53,transit,2026-10-07 08:30
 23452220,Saw Swee Hock School of Public Health,45,transit,2026-10-07 08:30
 23452220,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-23454696,NUS Business School,56,transit,2026-10-07 08:30
-23454696,College of Design and Engineering,67,transit,2026-10-07 08:30
-23454696,Faculty of Dentistry,45,transit,2026-10-07 08:30
-23454696,Duke-NUS Medical School,47,transit,2026-10-07 08:30
-23454696,Faculty of Arts and Social Sciences,57,transit,2026-10-07 08:30
-23454696,NUS Institute of Systems Science,61,transit,2026-10-07 08:30
-23454696,Faculty of Law,56,transit,2026-10-07 08:30
-23454696,Lee Kuan Yew School of Public Policy,47,transit,2026-10-07 08:30
-23454696,Yong Loo Lin School of Medicine,46,transit,2026-10-07 08:30
-23454696,NUS College,55,transit,2026-10-07 08:30
-23454696,NUS Graduate School,50,transit,2026-10-07 08:30
-23454696,School of Continuing and Lifelong Education,53,transit,2026-10-07 08:30
-23454696,Faculty of Science,51,transit,2026-10-07 08:30
-23454696,School of Computing,57,transit,2026-10-07 08:30
-23454696,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
-23454696,Yong Siew Toh Conservatory of Music,64,transit,2026-10-07 08:30
 23495223,NUS Business School,44,transit,2026-10-07 08:30
 23495223,College of Design and Engineering,53,transit,2026-10-07 08:30
 23495223,Faculty of Dentistry,35,transit,2026-10-07 08:30
@@ -1087,38 +767,6 @@ listing_id,faculty,minutes,mode,departure
 24036325,School of Computing,48,transit,2026-10-07 08:30
 24036325,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 24036325,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
-24039352,NUS Business School,22,transit,2026-10-07 08:30
-24039352,College of Design and Engineering,27,transit,2026-10-07 08:30
-24039352,Faculty of Dentistry,13,transit,2026-10-07 08:30
-24039352,Duke-NUS Medical School,34,transit,2026-10-07 08:30
-24039352,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-24039352,NUS Institute of Systems Science,33,transit,2026-10-07 08:30
-24039352,Faculty of Law,18,transit,2026-10-07 08:30
-24039352,Lee Kuan Yew School of Public Policy,31,transit,2026-10-07 08:30
-24039352,Yong Loo Lin School of Medicine,14,transit,2026-10-07 08:30
-24039352,NUS College,17,transit,2026-10-07 08:30
-24039352,NUS Graduate School,14,transit,2026-10-07 08:30
-24039352,School of Continuing and Lifelong Education,18,transit,2026-10-07 08:30
-24039352,Faculty of Science,17,transit,2026-10-07 08:30
-24039352,School of Computing,21,transit,2026-10-07 08:30
-24039352,Saw Swee Hock School of Public Health,18,transit,2026-10-07 08:30
-24039352,Yong Siew Toh Conservatory of Music,23,transit,2026-10-07 08:30
-24039853,NUS Business School,35,transit,2026-10-07 08:30
-24039853,College of Design and Engineering,37,transit,2026-10-07 08:30
-24039853,Faculty of Dentistry,23,transit,2026-10-07 08:30
-24039853,Duke-NUS Medical School,27,transit,2026-10-07 08:30
-24039853,Faculty of Arts and Social Sciences,37,transit,2026-10-07 08:30
-24039853,NUS Institute of Systems Science,40,transit,2026-10-07 08:30
-24039853,Faculty of Law,32,transit,2026-10-07 08:30
-24039853,Lee Kuan Yew School of Public Policy,40,transit,2026-10-07 08:30
-24039853,Yong Loo Lin School of Medicine,24,transit,2026-10-07 08:30
-24039853,NUS College,31,transit,2026-10-07 08:30
-24039853,NUS Graduate School,27,transit,2026-10-07 08:30
-24039853,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-24039853,Faculty of Science,29,transit,2026-10-07 08:30
-24039853,School of Computing,40,transit,2026-10-07 08:30
-24039853,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
-24039853,Yong Siew Toh Conservatory of Music,37,transit,2026-10-07 08:30
 24040660,NUS Business School,30,transit,2026-10-07 08:30
 24040660,College of Design and Engineering,43,transit,2026-10-07 08:30
 24040660,Faculty of Dentistry,27,transit,2026-10-07 08:30
@@ -1135,54 +783,6 @@ listing_id,faculty,minutes,mode,departure
 24040660,School of Computing,39,transit,2026-10-07 08:30
 24040660,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
 24040660,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-24086253,NUS Business School,,,2026-10-07 08:30
-24086253,College of Design and Engineering,,,2026-10-07 08:30
-24086253,Faculty of Dentistry,,,2026-10-07 08:30
-24086253,Duke-NUS Medical School,,,2026-10-07 08:30
-24086253,Faculty of Arts and Social Sciences,,,2026-10-07 08:30
-24086253,NUS Institute of Systems Science,,,2026-10-07 08:30
-24086253,Faculty of Law,,,2026-10-07 08:30
-24086253,Lee Kuan Yew School of Public Policy,,,2026-10-07 08:30
-24086253,Yong Loo Lin School of Medicine,,,2026-10-07 08:30
-24086253,NUS College,,,2026-10-07 08:30
-24086253,NUS Graduate School,,,2026-10-07 08:30
-24086253,School of Continuing and Lifelong Education,,,2026-10-07 08:30
-24086253,Faculty of Science,,,2026-10-07 08:30
-24086253,School of Computing,,,2026-10-07 08:30
-24086253,Saw Swee Hock School of Public Health,,,2026-10-07 08:30
-24086253,Yong Siew Toh Conservatory of Music,,,2026-10-07 08:30
-24122720,NUS Business School,96,transit,2026-10-07 08:30
-24122720,College of Design and Engineering,90,transit,2026-10-07 08:30
-24122720,Faculty of Dentistry,77,transit,2026-10-07 08:30
-24122720,Duke-NUS Medical School,69,transit,2026-10-07 08:30
-24122720,Faculty of Arts and Social Sciences,89,transit,2026-10-07 08:30
-24122720,NUS Institute of Systems Science,95,transit,2026-10-07 08:30
-24122720,Faculty of Law,84,transit,2026-10-07 08:30
-24122720,Lee Kuan Yew School of Public Policy,83,transit,2026-10-07 08:30
-24122720,Yong Loo Lin School of Medicine,77,transit,2026-10-07 08:30
-24122720,NUS College,84,transit,2026-10-07 08:30
-24122720,NUS Graduate School,80,transit,2026-10-07 08:30
-24122720,School of Continuing and Lifelong Education,86,transit,2026-10-07 08:30
-24122720,Faculty of Science,83,transit,2026-10-07 08:30
-24122720,School of Computing,89,transit,2026-10-07 08:30
-24122720,Saw Swee Hock School of Public Health,82,transit,2026-10-07 08:30
-24122720,Yong Siew Toh Conservatory of Music,97,transit,2026-10-07 08:30
-24153832,NUS Business School,50,transit,2026-10-07 08:30
-24153832,College of Design and Engineering,60,transit,2026-10-07 08:30
-24153832,Faculty of Dentistry,45,transit,2026-10-07 08:30
-24153832,Duke-NUS Medical School,42,transit,2026-10-07 08:30
-24153832,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-24153832,NUS Institute of Systems Science,55,transit,2026-10-07 08:30
-24153832,Faculty of Law,53,transit,2026-10-07 08:30
-24153832,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-24153832,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-24153832,NUS College,53,transit,2026-10-07 08:30
-24153832,NUS Graduate School,46,transit,2026-10-07 08:30
-24153832,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-24153832,Faculty of Science,48,transit,2026-10-07 08:30
-24153832,School of Computing,53,transit,2026-10-07 08:30
-24153832,Saw Swee Hock School of Public Health,49,transit,2026-10-07 08:30
-24153832,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
 24154344,NUS Business School,40,transit,2026-10-07 08:30
 24154344,College of Design and Engineering,52,transit,2026-10-07 08:30
 24154344,Faculty of Dentistry,36,transit,2026-10-07 08:30
@@ -1295,22 +895,6 @@ listing_id,faculty,minutes,mode,departure
 24264486,School of Computing,61,transit,2026-10-07 08:30
 24264486,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
 24264486,Yong Siew Toh Conservatory of Music,70,transit,2026-10-07 08:30
-24300382,NUS Business School,47,transit,2026-10-07 08:30
-24300382,College of Design and Engineering,43,transit,2026-10-07 08:30
-24300382,Faculty of Dentistry,45,transit,2026-10-07 08:30
-24300382,Duke-NUS Medical School,58,transit,2026-10-07 08:30
-24300382,Faculty of Arts and Social Sciences,43,transit,2026-10-07 08:30
-24300382,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-24300382,Faculty of Law,37,transit,2026-10-07 08:30
-24300382,Lee Kuan Yew School of Public Policy,53,transit,2026-10-07 08:30
-24300382,Yong Loo Lin School of Medicine,46,transit,2026-10-07 08:30
-24300382,NUS College,37,transit,2026-10-07 08:30
-24300382,NUS Graduate School,44,transit,2026-10-07 08:30
-24300382,School of Continuing and Lifelong Education,43,transit,2026-10-07 08:30
-24300382,Faculty of Science,46,transit,2026-10-07 08:30
-24300382,School of Computing,46,transit,2026-10-07 08:30
-24300382,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-24300382,Yong Siew Toh Conservatory of Music,41,transit,2026-10-07 08:30
 24301707,NUS Business School,74,transit,2026-10-07 08:30
 24301707,College of Design and Engineering,83,transit,2026-10-07 08:30
 24301707,Faculty of Dentistry,73,transit,2026-10-07 08:30
@@ -1343,22 +927,6 @@ listing_id,faculty,minutes,mode,departure
 24417854,School of Computing,40,transit,2026-10-07 08:30
 24417854,Saw Swee Hock School of Public Health,37,transit,2026-10-07 08:30
 24417854,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-24430448,NUS Business School,49,transit,2026-10-07 08:30
-24430448,College of Design and Engineering,59,transit,2026-10-07 08:30
-24430448,Faculty of Dentistry,41,transit,2026-10-07 08:30
-24430448,Duke-NUS Medical School,44,transit,2026-10-07 08:30
-24430448,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-24430448,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-24430448,Faculty of Law,50,transit,2026-10-07 08:30
-24430448,Lee Kuan Yew School of Public Policy,42,transit,2026-10-07 08:30
-24430448,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-24430448,NUS College,50,transit,2026-10-07 08:30
-24430448,NUS Graduate School,45,transit,2026-10-07 08:30
-24430448,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-24430448,Faculty of Science,46,transit,2026-10-07 08:30
-24430448,School of Computing,52,transit,2026-10-07 08:30
-24430448,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-24430448,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
 24435295,NUS Business School,27,transit,2026-10-07 08:30
 24435295,College of Design and Engineering,19,transit,2026-10-07 08:30
 24435295,Faculty of Dentistry,23,transit,2026-10-07 08:30
@@ -1391,22 +959,6 @@ listing_id,faculty,minutes,mode,departure
 24493531,School of Computing,49,transit,2026-10-07 08:30
 24493531,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
 24493531,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
-24494280,NUS Business School,66,transit,2026-10-07 08:30
-24494280,College of Design and Engineering,69,transit,2026-10-07 08:30
-24494280,Faculty of Dentistry,56,transit,2026-10-07 08:30
-24494280,Duke-NUS Medical School,58,transit,2026-10-07 08:30
-24494280,Faculty of Arts and Social Sciences,68,transit,2026-10-07 08:30
-24494280,NUS Institute of Systems Science,71,transit,2026-10-07 08:30
-24494280,Faculty of Law,64,transit,2026-10-07 08:30
-24494280,Lee Kuan Yew School of Public Policy,58,transit,2026-10-07 08:30
-24494280,Yong Loo Lin School of Medicine,56,transit,2026-10-07 08:30
-24494280,NUS College,63,transit,2026-10-07 08:30
-24494280,NUS Graduate School,61,transit,2026-10-07 08:30
-24494280,School of Continuing and Lifelong Education,65,transit,2026-10-07 08:30
-24494280,Faculty of Science,62,transit,2026-10-07 08:30
-24494280,School of Computing,68,transit,2026-10-07 08:30
-24494280,Saw Swee Hock School of Public Health,61,transit,2026-10-07 08:30
-24494280,Yong Siew Toh Conservatory of Music,70,transit,2026-10-07 08:30
 24553780,NUS Business School,50,transit,2026-10-07 08:30
 24553780,College of Design and Engineering,49,transit,2026-10-07 08:30
 24553780,Faculty of Dentistry,41,transit,2026-10-07 08:30
@@ -1455,22 +1007,6 @@ listing_id,faculty,minutes,mode,departure
 24560558,School of Computing,39,transit,2026-10-07 08:30
 24560558,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
 24560558,Yong Siew Toh Conservatory of Music,43,transit,2026-10-07 08:30
-24611200,NUS Business School,38,transit_google,2026-10-07
-24611200,College of Design and Engineering,41,transit_google,2026-10-07
-24611200,Faculty of Dentistry,22,transit_google,2026-10-07
-24611200,Duke-NUS Medical School,48,transit_google,2026-10-07
-24611200,Faculty of Arts and Social Sciences,44,transit_google,2026-10-07
-24611200,NUS Institute of Systems Science,38,transit_google,2026-10-07
-24611200,Faculty of Law,38,transit_google,2026-10-07
-24611200,Lee Kuan Yew School of Public Policy,45,transit_google,2026-10-07
-24611200,Yong Loo Lin School of Medicine,26,transit_google,2026-10-07
-24611200,NUS College,37,transit_google,2026-10-07
-24611200,NUS Graduate School,28,transit_google,2026-10-07
-24611200,School of Continuing and Lifelong Education,44,transit_google,2026-10-07
-24611200,Faculty of Science,28,transit_google,2026-10-07
-24611200,School of Computing,51,transit_google,2026-10-07
-24611200,Saw Swee Hock School of Public Health,29,transit_google,2026-10-07
-24611200,Yong Siew Toh Conservatory of Music,36,transit_google,2026-10-07
 24626814,NUS Business School,28,transit,2026-10-07 08:30
 24626814,College of Design and Engineering,30,transit,2026-10-07 08:30
 24626814,Faculty of Dentistry,16,transit,2026-10-07 08:30
@@ -1567,22 +1103,6 @@ listing_id,faculty,minutes,mode,departure
 24737718,School of Computing,40,transit,2026-10-07 08:30
 24737718,Saw Swee Hock School of Public Health,38,transit,2026-10-07 08:30
 24737718,Yong Siew Toh Conservatory of Music,35,transit,2026-10-07 08:30
-24791049,NUS Business School,50,transit,2026-10-07 08:30
-24791049,College of Design and Engineering,59,transit,2026-10-07 08:30
-24791049,Faculty of Dentistry,44,transit,2026-10-07 08:30
-24791049,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-24791049,Faculty of Arts and Social Sciences,58,transit,2026-10-07 08:30
-24791049,NUS Institute of Systems Science,55,transit,2026-10-07 08:30
-24791049,Faculty of Law,51,transit,2026-10-07 08:30
-24791049,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-24791049,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-24791049,NUS College,50,transit,2026-10-07 08:30
-24791049,NUS Graduate School,46,transit,2026-10-07 08:30
-24791049,School of Continuing and Lifelong Education,54,transit,2026-10-07 08:30
-24791049,Faculty of Science,48,transit,2026-10-07 08:30
-24791049,School of Computing,58,transit,2026-10-07 08:30
-24791049,Saw Swee Hock School of Public Health,49,transit,2026-10-07 08:30
-24791049,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
 24795480,NUS Business School,52,transit,2026-10-07 08:30
 24795480,College of Design and Engineering,59,transit,2026-10-07 08:30
 24795480,Faculty of Dentistry,44,transit,2026-10-07 08:30
@@ -1695,22 +1215,6 @@ listing_id,faculty,minutes,mode,departure
 24944327,School of Computing,40,transit,2026-10-07 08:30
 24944327,Saw Swee Hock School of Public Health,54,transit,2026-10-07 08:30
 24944327,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-24964564,NUS Business School,50,transit,2026-10-07 08:30
-24964564,College of Design and Engineering,45,transit,2026-10-07 08:30
-24964564,Faculty of Dentistry,46,transit,2026-10-07 08:30
-24964564,Duke-NUS Medical School,53,transit,2026-10-07 08:30
-24964564,Faculty of Arts and Social Sciences,41,transit,2026-10-07 08:30
-24964564,NUS Institute of Systems Science,59,transit,2026-10-07 08:30
-24964564,Faculty of Law,34,transit,2026-10-07 08:30
-24964564,Lee Kuan Yew School of Public Policy,45,transit,2026-10-07 08:30
-24964564,Yong Loo Lin School of Medicine,47,transit,2026-10-07 08:30
-24964564,NUS College,33,transit,2026-10-07 08:30
-24964564,NUS Graduate School,48,transit,2026-10-07 08:30
-24964564,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-24964564,Faculty of Science,50,transit,2026-10-07 08:30
-24964564,School of Computing,40,transit,2026-10-07 08:30
-24964564,Saw Swee Hock School of Public Health,52,transit,2026-10-07 08:30
-24964564,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
 24965702,NUS Business School,41,transit,2026-10-07 08:30
 24965702,College of Design and Engineering,46,transit,2026-10-07 08:30
 24965702,Faculty of Dentistry,29,transit,2026-10-07 08:30
@@ -1743,22 +1247,6 @@ listing_id,faculty,minutes,mode,departure
 24970286,School of Computing,39,transit,2026-10-07 08:30
 24970286,Saw Swee Hock School of Public Health,41,transit,2026-10-07 08:30
 24970286,Yong Siew Toh Conservatory of Music,43,transit,2026-10-07 08:30
-24988192,NUS Business School,51,transit,2026-10-07 08:30
-24988192,College of Design and Engineering,47,transit,2026-10-07 08:30
-24988192,Faculty of Dentistry,49,transit,2026-10-07 08:30
-24988192,Duke-NUS Medical School,57,transit,2026-10-07 08:30
-24988192,Faculty of Arts and Social Sciences,47,transit,2026-10-07 08:30
-24988192,NUS Institute of Systems Science,60,transit,2026-10-07 08:30
-24988192,Faculty of Law,41,transit,2026-10-07 08:30
-24988192,Lee Kuan Yew School of Public Policy,65,transit,2026-10-07 08:30
-24988192,Yong Loo Lin School of Medicine,49,transit,2026-10-07 08:30
-24988192,NUS College,41,transit,2026-10-07 08:30
-24988192,NUS Graduate School,50,transit,2026-10-07 08:30
-24988192,School of Continuing and Lifelong Education,50,transit,2026-10-07 08:30
-24988192,Faculty of Science,52,transit,2026-10-07 08:30
-24988192,School of Computing,55,transit,2026-10-07 08:30
-24988192,Saw Swee Hock School of Public Health,54,transit,2026-10-07 08:30
-24988192,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
 24995389,NUS Business School,42,transit,2026-10-07 08:30
 24995389,College of Design and Engineering,53,transit,2026-10-07 08:30
 24995389,Faculty of Dentistry,39,transit,2026-10-07 08:30
@@ -1775,22 +1263,6 @@ listing_id,faculty,minutes,mode,departure
 24995389,School of Computing,49,transit,2026-10-07 08:30
 24995389,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
 24995389,Yong Siew Toh Conservatory of Music,51,transit,2026-10-07 08:30
-25020347,NUS Business School,60,transit,2026-10-07 08:30
-25020347,College of Design and Engineering,72,transit,2026-10-07 08:30
-25020347,Faculty of Dentistry,52,transit,2026-10-07 08:30
-25020347,Duke-NUS Medical School,44,transit,2026-10-07 08:30
-25020347,Faculty of Arts and Social Sciences,66,transit,2026-10-07 08:30
-25020347,NUS Institute of Systems Science,65,transit,2026-10-07 08:30
-25020347,Faculty of Law,62,transit,2026-10-07 08:30
-25020347,Lee Kuan Yew School of Public Policy,50,transit,2026-10-07 08:30
-25020347,Yong Loo Lin School of Medicine,52,transit,2026-10-07 08:30
-25020347,NUS College,62,transit,2026-10-07 08:30
-25020347,NUS Graduate School,62,transit,2026-10-07 08:30
-25020347,School of Continuing and Lifelong Education,66,transit,2026-10-07 08:30
-25020347,Faculty of Science,59,transit,2026-10-07 08:30
-25020347,School of Computing,69,transit,2026-10-07 08:30
-25020347,Saw Swee Hock School of Public Health,57,transit,2026-10-07 08:30
-25020347,Yong Siew Toh Conservatory of Music,65,transit,2026-10-07 08:30
 25024859,NUS Business School,52,transit,2026-10-07 08:30
 25024859,College of Design and Engineering,52,transit,2026-10-07 08:30
 25024859,Faculty of Dentistry,42,transit,2026-10-07 08:30
@@ -1807,22 +1279,6 @@ listing_id,faculty,minutes,mode,departure
 25024859,School of Computing,54,transit,2026-10-07 08:30
 25024859,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
 25024859,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-25025588,NUS Business School,59,transit,2026-10-07 08:30
-25025588,College of Design and Engineering,53,transit,2026-10-07 08:30
-25025588,Faculty of Dentistry,53,transit,2026-10-07 08:30
-25025588,Duke-NUS Medical School,67,transit,2026-10-07 08:30
-25025588,Faculty of Arts and Social Sciences,51,transit,2026-10-07 08:30
-25025588,NUS Institute of Systems Science,64,transit,2026-10-07 08:30
-25025588,Faculty of Law,44,transit,2026-10-07 08:30
-25025588,Lee Kuan Yew School of Public Policy,49,transit,2026-10-07 08:30
-25025588,Yong Loo Lin School of Medicine,53,transit,2026-10-07 08:30
-25025588,NUS College,44,transit,2026-10-07 08:30
-25025588,NUS Graduate School,53,transit,2026-10-07 08:30
-25025588,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-25025588,Faculty of Science,55,transit,2026-10-07 08:30
-25025588,School of Computing,51,transit,2026-10-07 08:30
-25025588,Saw Swee Hock School of Public Health,56,transit,2026-10-07 08:30
-25025588,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 25039291,NUS Business School,41,transit,2026-10-07 08:30
 25039291,College of Design and Engineering,40,transit,2026-10-07 08:30
 25039291,Faculty of Dentistry,30,transit,2026-10-07 08:30
@@ -1839,38 +1295,6 @@ listing_id,faculty,minutes,mode,departure
 25039291,School of Computing,43,transit,2026-10-07 08:30
 25039291,Saw Swee Hock School of Public Health,36,transit,2026-10-07 08:30
 25039291,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-25073145,NUS Business School,49,transit,2026-10-07 08:30
-25073145,College of Design and Engineering,57,transit,2026-10-07 08:30
-25073145,Faculty of Dentistry,41,transit,2026-10-07 08:30
-25073145,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-25073145,Faculty of Arts and Social Sciences,52,transit,2026-10-07 08:30
-25073145,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-25073145,Faculty of Law,52,transit,2026-10-07 08:30
-25073145,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-25073145,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-25073145,NUS College,51,transit,2026-10-07 08:30
-25073145,NUS Graduate School,45,transit,2026-10-07 08:30
-25073145,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-25073145,Faculty of Science,45,transit,2026-10-07 08:30
-25073145,School of Computing,52,transit,2026-10-07 08:30
-25073145,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-25073145,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-25083799,NUS Business School,39,transit,2026-10-07 08:30
-25083799,College of Design and Engineering,34,transit,2026-10-07 08:30
-25083799,Faculty of Dentistry,38,transit,2026-10-07 08:30
-25083799,Duke-NUS Medical School,48,transit,2026-10-07 08:30
-25083799,Faculty of Arts and Social Sciences,32,transit,2026-10-07 08:30
-25083799,NUS Institute of Systems Science,49,transit,2026-10-07 08:30
-25083799,Faculty of Law,25,transit,2026-10-07 08:30
-25083799,Lee Kuan Yew School of Public Policy,36,transit,2026-10-07 08:30
-25083799,Yong Loo Lin School of Medicine,39,transit,2026-10-07 08:30
-25083799,NUS College,25,transit,2026-10-07 08:30
-25083799,NUS Graduate School,36,transit,2026-10-07 08:30
-25083799,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-25083799,Faculty of Science,46,transit,2026-10-07 08:30
-25083799,School of Computing,32,transit,2026-10-07 08:30
-25083799,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-25083799,Yong Siew Toh Conservatory of Music,27,transit,2026-10-07 08:30
 25107881,NUS Business School,38,transit,2026-10-07 08:30
 25107881,College of Design and Engineering,37,transit,2026-10-07 08:30
 25107881,Faculty of Dentistry,28,transit,2026-10-07 08:30
@@ -1887,22 +1311,6 @@ listing_id,faculty,minutes,mode,departure
 25107881,School of Computing,36,transit,2026-10-07 08:30
 25107881,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
 25107881,Yong Siew Toh Conservatory of Music,37,transit,2026-10-07 08:30
-25113769,NUS Business School,69,transit,2026-10-07 08:30
-25113769,College of Design and Engineering,66,transit,2026-10-07 08:30
-25113769,Faculty of Dentistry,60,transit,2026-10-07 08:30
-25113769,Duke-NUS Medical School,70,transit,2026-10-07 08:30
-25113769,Faculty of Arts and Social Sciences,64,transit,2026-10-07 08:30
-25113769,NUS Institute of Systems Science,79,transit,2026-10-07 08:30
-25113769,Faculty of Law,60,transit,2026-10-07 08:30
-25113769,Lee Kuan Yew School of Public Policy,59,transit,2026-10-07 08:30
-25113769,Yong Loo Lin School of Medicine,61,transit,2026-10-07 08:30
-25113769,NUS College,59,transit,2026-10-07 08:30
-25113769,NUS Graduate School,70,transit,2026-10-07 08:30
-25113769,School of Continuing and Lifelong Education,63,transit,2026-10-07 08:30
-25113769,Faculty of Science,67,transit,2026-10-07 08:30
-25113769,School of Computing,66,transit,2026-10-07 08:30
-25113769,Saw Swee Hock School of Public Health,65,transit,2026-10-07 08:30
-25113769,Yong Siew Toh Conservatory of Music,62,transit,2026-10-07 08:30
 25115760,NUS Business School,42,transit,2026-10-07 08:30
 25115760,College of Design and Engineering,53,transit,2026-10-07 08:30
 25115760,Faculty of Dentistry,34,transit,2026-10-07 08:30
@@ -1951,22 +1359,6 @@ listing_id,faculty,minutes,mode,departure
 25130091,School of Computing,32,transit,2026-10-07 08:30
 25130091,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
 25130091,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-25161407,NUS Business School,43,transit,2026-10-07 08:30
-25161407,College of Design and Engineering,52,transit,2026-10-07 08:30
-25161407,Faculty of Dentistry,33,transit,2026-10-07 08:30
-25161407,Duke-NUS Medical School,44,transit,2026-10-07 08:30
-25161407,Faculty of Arts and Social Sciences,49,transit,2026-10-07 08:30
-25161407,NUS Institute of Systems Science,49,transit,2026-10-07 08:30
-25161407,Faculty of Law,40,transit,2026-10-07 08:30
-25161407,Lee Kuan Yew School of Public Policy,27,walk,2026-10-07 08:30
-25161407,Yong Loo Lin School of Medicine,33,transit,2026-10-07 08:30
-25161407,NUS College,40,transit,2026-10-07 08:30
-25161407,NUS Graduate School,43,transit,2026-10-07 08:30
-25161407,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-25161407,Faculty of Science,39,transit,2026-10-07 08:30
-25161407,School of Computing,51,transit,2026-10-07 08:30
-25161407,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
-25161407,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 25172442,NUS Business School,38,transit,2026-10-07 08:30
 25172442,College of Design and Engineering,42,transit,2026-10-07 08:30
 25172442,Faculty of Dentistry,33,transit,2026-10-07 08:30
@@ -2031,22 +1423,6 @@ listing_id,faculty,minutes,mode,departure
 25201722,School of Computing,54,transit,2026-10-07 08:30
 25201722,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
 25201722,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
-25202821,NUS Business School,41,transit,2026-10-07 08:30
-25202821,College of Design and Engineering,40,transit,2026-10-07 08:30
-25202821,Faculty of Dentistry,30,transit,2026-10-07 08:30
-25202821,Duke-NUS Medical School,15,walk,2026-10-07 08:30
-25202821,Faculty of Arts and Social Sciences,40,transit,2026-10-07 08:30
-25202821,NUS Institute of Systems Science,44,transit,2026-10-07 08:30
-25202821,Faculty of Law,34,transit,2026-10-07 08:30
-25202821,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-25202821,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-25202821,NUS College,34,transit,2026-10-07 08:30
-25202821,NUS Graduate School,32,transit,2026-10-07 08:30
-25202821,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-25202821,Faculty of Science,34,transit,2026-10-07 08:30
-25202821,School of Computing,39,transit,2026-10-07 08:30
-25202821,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-25202821,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
 25263607,NUS Business School,96,transit,2026-10-07 08:30
 25263607,College of Design and Engineering,108,transit,2026-10-07 08:30
 25263607,Faculty of Dentistry,93,transit,2026-10-07 08:30
@@ -2079,22 +1455,6 @@ listing_id,faculty,minutes,mode,departure
 25265860,School of Computing,103,transit,2026-10-07 08:30
 25265860,Saw Swee Hock School of Public Health,98,transit,2026-10-07 08:30
 25265860,Yong Siew Toh Conservatory of Music,107,transit,2026-10-07 08:30
-25270173,NUS Business School,32,transit,2026-10-07 08:30
-25270173,College of Design and Engineering,45,transit,2026-10-07 08:30
-25270173,Faculty of Dentistry,27,transit,2026-10-07 08:30
-25270173,Duke-NUS Medical School,28,transit,2026-10-07 08:30
-25270173,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-25270173,NUS Institute of Systems Science,37,transit,2026-10-07 08:30
-25270173,Faculty of Law,41,transit,2026-10-07 08:30
-25270173,Lee Kuan Yew School of Public Policy,49,transit,2026-10-07 08:30
-25270173,Yong Loo Lin School of Medicine,27,transit,2026-10-07 08:30
-25270173,NUS College,39,transit,2026-10-07 08:30
-25270173,NUS Graduate School,35,transit,2026-10-07 08:30
-25270173,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-25270173,Faculty of Science,33,transit,2026-10-07 08:30
-25270173,School of Computing,38,transit,2026-10-07 08:30
-25270173,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
-25270173,Yong Siew Toh Conservatory of Music,44,transit,2026-10-07 08:30
 25283210,NUS Business School,26,transit,2026-10-07 08:30
 25283210,College of Design and Engineering,18,transit,2026-10-07 08:30
 25283210,Faculty of Dentistry,21,transit,2026-10-07 08:30
@@ -2111,22 +1471,6 @@ listing_id,faculty,minutes,mode,departure
 25283210,School of Computing,25,transit,2026-10-07 08:30
 25283210,Saw Swee Hock School of Public Health,26,transit,2026-10-07 08:30
 25283210,Yong Siew Toh Conservatory of Music,19,transit,2026-10-07 08:30
-25316366,NUS Business School,45,transit,2026-10-07 08:30
-25316366,College of Design and Engineering,56,transit,2026-10-07 08:30
-25316366,Faculty of Dentistry,42,transit,2026-10-07 08:30
-25316366,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-25316366,Faculty of Arts and Social Sciences,51,transit,2026-10-07 08:30
-25316366,NUS Institute of Systems Science,50,transit,2026-10-07 08:30
-25316366,Faculty of Law,54,transit,2026-10-07 08:30
-25316366,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-25316366,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-25316366,NUS College,53,transit,2026-10-07 08:30
-25316366,NUS Graduate School,45,transit,2026-10-07 08:30
-25316366,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-25316366,Faculty of Science,47,transit,2026-10-07 08:30
-25316366,School of Computing,52,transit,2026-10-07 08:30
-25316366,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-25316366,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
 25322970,NUS Business School,47,transit,2026-10-07 08:30
 25322970,College of Design and Engineering,57,transit,2026-10-07 08:30
 25322970,Faculty of Dentistry,43,transit,2026-10-07 08:30
@@ -2143,22 +1487,6 @@ listing_id,faculty,minutes,mode,departure
 25322970,School of Computing,53,transit,2026-10-07 08:30
 25322970,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 25322970,Yong Siew Toh Conservatory of Music,55,transit,2026-10-07 08:30
-25323249,NUS Business School,46,transit,2026-10-07 08:30
-25323249,College of Design and Engineering,55,transit,2026-10-07 08:30
-25323249,Faculty of Dentistry,42,transit,2026-10-07 08:30
-25323249,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-25323249,Faculty of Arts and Social Sciences,50,transit,2026-10-07 08:30
-25323249,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-25323249,Faculty of Law,50,transit,2026-10-07 08:30
-25323249,Lee Kuan Yew School of Public Policy,45,transit,2026-10-07 08:30
-25323249,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-25323249,NUS College,49,transit,2026-10-07 08:30
-25323249,NUS Graduate School,48,transit,2026-10-07 08:30
-25323249,School of Continuing and Lifelong Education,51,transit,2026-10-07 08:30
-25323249,Faculty of Science,48,transit,2026-10-07 08:30
-25323249,School of Computing,55,transit,2026-10-07 08:30
-25323249,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-25323249,Yong Siew Toh Conservatory of Music,56,transit,2026-10-07 08:30
 25325034,NUS Business School,79,transit,2026-10-07 08:30
 25325034,College of Design and Engineering,91,transit,2026-10-07 08:30
 25325034,Faculty of Dentistry,66,transit,2026-10-07 08:30
@@ -2175,22 +1503,6 @@ listing_id,faculty,minutes,mode,departure
 25325034,School of Computing,81,transit,2026-10-07 08:30
 25325034,Saw Swee Hock School of Public Health,71,transit,2026-10-07 08:30
 25325034,Yong Siew Toh Conservatory of Music,83,transit,2026-10-07 08:30
-25328231,NUS Business School,34,transit,2026-10-07 08:30
-25328231,College of Design and Engineering,32,transit,2026-10-07 08:30
-25328231,Faculty of Dentistry,21,transit,2026-10-07 08:30
-25328231,Duke-NUS Medical School,25,transit,2026-10-07 08:30
-25328231,Faculty of Arts and Social Sciences,33,transit,2026-10-07 08:30
-25328231,NUS Institute of Systems Science,39,transit,2026-10-07 08:30
-25328231,Faculty of Law,27,transit,2026-10-07 08:30
-25328231,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-25328231,Yong Loo Lin School of Medicine,22,transit,2026-10-07 08:30
-25328231,NUS College,26,transit,2026-10-07 08:30
-25328231,NUS Graduate School,25,transit,2026-10-07 08:30
-25328231,School of Continuing and Lifelong Education,34,transit,2026-10-07 08:30
-25328231,Faculty of Science,27,transit,2026-10-07 08:30
-25328231,School of Computing,37,transit,2026-10-07 08:30
-25328231,Saw Swee Hock School of Public Health,26,transit,2026-10-07 08:30
-25328231,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
 25332577,NUS Business School,102,transit,2026-10-07 08:30
 25332577,College of Design and Engineering,107,transit,2026-10-07 08:30
 25332577,Faculty of Dentistry,70,transit,2026-10-07 08:30
@@ -2303,22 +1615,6 @@ listing_id,faculty,minutes,mode,departure
 25404947,School of Computing,48,transit,2026-10-07 08:30
 25404947,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 25404947,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
-25454661,NUS Business School,25,transit,2026-10-07 08:30
-25454661,College of Design and Engineering,37,transit,2026-10-07 08:30
-25454661,Faculty of Dentistry,21,transit,2026-10-07 08:30
-25454661,Duke-NUS Medical School,30,transit,2026-10-07 08:30
-25454661,Faculty of Arts and Social Sciences,29,transit,2026-10-07 08:30
-25454661,NUS Institute of Systems Science,30,transit,2026-10-07 08:30
-25454661,Faculty of Law,34,transit,2026-10-07 08:30
-25454661,Lee Kuan Yew School of Public Policy,42,transit,2026-10-07 08:30
-25454661,Yong Loo Lin School of Medicine,21,transit,2026-10-07 08:30
-25454661,NUS College,33,transit,2026-10-07 08:30
-25454661,NUS Graduate School,23,transit,2026-10-07 08:30
-25454661,School of Continuing and Lifelong Education,27,transit,2026-10-07 08:30
-25454661,Faculty of Science,26,transit,2026-10-07 08:30
-25454661,School of Computing,30,transit,2026-10-07 08:30
-25454661,Saw Swee Hock School of Public Health,26,transit,2026-10-07 08:30
-25454661,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
 25475453,NUS Business School,49,transit,2026-10-07 08:30
 25475453,College of Design and Engineering,48,transit,2026-10-07 08:30
 25475453,Faculty of Dentistry,35,transit,2026-10-07 08:30
@@ -2335,38 +1631,6 @@ listing_id,faculty,minutes,mode,departure
 25475453,School of Computing,43,transit,2026-10-07 08:30
 25475453,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
 25475453,Yong Siew Toh Conservatory of Music,44,transit,2026-10-07 08:30
-25496917,NUS Business School,54,transit,2026-10-07 08:30
-25496917,College of Design and Engineering,52,transit,2026-10-07 08:30
-25496917,Faculty of Dentistry,53,transit,2026-10-07 08:30
-25496917,Duke-NUS Medical School,55,transit,2026-10-07 08:30
-25496917,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-25496917,NUS Institute of Systems Science,65,transit,2026-10-07 08:30
-25496917,Faculty of Law,47,transit,2026-10-07 08:30
-25496917,Lee Kuan Yew School of Public Policy,56,transit,2026-10-07 08:30
-25496917,Yong Loo Lin School of Medicine,49,transit,2026-10-07 08:30
-25496917,NUS College,45,transit,2026-10-07 08:30
-25496917,NUS Graduate School,52,transit,2026-10-07 08:30
-25496917,School of Continuing and Lifelong Education,56,transit,2026-10-07 08:30
-25496917,Faculty of Science,54,transit,2026-10-07 08:30
-25496917,School of Computing,60,transit,2026-10-07 08:30
-25496917,Saw Swee Hock School of Public Health,55,transit,2026-10-07 08:30
-25496917,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
-25506776,NUS Business School,35,transit,2026-10-07 08:30
-25506776,College of Design and Engineering,47,transit,2026-10-07 08:30
-25506776,Faculty of Dentistry,26,transit,2026-10-07 08:30
-25506776,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-25506776,Faculty of Arts and Social Sciences,41,transit,2026-10-07 08:30
-25506776,NUS Institute of Systems Science,40,transit,2026-10-07 08:30
-25506776,Faculty of Law,38,transit,2026-10-07 08:30
-25506776,Lee Kuan Yew School of Public Policy,26,transit,2026-10-07 08:30
-25506776,Yong Loo Lin School of Medicine,27,transit,2026-10-07 08:30
-25506776,NUS College,38,transit,2026-10-07 08:30
-25506776,NUS Graduate School,33,transit,2026-10-07 08:30
-25506776,School of Continuing and Lifelong Education,42,transit,2026-10-07 08:30
-25506776,Faculty of Science,32,transit,2026-10-07 08:30
-25506776,School of Computing,41,transit,2026-10-07 08:30
-25506776,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
-25506776,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
 25550744,NUS Business School,25,transit,2026-10-07 08:30
 25550744,College of Design and Engineering,20,transit,2026-10-07 08:30
 25550744,Faculty of Dentistry,26,transit,2026-10-07 08:30
@@ -2383,22 +1647,6 @@ listing_id,faculty,minutes,mode,departure
 25550744,School of Computing,24,transit,2026-10-07 08:30
 25550744,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
 25550744,Yong Siew Toh Conservatory of Music,21,transit,2026-10-07 08:30
-25558367,NUS Business School,29,transit,2026-10-07 08:30
-25558367,College of Design and Engineering,21,transit,2026-10-07 08:30
-25558367,Faculty of Dentistry,18,transit,2026-10-07 08:30
-25558367,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-25558367,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-25558367,NUS Institute of Systems Science,41,transit,2026-10-07 08:30
-25558367,Faculty of Law,16,transit,2026-10-07 08:30
-25558367,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-25558367,Yong Loo Lin School of Medicine,21,transit,2026-10-07 08:30
-25558367,NUS College,15,transit,2026-10-07 08:30
-25558367,NUS Graduate School,19,transit,2026-10-07 08:30
-25558367,School of Continuing and Lifelong Education,22,transit,2026-10-07 08:30
-25558367,Faculty of Science,21,transit,2026-10-07 08:30
-25558367,School of Computing,26,transit,2026-10-07 08:30
-25558367,Saw Swee Hock School of Public Health,22,transit,2026-10-07 08:30
-25558367,Yong Siew Toh Conservatory of Music,22,transit,2026-10-07 08:30
 25558520,NUS Business School,47,transit,2026-10-07 08:30
 25558520,College of Design and Engineering,43,transit,2026-10-07 08:30
 25558520,Faculty of Dentistry,50,transit,2026-10-07 08:30
@@ -2495,22 +1743,6 @@ listing_id,faculty,minutes,mode,departure
 25606090,School of Computing,48,transit,2026-10-07 08:30
 25606090,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 25606090,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
-25625270,NUS Business School,57,transit,2026-10-07 08:30
-25625270,College of Design and Engineering,48,transit,2026-10-07 08:30
-25625270,Faculty of Dentistry,39,transit,2026-10-07 08:30
-25625270,Duke-NUS Medical School,21,transit,2026-10-07 08:30
-25625270,Faculty of Arts and Social Sciences,48,transit,2026-10-07 08:30
-25625270,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-25625270,Faculty of Law,43,transit,2026-10-07 08:30
-25625270,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-25625270,Yong Loo Lin School of Medicine,39,transit,2026-10-07 08:30
-25625270,NUS College,43,transit,2026-10-07 08:30
-25625270,NUS Graduate School,43,transit,2026-10-07 08:30
-25625270,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-25625270,Faculty of Science,46,transit,2026-10-07 08:30
-25625270,School of Computing,50,transit,2026-10-07 08:30
-25625270,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-25625270,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
 500007851,NUS Business School,57,transit,2026-10-07 08:30
 500007851,College of Design and Engineering,53,transit,2026-10-07 08:30
 500007851,Faculty of Dentistry,54,transit,2026-10-07 08:30
@@ -2527,22 +1759,6 @@ listing_id,faculty,minutes,mode,departure
 500007851,School of Computing,56,transit,2026-10-07 08:30
 500007851,Saw Swee Hock School of Public Health,61,transit,2026-10-07 08:30
 500007851,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
-500013541,NUS Business School,40,transit,2026-10-07 08:30
-500013541,College of Design and Engineering,52,transit,2026-10-07 08:30
-500013541,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500013541,Duke-NUS Medical School,23,transit,2026-10-07 08:30
-500013541,Faculty of Arts and Social Sciences,46,transit,2026-10-07 08:30
-500013541,NUS Institute of Systems Science,45,transit,2026-10-07 08:30
-500013541,Faculty of Law,47,transit,2026-10-07 08:30
-500013541,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500013541,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-500013541,NUS College,46,transit,2026-10-07 08:30
-500013541,NUS Graduate School,43,transit,2026-10-07 08:30
-500013541,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500013541,Faculty of Science,42,transit,2026-10-07 08:30
-500013541,School of Computing,47,transit,2026-10-07 08:30
-500013541,Saw Swee Hock School of Public Health,41,transit,2026-10-07 08:30
-500013541,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
 500020165,NUS Business School,56,transit,2026-10-07 08:30
 500020165,College of Design and Engineering,52,transit,2026-10-07 08:30
 500020165,Faculty of Dentistry,54,transit,2026-10-07 08:30
@@ -2591,22 +1807,6 @@ listing_id,faculty,minutes,mode,departure
 500025708,School of Computing,103,transit,2026-10-07 08:30
 500025708,Saw Swee Hock School of Public Health,99,transit,2026-10-07 08:30
 500025708,Yong Siew Toh Conservatory of Music,107,transit,2026-10-07 08:30
-500025943,NUS Business School,45,transit,2026-10-07 08:30
-500025943,College of Design and Engineering,38,transit,2026-10-07 08:30
-500025943,Faculty of Dentistry,43,transit,2026-10-07 08:30
-500025943,Duke-NUS Medical School,53,transit,2026-10-07 08:30
-500025943,Faculty of Arts and Social Sciences,37,transit,2026-10-07 08:30
-500025943,NUS Institute of Systems Science,55,transit,2026-10-07 08:30
-500025943,Faculty of Law,30,transit,2026-10-07 08:30
-500025943,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500025943,Yong Loo Lin School of Medicine,44,transit,2026-10-07 08:30
-500025943,NUS College,29,transit,2026-10-07 08:30
-500025943,NUS Graduate School,40,transit,2026-10-07 08:30
-500025943,School of Continuing and Lifelong Education,33,transit,2026-10-07 08:30
-500025943,Faculty of Science,49,transit,2026-10-07 08:30
-500025943,School of Computing,36,transit,2026-10-07 08:30
-500025943,Saw Swee Hock School of Public Health,49,transit,2026-10-07 08:30
-500025943,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
 500029855,NUS Business School,46,transit,2026-10-07 08:30
 500029855,College of Design and Engineering,51,transit,2026-10-07 08:30
 500029855,Faculty of Dentistry,44,transit,2026-10-07 08:30
@@ -2623,22 +1823,6 @@ listing_id,faculty,minutes,mode,departure
 500029855,School of Computing,54,transit,2026-10-07 08:30
 500029855,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
 500029855,Yong Siew Toh Conservatory of Music,52,transit,2026-10-07 08:30
-500033876,NUS Business School,22,transit,2026-10-07 08:30
-500033876,College of Design and Engineering,32,transit,2026-10-07 08:30
-500033876,Faculty of Dentistry,25,transit,2026-10-07 08:30
-500033876,Duke-NUS Medical School,44,transit,2026-10-07 08:30
-500033876,Faculty of Arts and Social Sciences,26,transit,2026-10-07 08:30
-500033876,NUS Institute of Systems Science,27,transit,2026-10-07 08:30
-500033876,Faculty of Law,32,transit,2026-10-07 08:30
-500033876,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500033876,Yong Loo Lin School of Medicine,26,transit,2026-10-07 08:30
-500033876,NUS College,32,transit,2026-10-07 08:30
-500033876,NUS Graduate School,27,transit,2026-10-07 08:30
-500033876,School of Continuing and Lifelong Education,28,transit,2026-10-07 08:30
-500033876,Faculty of Science,31,transit,2026-10-07 08:30
-500033876,School of Computing,29,transit,2026-10-07 08:30
-500033876,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
-500033876,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
 500038706,NUS Business School,38,transit,2026-10-07 08:30
 500038706,College of Design and Engineering,31,transit,2026-10-07 08:30
 500038706,Faculty of Dentistry,41,transit,2026-10-07 08:30
@@ -2687,22 +1871,6 @@ listing_id,faculty,minutes,mode,departure
 500042312,School of Computing,39,transit,2026-10-07 08:30
 500042312,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
 500042312,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
-500050203,NUS Business School,41,transit,2026-10-07 08:30
-500050203,College of Design and Engineering,51,transit,2026-10-07 08:30
-500050203,Faculty of Dentistry,31,transit,2026-10-07 08:30
-500050203,Duke-NUS Medical School,34,transit,2026-10-07 08:30
-500050203,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500050203,NUS Institute of Systems Science,46,transit,2026-10-07 08:30
-500050203,Faculty of Law,41,transit,2026-10-07 08:30
-500050203,Lee Kuan Yew School of Public Policy,30,transit,2026-10-07 08:30
-500050203,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-500050203,NUS College,40,transit,2026-10-07 08:30
-500050203,NUS Graduate School,39,transit,2026-10-07 08:30
-500050203,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-500050203,Faculty of Science,37,transit,2026-10-07 08:30
-500050203,School of Computing,44,transit,2026-10-07 08:30
-500050203,Saw Swee Hock School of Public Health,36,transit,2026-10-07 08:30
-500050203,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 500058559,NUS Business School,33,transit,2026-10-07 08:30
 500058559,College of Design and Engineering,27,transit,2026-10-07 08:30
 500058559,Faculty of Dentistry,30,transit,2026-10-07 08:30
@@ -2847,38 +2015,6 @@ listing_id,faculty,minutes,mode,departure
 500074659,School of Computing,55,transit,2026-10-07 08:30
 500074659,Saw Swee Hock School of Public Health,59,transit,2026-10-07 08:30
 500074659,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
-500087280,NUS Business School,28,transit,2026-10-07 08:30
-500087280,College of Design and Engineering,22,transit,2026-10-07 08:30
-500087280,Faculty of Dentistry,24,transit,2026-10-07 08:30
-500087280,Duke-NUS Medical School,40,transit,2026-10-07 08:30
-500087280,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-500087280,NUS Institute of Systems Science,40,transit,2026-10-07 08:30
-500087280,Faculty of Law,19,transit,2026-10-07 08:30
-500087280,Lee Kuan Yew School of Public Policy,47,transit,2026-10-07 08:30
-500087280,Yong Loo Lin School of Medicine,25,transit,2026-10-07 08:30
-500087280,NUS College,17,transit,2026-10-07 08:30
-500087280,NUS Graduate School,23,transit,2026-10-07 08:30
-500087280,School of Continuing and Lifelong Education,24,transit,2026-10-07 08:30
-500087280,Faculty of Science,25,transit,2026-10-07 08:30
-500087280,School of Computing,27,transit,2026-10-07 08:30
-500087280,Saw Swee Hock School of Public Health,27,transit,2026-10-07 08:30
-500087280,Yong Siew Toh Conservatory of Music,24,transit,2026-10-07 08:30
-500088959,NUS Business School,46,transit,2026-10-07 08:30
-500088959,College of Design and Engineering,47,transit,2026-10-07 08:30
-500088959,Faculty of Dentistry,35,transit,2026-10-07 08:30
-500088959,Duke-NUS Medical School,26,transit,2026-10-07 08:30
-500088959,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500088959,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-500088959,Faculty of Law,41,transit,2026-10-07 08:30
-500088959,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-500088959,Yong Loo Lin School of Medicine,35,transit,2026-10-07 08:30
-500088959,NUS College,40,transit,2026-10-07 08:30
-500088959,NUS Graduate School,37,transit,2026-10-07 08:30
-500088959,School of Continuing and Lifelong Education,40,transit,2026-10-07 08:30
-500088959,Faculty of Science,40,transit,2026-10-07 08:30
-500088959,School of Computing,44,transit,2026-10-07 08:30
-500088959,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
-500088959,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
 500089812,NUS Business School,45,transit,2026-10-07 08:30
 500089812,College of Design and Engineering,43,transit,2026-10-07 08:30
 500089812,Faculty of Dentistry,42,transit,2026-10-07 08:30
@@ -2895,22 +2031,6 @@ listing_id,faculty,minutes,mode,departure
 500089812,School of Computing,37,transit,2026-10-07 08:30
 500089812,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
 500089812,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-500097647,NUS Business School,91,transit,2026-10-07 08:30
-500097647,College of Design and Engineering,91,transit,2026-10-07 08:30
-500097647,Faculty of Dentistry,80,transit,2026-10-07 08:30
-500097647,Duke-NUS Medical School,73,transit,2026-10-07 08:30
-500097647,Faculty of Arts and Social Sciences,96,transit,2026-10-07 08:30
-500097647,NUS Institute of Systems Science,96,transit,2026-10-07 08:30
-500097647,Faculty of Law,97,transit,2026-10-07 08:30
-500097647,Lee Kuan Yew School of Public Policy,102,transit,2026-10-07 08:30
-500097647,Yong Loo Lin School of Medicine,80,transit,2026-10-07 08:30
-500097647,NUS College,96,transit,2026-10-07 08:30
-500097647,NUS Graduate School,92,transit,2026-10-07 08:30
-500097647,School of Continuing and Lifelong Education,94,transit,2026-10-07 08:30
-500097647,Faculty of Science,94,transit,2026-10-07 08:30
-500097647,School of Computing,97,transit,2026-10-07 08:30
-500097647,Saw Swee Hock School of Public Health,95,transit,2026-10-07 08:30
-500097647,Yong Siew Toh Conservatory of Music,97,transit,2026-10-07 08:30
 500097661,NUS Business School,48,transit,2026-10-07 08:30
 500097661,College of Design and Engineering,42,transit,2026-10-07 08:30
 500097661,Faculty of Dentistry,45,transit,2026-10-07 08:30
@@ -3023,38 +2143,6 @@ listing_id,faculty,minutes,mode,departure
 500111596,School of Computing,38,transit,2026-10-07 08:30
 500111596,Saw Swee Hock School of Public Health,41,transit,2026-10-07 08:30
 500111596,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-500113482,NUS Business School,45,transit,2026-10-07 08:30
-500113482,College of Design and Engineering,46,transit,2026-10-07 08:30
-500113482,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500113482,Duke-NUS Medical School,18,transit,2026-10-07 08:30
-500113482,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500113482,NUS Institute of Systems Science,50,transit,2026-10-07 08:30
-500113482,Faculty of Law,40,transit,2026-10-07 08:30
-500113482,Lee Kuan Yew School of Public Policy,47,transit,2026-10-07 08:30
-500113482,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-500113482,NUS College,39,transit,2026-10-07 08:30
-500113482,NUS Graduate School,38,transit,2026-10-07 08:30
-500113482,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-500113482,Faculty of Science,41,transit,2026-10-07 08:30
-500113482,School of Computing,44,transit,2026-10-07 08:30
-500113482,Saw Swee Hock School of Public Health,41,transit,2026-10-07 08:30
-500113482,Yong Siew Toh Conservatory of Music,47,transit,2026-10-07 08:30
-500115736,NUS Business School,36,transit,2026-10-07 08:30
-500115736,College of Design and Engineering,30,transit,2026-10-07 08:30
-500115736,Faculty of Dentistry,40,transit,2026-10-07 08:30
-500115736,Duke-NUS Medical School,47,transit,2026-10-07 08:30
-500115736,Faculty of Arts and Social Sciences,29,transit,2026-10-07 08:30
-500115736,NUS Institute of Systems Science,47,transit,2026-10-07 08:30
-500115736,Faculty of Law,22,transit,2026-10-07 08:30
-500115736,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-500115736,Yong Loo Lin School of Medicine,39,transit,2026-10-07 08:30
-500115736,NUS College,22,transit,2026-10-07 08:30
-500115736,NUS Graduate School,32,transit,2026-10-07 08:30
-500115736,School of Continuing and Lifelong Education,26,transit,2026-10-07 08:30
-500115736,Faculty of Science,43,transit,2026-10-07 08:30
-500115736,School of Computing,29,transit,2026-10-07 08:30
-500115736,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-500115736,Yong Siew Toh Conservatory of Music,24,transit,2026-10-07 08:30
 500117035,NUS Business School,45,transit,2026-10-07 08:30
 500117035,College of Design and Engineering,41,transit,2026-10-07 08:30
 500117035,Faculty of Dentistry,57,transit,2026-10-07 08:30
@@ -3103,38 +2191,6 @@ listing_id,faculty,minutes,mode,departure
 500124583,School of Computing,50,transit,2026-10-07 08:30
 500124583,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
 500124583,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500125920,NUS Business School,38,transit,2026-10-07 08:30
-500125920,College of Design and Engineering,39,transit,2026-10-07 08:30
-500125920,Faculty of Dentistry,28,transit,2026-10-07 08:30
-500125920,Duke-NUS Medical School,34,transit,2026-10-07 08:30
-500125920,Faculty of Arts and Social Sciences,38,transit,2026-10-07 08:30
-500125920,NUS Institute of Systems Science,43,transit,2026-10-07 08:30
-500125920,Faculty of Law,33,transit,2026-10-07 08:30
-500125920,Lee Kuan Yew School of Public Policy,39,transit,2026-10-07 08:30
-500125920,Yong Loo Lin School of Medicine,29,transit,2026-10-07 08:30
-500125920,NUS College,33,transit,2026-10-07 08:30
-500125920,NUS Graduate School,29,transit,2026-10-07 08:30
-500125920,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-500125920,Faculty of Science,34,transit,2026-10-07 08:30
-500125920,School of Computing,38,transit,2026-10-07 08:30
-500125920,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
-500125920,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-500133018,NUS Business School,34,transit,2026-10-07 08:30
-500133018,College of Design and Engineering,32,transit,2026-10-07 08:30
-500133018,Faculty of Dentistry,21,transit,2026-10-07 08:30
-500133018,Duke-NUS Medical School,25,transit,2026-10-07 08:30
-500133018,Faculty of Arts and Social Sciences,33,transit,2026-10-07 08:30
-500133018,NUS Institute of Systems Science,39,transit,2026-10-07 08:30
-500133018,Faculty of Law,27,transit,2026-10-07 08:30
-500133018,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-500133018,Yong Loo Lin School of Medicine,22,transit,2026-10-07 08:30
-500133018,NUS College,26,transit,2026-10-07 08:30
-500133018,NUS Graduate School,25,transit,2026-10-07 08:30
-500133018,School of Continuing and Lifelong Education,34,transit,2026-10-07 08:30
-500133018,Faculty of Science,27,transit,2026-10-07 08:30
-500133018,School of Computing,37,transit,2026-10-07 08:30
-500133018,Saw Swee Hock School of Public Health,26,transit,2026-10-07 08:30
-500133018,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
 500137889,NUS Business School,31,transit,2026-10-07 08:30
 500137889,College of Design and Engineering,28,transit,2026-10-07 08:30
 500137889,Faculty of Dentistry,35,transit,2026-10-07 08:30
@@ -3183,22 +2239,6 @@ listing_id,faculty,minutes,mode,departure
 500143504,School of Computing,35,transit,2026-10-07 08:30
 500143504,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
 500143504,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-500149721,NUS Business School,49,transit,2026-10-07 08:30
-500149721,College of Design and Engineering,54,transit,2026-10-07 08:30
-500149721,Faculty of Dentistry,42,transit,2026-10-07 08:30
-500149721,Duke-NUS Medical School,19,transit,2026-10-07 08:30
-500149721,Faculty of Arts and Social Sciences,54,transit,2026-10-07 08:30
-500149721,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-500149721,Faculty of Law,49,transit,2026-10-07 08:30
-500149721,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-500149721,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-500149721,NUS College,48,transit,2026-10-07 08:30
-500149721,NUS Graduate School,45,transit,2026-10-07 08:30
-500149721,School of Continuing and Lifelong Education,50,transit,2026-10-07 08:30
-500149721,Faculty of Science,47,transit,2026-10-07 08:30
-500149721,School of Computing,54,transit,2026-10-07 08:30
-500149721,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-500149721,Yong Siew Toh Conservatory of Music,58,transit,2026-10-07 08:30
 500150707,NUS Business School,23,transit,2026-10-07 08:30
 500150707,College of Design and Engineering,19,transit,2026-10-07 08:30
 500150707,Faculty of Dentistry,24,transit,2026-10-07 08:30
@@ -3263,38 +2303,6 @@ listing_id,faculty,minutes,mode,departure
 500153162,School of Computing,32,transit,2026-10-07 08:30
 500153162,Saw Swee Hock School of Public Health,25,transit,2026-10-07 08:30
 500153162,Yong Siew Toh Conservatory of Music,34,transit,2026-10-07 08:30
-500156699,NUS Business School,63,transit,2026-10-07 08:30
-500156699,College of Design and Engineering,57,transit,2026-10-07 08:30
-500156699,Faculty of Dentistry,53,transit,2026-10-07 08:30
-500156699,Duke-NUS Medical School,61,transit,2026-10-07 08:30
-500156699,Faculty of Arts and Social Sciences,57,transit,2026-10-07 08:30
-500156699,NUS Institute of Systems Science,72,transit,2026-10-07 08:30
-500156699,Faculty of Law,52,transit,2026-10-07 08:30
-500156699,Lee Kuan Yew School of Public Policy,51,transit,2026-10-07 08:30
-500156699,Yong Loo Lin School of Medicine,54,transit,2026-10-07 08:30
-500156699,NUS College,51,transit,2026-10-07 08:30
-500156699,NUS Graduate School,53,transit,2026-10-07 08:30
-500156699,School of Continuing and Lifelong Education,55,transit,2026-10-07 08:30
-500156699,Faculty of Science,55,transit,2026-10-07 08:30
-500156699,School of Computing,58,transit,2026-10-07 08:30
-500156699,Saw Swee Hock School of Public Health,56,transit,2026-10-07 08:30
-500156699,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-500165448,NUS Business School,27,transit,2026-10-07 08:30
-500165448,College of Design and Engineering,39,transit,2026-10-07 08:30
-500165448,Faculty of Dentistry,23,transit,2026-10-07 08:30
-500165448,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-500165448,Faculty of Arts and Social Sciences,31,transit,2026-10-07 08:30
-500165448,NUS Institute of Systems Science,32,transit,2026-10-07 08:30
-500165448,Faculty of Law,37,transit,2026-10-07 08:30
-500165448,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500165448,Yong Loo Lin School of Medicine,24,transit,2026-10-07 08:30
-500165448,NUS College,34,transit,2026-10-07 08:30
-500165448,NUS Graduate School,29,transit,2026-10-07 08:30
-500165448,School of Continuing and Lifelong Education,33,transit,2026-10-07 08:30
-500165448,Faculty of Science,29,transit,2026-10-07 08:30
-500165448,School of Computing,34,transit,2026-10-07 08:30
-500165448,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
-500165448,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
 500166499,NUS Business School,29,transit,2026-10-07 08:30
 500166499,College of Design and Engineering,42,transit,2026-10-07 08:30
 500166499,Faculty of Dentistry,26,transit,2026-10-07 08:30
@@ -3359,38 +2367,6 @@ listing_id,faculty,minutes,mode,departure
 500173043,School of Computing,22,transit,2026-10-07 08:30
 500173043,Saw Swee Hock School of Public Health,19,transit,2026-10-07 08:30
 500173043,Yong Siew Toh Conservatory of Music,27,transit,2026-10-07 08:30
-500181355,NUS Business School,57,transit,2026-10-07 08:30
-500181355,College of Design and Engineering,53,transit,2026-10-07 08:30
-500181355,Faculty of Dentistry,42,transit,2026-10-07 08:30
-500181355,Duke-NUS Medical School,29,transit,2026-10-07 08:30
-500181355,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-500181355,NUS Institute of Systems Science,61,transit,2026-10-07 08:30
-500181355,Faculty of Law,47,transit,2026-10-07 08:30
-500181355,Lee Kuan Yew School of Public Policy,55,transit,2026-10-07 08:30
-500181355,Yong Loo Lin School of Medicine,46,transit,2026-10-07 08:30
-500181355,NUS College,47,transit,2026-10-07 08:30
-500181355,NUS Graduate School,43,transit,2026-10-07 08:30
-500181355,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500181355,Faculty of Science,46,transit,2026-10-07 08:30
-500181355,School of Computing,50,transit,2026-10-07 08:30
-500181355,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-500181355,Yong Siew Toh Conservatory of Music,55,transit,2026-10-07 08:30
-500181874,NUS Business School,71,transit,2026-10-07 08:30
-500181874,College of Design and Engineering,67,transit,2026-10-07 08:30
-500181874,Faculty of Dentistry,57,transit,2026-10-07 08:30
-500181874,Duke-NUS Medical School,60,transit,2026-10-07 08:30
-500181874,Faculty of Arts and Social Sciences,67,transit,2026-10-07 08:30
-500181874,NUS Institute of Systems Science,80,transit,2026-10-07 08:30
-500181874,Faculty of Law,61,transit,2026-10-07 08:30
-500181874,Lee Kuan Yew School of Public Policy,59,transit,2026-10-07 08:30
-500181874,Yong Loo Lin School of Medicine,58,transit,2026-10-07 08:30
-500181874,NUS College,61,transit,2026-10-07 08:30
-500181874,NUS Graduate School,68,transit,2026-10-07 08:30
-500181874,School of Continuing and Lifelong Education,67,transit,2026-10-07 08:30
-500181874,Faculty of Science,63,transit,2026-10-07 08:30
-500181874,School of Computing,69,transit,2026-10-07 08:30
-500181874,Saw Swee Hock School of Public Health,62,transit,2026-10-07 08:30
-500181874,Yong Siew Toh Conservatory of Music,68,transit,2026-10-07 08:30
 500182490,NUS Business School,50,transit,2026-10-07 08:30
 500182490,College of Design and Engineering,50,transit,2026-10-07 08:30
 500182490,Faculty of Dentistry,39,transit,2026-10-07 08:30
@@ -3407,22 +2383,6 @@ listing_id,faculty,minutes,mode,departure
 500182490,School of Computing,48,transit,2026-10-07 08:30
 500182490,Saw Swee Hock School of Public Health,45,transit,2026-10-07 08:30
 500182490,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
-500183055,NUS Business School,75,transit,2026-10-07 08:30
-500183055,College of Design and Engineering,79,transit,2026-10-07 08:30
-500183055,Faculty of Dentistry,65,transit,2026-10-07 08:30
-500183055,Duke-NUS Medical School,57,transit,2026-10-07 08:30
-500183055,Faculty of Arts and Social Sciences,81,transit,2026-10-07 08:30
-500183055,NUS Institute of Systems Science,80,transit,2026-10-07 08:30
-500183055,Faculty of Law,76,transit,2026-10-07 08:30
-500183055,Lee Kuan Yew School of Public Policy,73,transit,2026-10-07 08:30
-500183055,Yong Loo Lin School of Medicine,65,transit,2026-10-07 08:30
-500183055,NUS College,75,transit,2026-10-07 08:30
-500183055,NUS Graduate School,73,transit,2026-10-07 08:30
-500183055,School of Continuing and Lifelong Education,77,transit,2026-10-07 08:30
-500183055,Faculty of Science,76,transit,2026-10-07 08:30
-500183055,School of Computing,80,transit,2026-10-07 08:30
-500183055,Saw Swee Hock School of Public Health,76,transit,2026-10-07 08:30
-500183055,Yong Siew Toh Conservatory of Music,82,transit,2026-10-07 08:30
 500185005,NUS Business School,36,transit,2026-10-07 08:30
 500185005,College of Design and Engineering,37,transit,2026-10-07 08:30
 500185005,Faculty of Dentistry,27,transit,2026-10-07 08:30
@@ -3503,22 +2463,6 @@ listing_id,faculty,minutes,mode,departure
 500188102,School of Computing,55,transit,2026-10-07 08:30
 500188102,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
 500188102,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
-500189772,NUS Business School,57,transit,2026-10-07 08:30
-500189772,College of Design and Engineering,48,transit,2026-10-07 08:30
-500189772,Faculty of Dentistry,39,transit,2026-10-07 08:30
-500189772,Duke-NUS Medical School,21,transit,2026-10-07 08:30
-500189772,Faculty of Arts and Social Sciences,48,transit,2026-10-07 08:30
-500189772,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-500189772,Faculty of Law,43,transit,2026-10-07 08:30
-500189772,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-500189772,Yong Loo Lin School of Medicine,39,transit,2026-10-07 08:30
-500189772,NUS College,43,transit,2026-10-07 08:30
-500189772,NUS Graduate School,43,transit,2026-10-07 08:30
-500189772,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500189772,Faculty of Science,46,transit,2026-10-07 08:30
-500189772,School of Computing,50,transit,2026-10-07 08:30
-500189772,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-500189772,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
 500190512,NUS Business School,29,transit,2026-10-07 08:30
 500190512,College of Design and Engineering,26,transit,2026-10-07 08:30
 500190512,Faculty of Dentistry,33,transit,2026-10-07 08:30
@@ -3535,38 +2479,6 @@ listing_id,faculty,minutes,mode,departure
 500190512,School of Computing,22,transit,2026-10-07 08:30
 500190512,Saw Swee Hock School of Public Health,37,transit,2026-10-07 08:30
 500190512,Yong Siew Toh Conservatory of Music,17,transit,2026-10-07 08:30
-500191489,NUS Business School,38,transit,2026-10-07 08:30
-500191489,College of Design and Engineering,35,transit,2026-10-07 08:30
-500191489,Faculty of Dentistry,27,transit,2026-10-07 08:30
-500191489,Duke-NUS Medical School,26,transit,2026-10-07 08:30
-500191489,Faculty of Arts and Social Sciences,35,transit,2026-10-07 08:30
-500191489,NUS Institute of Systems Science,43,transit,2026-10-07 08:30
-500191489,Faculty of Law,29,transit,2026-10-07 08:30
-500191489,Lee Kuan Yew School of Public Policy,40,transit,2026-10-07 08:30
-500191489,Yong Loo Lin School of Medicine,28,transit,2026-10-07 08:30
-500191489,NUS College,29,transit,2026-10-07 08:30
-500191489,NUS Graduate School,27,transit,2026-10-07 08:30
-500191489,School of Continuing and Lifelong Education,36,transit,2026-10-07 08:30
-500191489,Faculty of Science,29,transit,2026-10-07 08:30
-500191489,School of Computing,39,transit,2026-10-07 08:30
-500191489,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
-500191489,Yong Siew Toh Conservatory of Music,35,transit,2026-10-07 08:30
-500194343,NUS Business School,43,transit,2026-10-07 08:30
-500194343,College of Design and Engineering,53,transit,2026-10-07 08:30
-500194343,Faculty of Dentistry,39,transit,2026-10-07 08:30
-500194343,Duke-NUS Medical School,26,transit,2026-10-07 08:30
-500194343,Faculty of Arts and Social Sciences,50,transit,2026-10-07 08:30
-500194343,NUS Institute of Systems Science,48,transit,2026-10-07 08:30
-500194343,Faculty of Law,48,transit,2026-10-07 08:30
-500194343,Lee Kuan Yew School of Public Policy,39,transit,2026-10-07 08:30
-500194343,Yong Loo Lin School of Medicine,40,transit,2026-10-07 08:30
-500194343,NUS College,47,transit,2026-10-07 08:30
-500194343,NUS Graduate School,44,transit,2026-10-07 08:30
-500194343,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-500194343,Faculty of Science,46,transit,2026-10-07 08:30
-500194343,School of Computing,51,transit,2026-10-07 08:30
-500194343,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-500194343,Yong Siew Toh Conservatory of Music,51,transit,2026-10-07 08:30
 500196530,NUS Business School,58,transit,2026-10-07 08:30
 500196530,College of Design and Engineering,64,transit,2026-10-07 08:30
 500196530,Faculty of Dentistry,49,transit,2026-10-07 08:30
@@ -3695,22 +2607,6 @@ listing_id,faculty,minutes,mode,departure
 500207433,School of Computing,41,transit,2026-10-07 08:30
 500207433,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
 500207433,Yong Siew Toh Conservatory of Music,42,transit,2026-10-07 08:30
-500207746,NUS Business School,60,transit,2026-10-07 08:30
-500207746,College of Design and Engineering,60,transit,2026-10-07 08:30
-500207746,Faculty of Dentistry,53,transit,2026-10-07 08:30
-500207746,Duke-NUS Medical School,68,transit,2026-10-07 08:30
-500207746,Faculty of Arts and Social Sciences,56,transit,2026-10-07 08:30
-500207746,NUS Institute of Systems Science,69,transit,2026-10-07 08:30
-500207746,Faculty of Law,54,transit,2026-10-07 08:30
-500207746,Lee Kuan Yew School of Public Policy,58,transit,2026-10-07 08:30
-500207746,Yong Loo Lin School of Medicine,54,transit,2026-10-07 08:30
-500207746,NUS College,50,transit,2026-10-07 08:30
-500207746,NUS Graduate School,57,transit,2026-10-07 08:30
-500207746,School of Continuing and Lifelong Education,58,transit,2026-10-07 08:30
-500207746,Faculty of Science,54,transit,2026-10-07 08:30
-500207746,School of Computing,61,transit,2026-10-07 08:30
-500207746,Saw Swee Hock School of Public Health,60,transit,2026-10-07 08:30
-500207746,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
 500208829,NUS Business School,26,transit,2026-10-07 08:30
 500208829,College of Design and Engineering,34,transit,2026-10-07 08:30
 500208829,Faculty of Dentistry,35,transit,2026-10-07 08:30
@@ -3727,22 +2623,6 @@ listing_id,faculty,minutes,mode,departure
 500208829,School of Computing,33,transit,2026-10-07 08:30
 500208829,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
 500208829,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-500209710,NUS Business School,31,transit,2026-10-07 08:30
-500209710,College of Design and Engineering,23,transit,2026-10-07 08:30
-500209710,Faculty of Dentistry,16,transit,2026-10-07 08:30
-500209710,Duke-NUS Medical School,37,transit,2026-10-07 08:30
-500209710,Faculty of Arts and Social Sciences,24,transit,2026-10-07 08:30
-500209710,NUS Institute of Systems Science,39,transit,2026-10-07 08:30
-500209710,Faculty of Law,18,transit,2026-10-07 08:30
-500209710,Lee Kuan Yew School of Public Policy,36,transit,2026-10-07 08:30
-500209710,Yong Loo Lin School of Medicine,23,transit,2026-10-07 08:30
-500209710,NUS College,17,transit,2026-10-07 08:30
-500209710,NUS Graduate School,17,transit,2026-10-07 08:30
-500209710,School of Continuing and Lifelong Education,21,transit,2026-10-07 08:30
-500209710,Faculty of Science,19,transit,2026-10-07 08:30
-500209710,School of Computing,24,transit,2026-10-07 08:30
-500209710,Saw Swee Hock School of Public Health,20,transit,2026-10-07 08:30
-500209710,Yong Siew Toh Conservatory of Music,24,transit,2026-10-07 08:30
 500210156,NUS Business School,38,transit,2026-10-07 08:30
 500210156,College of Design and Engineering,34,transit,2026-10-07 08:30
 500210156,Faculty of Dentistry,40,transit,2026-10-07 08:30
@@ -3759,22 +2639,6 @@ listing_id,faculty,minutes,mode,departure
 500210156,School of Computing,37,transit,2026-10-07 08:30
 500210156,Saw Swee Hock School of Public Health,43,transit,2026-10-07 08:30
 500210156,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
-500210580,NUS Business School,49,transit,2026-10-07 08:30
-500210580,College of Design and Engineering,48,transit,2026-10-07 08:30
-500210580,Faculty of Dentistry,35,transit,2026-10-07 08:30
-500210580,Duke-NUS Medical School,42,transit,2026-10-07 08:30
-500210580,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500210580,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-500210580,Faculty of Law,39,transit,2026-10-07 08:30
-500210580,Lee Kuan Yew School of Public Policy,47,transit,2026-10-07 08:30
-500210580,Yong Loo Lin School of Medicine,38,transit,2026-10-07 08:30
-500210580,NUS College,39,transit,2026-10-07 08:30
-500210580,NUS Graduate School,36,transit,2026-10-07 08:30
-500210580,School of Continuing and Lifelong Education,40,transit,2026-10-07 08:30
-500210580,Faculty of Science,39,transit,2026-10-07 08:30
-500210580,School of Computing,43,transit,2026-10-07 08:30
-500210580,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
-500210580,Yong Siew Toh Conservatory of Music,44,transit,2026-10-07 08:30
 500211006,NUS Business School,26,transit,2026-10-07 08:30
 500211006,College of Design and Engineering,30,transit,2026-10-07 08:30
 500211006,Faculty of Dentistry,17,transit,2026-10-07 08:30
@@ -3791,54 +2655,6 @@ listing_id,faculty,minutes,mode,departure
 500211006,School of Computing,25,transit,2026-10-07 08:30
 500211006,Saw Swee Hock School of Public Health,22,transit,2026-10-07 08:30
 500211006,Yong Siew Toh Conservatory of Music,27,transit,2026-10-07 08:30
-500214524,NUS Business School,40,transit,2026-10-07 08:30
-500214524,College of Design and Engineering,35,transit,2026-10-07 08:30
-500214524,Faculty of Dentistry,38,transit,2026-10-07 08:30
-500214524,Duke-NUS Medical School,51,transit,2026-10-07 08:30
-500214524,Faculty of Arts and Social Sciences,35,transit,2026-10-07 08:30
-500214524,NUS Institute of Systems Science,49,transit,2026-10-07 08:30
-500214524,Faculty of Law,29,transit,2026-10-07 08:30
-500214524,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-500214524,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-500214524,NUS College,29,transit,2026-10-07 08:30
-500214524,NUS Graduate School,43,transit,2026-10-07 08:30
-500214524,School of Continuing and Lifelong Education,34,transit,2026-10-07 08:30
-500214524,Faculty of Science,44,transit,2026-10-07 08:30
-500214524,School of Computing,37,transit,2026-10-07 08:30
-500214524,Saw Swee Hock School of Public Health,43,transit,2026-10-07 08:30
-500214524,Yong Siew Toh Conservatory of Music,35,transit,2026-10-07 08:30
-500215334,NUS Business School,46,transit,2026-10-07 08:30
-500215334,College of Design and Engineering,40,transit,2026-10-07 08:30
-500215334,Faculty of Dentistry,44,transit,2026-10-07 08:30
-500215334,Duke-NUS Medical School,50,transit,2026-10-07 08:30
-500215334,Faculty of Arts and Social Sciences,39,transit,2026-10-07 08:30
-500215334,NUS Institute of Systems Science,57,transit,2026-10-07 08:30
-500215334,Faculty of Law,34,transit,2026-10-07 08:30
-500215334,Lee Kuan Yew School of Public Policy,61,transit,2026-10-07 08:30
-500215334,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-500215334,NUS College,33,transit,2026-10-07 08:30
-500215334,NUS Graduate School,43,transit,2026-10-07 08:30
-500215334,School of Continuing and Lifelong Education,39,transit,2026-10-07 08:30
-500215334,Faculty of Science,45,transit,2026-10-07 08:30
-500215334,School of Computing,42,transit,2026-10-07 08:30
-500215334,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
-500215334,Yong Siew Toh Conservatory of Music,42,transit,2026-10-07 08:30
-500216053,NUS Business School,42,transit,2026-10-07 08:30
-500216053,College of Design and Engineering,38,transit,2026-10-07 08:30
-500216053,Faculty of Dentistry,39,transit,2026-10-07 08:30
-500216053,Duke-NUS Medical School,48,transit,2026-10-07 08:30
-500216053,Faculty of Arts and Social Sciences,39,transit,2026-10-07 08:30
-500216053,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-500216053,Faculty of Law,32,transit,2026-10-07 08:30
-500216053,Lee Kuan Yew School of Public Policy,55,transit,2026-10-07 08:30
-500216053,Yong Loo Lin School of Medicine,40,transit,2026-10-07 08:30
-500216053,NUS College,32,transit,2026-10-07 08:30
-500216053,NUS Graduate School,45,transit,2026-10-07 08:30
-500216053,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-500216053,Faculty of Science,45,transit,2026-10-07 08:30
-500216053,School of Computing,41,transit,2026-10-07 08:30
-500216053,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-500216053,Yong Siew Toh Conservatory of Music,37,transit,2026-10-07 08:30
 500216184,NUS Business School,50,transit,2026-10-07 08:30
 500216184,College of Design and Engineering,48,transit,2026-10-07 08:30
 500216184,Faculty of Dentistry,38,transit,2026-10-07 08:30
@@ -3855,38 +2671,6 @@ listing_id,faculty,minutes,mode,departure
 500216184,School of Computing,53,transit,2026-10-07 08:30
 500216184,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
 500216184,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500216426,NUS Business School,41,transit,2026-10-07 08:30
-500216426,College of Design and Engineering,46,transit,2026-10-07 08:30
-500216426,Faculty of Dentistry,29,transit,2026-10-07 08:30
-500216426,Duke-NUS Medical School,14,walk,2026-10-07 08:30
-500216426,Faculty of Arts and Social Sciences,46,transit,2026-10-07 08:30
-500216426,NUS Institute of Systems Science,49,transit,2026-10-07 08:30
-500216426,Faculty of Law,41,transit,2026-10-07 08:30
-500216426,Lee Kuan Yew School of Public Policy,51,transit,2026-10-07 08:30
-500216426,Yong Loo Lin School of Medicine,30,transit,2026-10-07 08:30
-500216426,NUS College,38,transit,2026-10-07 08:30
-500216426,NUS Graduate School,33,transit,2026-10-07 08:30
-500216426,School of Continuing and Lifelong Education,42,transit,2026-10-07 08:30
-500216426,Faculty of Science,35,transit,2026-10-07 08:30
-500216426,School of Computing,45,transit,2026-10-07 08:30
-500216426,Saw Swee Hock School of Public Health,34,transit,2026-10-07 08:30
-500216426,Yong Siew Toh Conservatory of Music,42,transit,2026-10-07 08:30
-500217240,NUS Business School,64,transit,2026-10-07 08:30
-500217240,College of Design and Engineering,77,transit,2026-10-07 08:30
-500217240,Faculty of Dentistry,54,transit,2026-10-07 08:30
-500217240,Duke-NUS Medical School,56,transit,2026-10-07 08:30
-500217240,Faculty of Arts and Social Sciences,66,transit,2026-10-07 08:30
-500217240,NUS Institute of Systems Science,69,transit,2026-10-07 08:30
-500217240,Faculty of Law,63,transit,2026-10-07 08:30
-500217240,Lee Kuan Yew School of Public Policy,58,transit,2026-10-07 08:30
-500217240,Yong Loo Lin School of Medicine,57,transit,2026-10-07 08:30
-500217240,NUS College,63,transit,2026-10-07 08:30
-500217240,NUS Graduate School,66,transit,2026-10-07 08:30
-500217240,School of Continuing and Lifelong Education,63,transit,2026-10-07 08:30
-500217240,Faculty of Science,60,transit,2026-10-07 08:30
-500217240,School of Computing,66,transit,2026-10-07 08:30
-500217240,Saw Swee Hock School of Public Health,59,transit,2026-10-07 08:30
-500217240,Yong Siew Toh Conservatory of Music,68,transit,2026-10-07 08:30
 500217869,NUS Business School,40,transit,2026-10-07 08:30
 500217869,College of Design and Engineering,37,transit,2026-10-07 08:30
 500217869,Faculty of Dentistry,34,transit,2026-10-07 08:30
@@ -3903,54 +2687,6 @@ listing_id,faculty,minutes,mode,departure
 500217869,School of Computing,38,transit,2026-10-07 08:30
 500217869,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
 500217869,Yong Siew Toh Conservatory of Music,34,transit,2026-10-07 08:30
-500218302,NUS Business School,26,transit,2026-10-07 08:30
-500218302,College of Design and Engineering,26,transit,2026-10-07 08:30
-500218302,Faculty of Dentistry,14,transit,2026-10-07 08:30
-500218302,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-500218302,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-500218302,NUS Institute of Systems Science,31,transit,2026-10-07 08:30
-500218302,Faculty of Law,18,transit,2026-10-07 08:30
-500218302,Lee Kuan Yew School of Public Policy,33,transit,2026-10-07 08:30
-500218302,Yong Loo Lin School of Medicine,17,transit,2026-10-07 08:30
-500218302,NUS College,18,transit,2026-10-07 08:30
-500218302,NUS Graduate School,15,transit,2026-10-07 08:30
-500218302,School of Continuing and Lifelong Education,19,transit,2026-10-07 08:30
-500218302,Faculty of Science,17,transit,2026-10-07 08:30
-500218302,School of Computing,22,transit,2026-10-07 08:30
-500218302,Saw Swee Hock School of Public Health,19,transit,2026-10-07 08:30
-500218302,Yong Siew Toh Conservatory of Music,23,transit,2026-10-07 08:30
-500218826,NUS Business School,50,transit,2026-10-07 08:30
-500218826,College of Design and Engineering,44,transit,2026-10-07 08:30
-500218826,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500218826,Duke-NUS Medical School,16,transit,2026-10-07 08:30
-500218826,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500218826,NUS Institute of Systems Science,57,transit,2026-10-07 08:30
-500218826,Faculty of Law,38,transit,2026-10-07 08:30
-500218826,Lee Kuan Yew School of Public Policy,37,transit,2026-10-07 08:30
-500218826,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-500218826,NUS College,38,transit,2026-10-07 08:30
-500218826,NUS Graduate School,41,transit,2026-10-07 08:30
-500218826,School of Continuing and Lifelong Education,46,transit,2026-10-07 08:30
-500218826,Faculty of Science,43,transit,2026-10-07 08:30
-500218826,School of Computing,49,transit,2026-10-07 08:30
-500218826,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
-500218826,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
-500220443,NUS Business School,50,transit,2026-10-07 08:30
-500220443,College of Design and Engineering,44,transit,2026-10-07 08:30
-500220443,Faculty of Dentistry,34,transit,2026-10-07 08:30
-500220443,Duke-NUS Medical School,9,transit,2026-10-07 08:30
-500220443,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500220443,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-500220443,Faculty of Law,38,transit,2026-10-07 08:30
-500220443,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500220443,Yong Loo Lin School of Medicine,35,transit,2026-10-07 08:30
-500220443,NUS College,38,transit,2026-10-07 08:30
-500220443,NUS Graduate School,38,transit,2026-10-07 08:30
-500220443,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-500220443,Faculty of Science,40,transit,2026-10-07 08:30
-500220443,School of Computing,44,transit,2026-10-07 08:30
-500220443,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
-500220443,Yong Siew Toh Conservatory of Music,47,transit,2026-10-07 08:30
 500220622,NUS Business School,55,transit,2026-10-07 08:30
 500220622,College of Design and Engineering,58,transit,2026-10-07 08:30
 500220622,Faculty of Dentistry,43,transit,2026-10-07 08:30
@@ -3967,86 +2703,6 @@ listing_id,faculty,minutes,mode,departure
 500220622,School of Computing,53,transit,2026-10-07 08:30
 500220622,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
 500220622,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-500223102,NUS Business School,68,transit,2026-10-07 08:30
-500223102,College of Design and Engineering,75,transit,2026-10-07 08:30
-500223102,Faculty of Dentistry,65,transit,2026-10-07 08:30
-500223102,Duke-NUS Medical School,49,transit,2026-10-07 08:30
-500223102,Faculty of Arts and Social Sciences,74,transit,2026-10-07 08:30
-500223102,NUS Institute of Systems Science,73,transit,2026-10-07 08:30
-500223102,Faculty of Law,69,transit,2026-10-07 08:30
-500223102,Lee Kuan Yew School of Public Policy,69,transit,2026-10-07 08:30
-500223102,Yong Loo Lin School of Medicine,66,transit,2026-10-07 08:30
-500223102,NUS College,68,transit,2026-10-07 08:30
-500223102,NUS Graduate School,66,transit,2026-10-07 08:30
-500223102,School of Continuing and Lifelong Education,70,transit,2026-10-07 08:30
-500223102,Faculty of Science,68,transit,2026-10-07 08:30
-500223102,School of Computing,73,transit,2026-10-07 08:30
-500223102,Saw Swee Hock School of Public Health,70,transit,2026-10-07 08:30
-500223102,Yong Siew Toh Conservatory of Music,75,transit,2026-10-07 08:30
-500224656,NUS Business School,45,transit,2026-10-07 08:30
-500224656,College of Design and Engineering,42,transit,2026-10-07 08:30
-500224656,Faculty of Dentistry,42,transit,2026-10-07 08:30
-500224656,Duke-NUS Medical School,50,transit,2026-10-07 08:30
-500224656,Faculty of Arts and Social Sciences,43,transit,2026-10-07 08:30
-500224656,NUS Institute of Systems Science,55,transit,2026-10-07 08:30
-500224656,Faculty of Law,37,transit,2026-10-07 08:30
-500224656,Lee Kuan Yew School of Public Policy,57,transit,2026-10-07 08:30
-500224656,Yong Loo Lin School of Medicine,45,transit,2026-10-07 08:30
-500224656,NUS College,36,transit,2026-10-07 08:30
-500224656,NUS Graduate School,43,transit,2026-10-07 08:30
-500224656,School of Continuing and Lifelong Education,43,transit,2026-10-07 08:30
-500224656,Faculty of Science,45,transit,2026-10-07 08:30
-500224656,School of Computing,50,transit,2026-10-07 08:30
-500224656,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-500224656,Yong Siew Toh Conservatory of Music,44,transit,2026-10-07 08:30
-500224980,NUS Business School,44,transit,2026-10-07 08:30
-500224980,College of Design and Engineering,45,transit,2026-10-07 08:30
-500224980,Faculty of Dentistry,29,transit,2026-10-07 08:30
-500224980,Duke-NUS Medical School,16,walk,2026-10-07 08:30
-500224980,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500224980,NUS Institute of Systems Science,48,transit,2026-10-07 08:30
-500224980,Faculty of Law,39,transit,2026-10-07 08:30
-500224980,Lee Kuan Yew School of Public Policy,47,transit,2026-10-07 08:30
-500224980,Yong Loo Lin School of Medicine,30,transit,2026-10-07 08:30
-500224980,NUS College,38,transit,2026-10-07 08:30
-500224980,NUS Graduate School,34,transit,2026-10-07 08:30
-500224980,School of Continuing and Lifelong Education,39,transit,2026-10-07 08:30
-500224980,Faculty of Science,36,transit,2026-10-07 08:30
-500224980,School of Computing,43,transit,2026-10-07 08:30
-500224980,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500224980,Yong Siew Toh Conservatory of Music,43,transit,2026-10-07 08:30
-500225011,NUS Business School,38,transit,2026-10-07 08:30
-500225011,College of Design and Engineering,37,transit,2026-10-07 08:30
-500225011,Faculty of Dentistry,27,transit,2026-10-07 08:30
-500225011,Duke-NUS Medical School,31,transit,2026-10-07 08:30
-500225011,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-500225011,NUS Institute of Systems Science,43,transit,2026-10-07 08:30
-500225011,Faculty of Law,30,transit,2026-10-07 08:30
-500225011,Lee Kuan Yew School of Public Policy,36,transit,2026-10-07 08:30
-500225011,Yong Loo Lin School of Medicine,28,transit,2026-10-07 08:30
-500225011,NUS College,30,transit,2026-10-07 08:30
-500225011,NUS Graduate School,25,transit,2026-10-07 08:30
-500225011,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-500225011,Faculty of Science,27,transit,2026-10-07 08:30
-500225011,School of Computing,32,transit,2026-10-07 08:30
-500225011,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
-500225011,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
-500225773,NUS Business School,49,transit,2026-10-07 08:30
-500225773,College of Design and Engineering,59,transit,2026-10-07 08:30
-500225773,Faculty of Dentistry,41,transit,2026-10-07 08:30
-500225773,Duke-NUS Medical School,44,transit,2026-10-07 08:30
-500225773,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-500225773,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-500225773,Faculty of Law,50,transit,2026-10-07 08:30
-500225773,Lee Kuan Yew School of Public Policy,42,transit,2026-10-07 08:30
-500225773,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-500225773,NUS College,50,transit,2026-10-07 08:30
-500225773,NUS Graduate School,45,transit,2026-10-07 08:30
-500225773,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-500225773,Faculty of Science,46,transit,2026-10-07 08:30
-500225773,School of Computing,52,transit,2026-10-07 08:30
-500225773,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-500225773,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
 500225837,NUS Business School,99,transit,2026-10-07 08:30
 500225837,College of Design and Engineering,93,transit,2026-10-07 08:30
 500225837,Faculty of Dentistry,66,transit,2026-10-07 08:30
@@ -4111,22 +2767,6 @@ listing_id,faculty,minutes,mode,departure
 500227254,School of Computing,57,transit,2026-10-07 08:30
 500227254,Saw Swee Hock School of Public Health,61,transit,2026-10-07 08:30
 500227254,Yong Siew Toh Conservatory of Music,57,transit,2026-10-07 08:30
-500227681,NUS Business School,10,transit,2026-10-07 08:30
-500227681,College of Design and Engineering,17,walk,2026-10-07 08:30
-500227681,Faculty of Dentistry,25,transit,2026-10-07 08:30
-500227681,Duke-NUS Medical School,47,transit,2026-10-07 08:30
-500227681,Faculty of Arts and Social Sciences,9,transit,2026-10-07 08:30
-500227681,NUS Institute of Systems Science,21,transit,2026-10-07 08:30
-500227681,Faculty of Law,20,transit,2026-10-07 08:30
-500227681,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500227681,Yong Loo Lin School of Medicine,24,transit,2026-10-07 08:30
-500227681,NUS College,20,transit,2026-10-07 08:30
-500227681,NUS Graduate School,20,transit,2026-10-07 08:30
-500227681,School of Continuing and Lifelong Education,11,transit,2026-10-07 08:30
-500227681,Faculty of Science,24,transit,2026-10-07 08:30
-500227681,School of Computing,16,transit,2026-10-07 08:30
-500227681,Saw Swee Hock School of Public Health,25,transit,2026-10-07 08:30
-500227681,Yong Siew Toh Conservatory of Music,18,walk,2026-10-07 08:30
 500227775,NUS Business School,43,transit,2026-10-07 08:30
 500227775,College of Design and Engineering,40,transit,2026-10-07 08:30
 500227775,Faculty of Dentistry,45,transit,2026-10-07 08:30
@@ -4191,22 +2831,6 @@ listing_id,faculty,minutes,mode,departure
 500230487,School of Computing,57,transit,2026-10-07 08:30
 500230487,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
 500230487,Yong Siew Toh Conservatory of Music,62,transit,2026-10-07 08:30
-500230666,NUS Business School,36,transit,2026-10-07 08:30
-500230666,College of Design and Engineering,36,transit,2026-10-07 08:30
-500230666,Faculty of Dentistry,26,transit,2026-10-07 08:30
-500230666,Duke-NUS Medical School,26,transit,2026-10-07 08:30
-500230666,Faculty of Arts and Social Sciences,35,transit,2026-10-07 08:30
-500230666,NUS Institute of Systems Science,41,transit,2026-10-07 08:30
-500230666,Faculty of Law,30,transit,2026-10-07 08:30
-500230666,Lee Kuan Yew School of Public Policy,39,transit,2026-10-07 08:30
-500230666,Yong Loo Lin School of Medicine,26,transit,2026-10-07 08:30
-500230666,NUS College,29,transit,2026-10-07 08:30
-500230666,NUS Graduate School,29,transit,2026-10-07 08:30
-500230666,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-500230666,Faculty of Science,32,transit,2026-10-07 08:30
-500230666,School of Computing,38,transit,2026-10-07 08:30
-500230666,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
-500230666,Yong Siew Toh Conservatory of Music,35,transit,2026-10-07 08:30
 500230790,NUS Business School,47,transit,2026-10-07 08:30
 500230790,College of Design and Engineering,54,transit,2026-10-07 08:30
 500230790,Faculty of Dentistry,43,transit,2026-10-07 08:30
@@ -4255,38 +2879,6 @@ listing_id,faculty,minutes,mode,departure
 500234003,School of Computing,62,transit,2026-10-07 08:30
 500234003,Saw Swee Hock School of Public Health,58,transit,2026-10-07 08:30
 500234003,Yong Siew Toh Conservatory of Music,66,transit,2026-10-07 08:30
-500235516,NUS Business School,39,transit,2026-10-07 08:30
-500235516,College of Design and Engineering,51,transit,2026-10-07 08:30
-500235516,Faculty of Dentistry,35,transit,2026-10-07 08:30
-500235516,Duke-NUS Medical School,24,walk,2026-10-07 08:30
-500235516,Faculty of Arts and Social Sciences,48,transit,2026-10-07 08:30
-500235516,NUS Institute of Systems Science,49,transit,2026-10-07 08:30
-500235516,Faculty of Law,41,transit,2026-10-07 08:30
-500235516,Lee Kuan Yew School of Public Policy,51,transit,2026-10-07 08:30
-500235516,Yong Loo Lin School of Medicine,35,transit,2026-10-07 08:30
-500235516,NUS College,45,transit,2026-10-07 08:30
-500235516,NUS Graduate School,40,transit,2026-10-07 08:30
-500235516,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500235516,Faculty of Science,40,transit,2026-10-07 08:30
-500235516,School of Computing,51,transit,2026-10-07 08:30
-500235516,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
-500235516,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
-500235590,NUS Business School,26,transit,2026-10-07 08:30
-500235590,College of Design and Engineering,26,transit,2026-10-07 08:30
-500235590,Faculty of Dentistry,14,transit,2026-10-07 08:30
-500235590,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-500235590,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-500235590,NUS Institute of Systems Science,31,transit,2026-10-07 08:30
-500235590,Faculty of Law,18,transit,2026-10-07 08:30
-500235590,Lee Kuan Yew School of Public Policy,33,transit,2026-10-07 08:30
-500235590,Yong Loo Lin School of Medicine,17,transit,2026-10-07 08:30
-500235590,NUS College,18,transit,2026-10-07 08:30
-500235590,NUS Graduate School,15,transit,2026-10-07 08:30
-500235590,School of Continuing and Lifelong Education,19,transit,2026-10-07 08:30
-500235590,Faculty of Science,17,transit,2026-10-07 08:30
-500235590,School of Computing,22,transit,2026-10-07 08:30
-500235590,Saw Swee Hock School of Public Health,19,transit,2026-10-07 08:30
-500235590,Yong Siew Toh Conservatory of Music,23,transit,2026-10-07 08:30
 500235966,NUS Business School,30,transit,2026-10-07 08:30
 500235966,College of Design and Engineering,39,transit,2026-10-07 08:30
 500235966,Faculty of Dentistry,26,transit,2026-10-07 08:30
@@ -4319,22 +2911,6 @@ listing_id,faculty,minutes,mode,departure
 500236562,School of Computing,39,transit,2026-10-07 08:30
 500236562,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
 500236562,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
-500237228,NUS Business School,51,transit,2026-10-07 08:30
-500237228,College of Design and Engineering,55,transit,2026-10-07 08:30
-500237228,Faculty of Dentistry,38,transit,2026-10-07 08:30
-500237228,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-500237228,Faculty of Arts and Social Sciences,55,transit,2026-10-07 08:30
-500237228,NUS Institute of Systems Science,57,transit,2026-10-07 08:30
-500237228,Faculty of Law,49,transit,2026-10-07 08:30
-500237228,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500237228,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-500237228,NUS College,49,transit,2026-10-07 08:30
-500237228,NUS Graduate School,47,transit,2026-10-07 08:30
-500237228,School of Continuing and Lifelong Education,51,transit,2026-10-07 08:30
-500237228,Faculty of Science,44,transit,2026-10-07 08:30
-500237228,School of Computing,54,transit,2026-10-07 08:30
-500237228,Saw Swee Hock School of Public Health,43,transit,2026-10-07 08:30
-500237228,Yong Siew Toh Conservatory of Music,56,transit,2026-10-07 08:30
 500237434,NUS Business School,42,transit,2026-10-07 08:30
 500237434,College of Design and Engineering,44,transit,2026-10-07 08:30
 500237434,Faculty of Dentistry,48,transit,2026-10-07 08:30
@@ -4351,22 +2927,6 @@ listing_id,faculty,minutes,mode,departure
 500237434,School of Computing,49,transit,2026-10-07 08:30
 500237434,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 500237434,Yong Siew Toh Conservatory of Music,48,transit,2026-10-07 08:30
-500237804,NUS Business School,77,transit,2026-10-07 08:30
-500237804,College of Design and Engineering,74,transit,2026-10-07 08:30
-500237804,Faculty of Dentistry,67,transit,2026-10-07 08:30
-500237804,Duke-NUS Medical School,50,transit,2026-10-07 08:30
-500237804,Faculty of Arts and Social Sciences,75,transit,2026-10-07 08:30
-500237804,NUS Institute of Systems Science,81,transit,2026-10-07 08:30
-500237804,Faculty of Law,69,transit,2026-10-07 08:30
-500237804,Lee Kuan Yew School of Public Policy,70,transit,2026-10-07 08:30
-500237804,Yong Loo Lin School of Medicine,67,transit,2026-10-07 08:30
-500237804,NUS College,68,transit,2026-10-07 08:30
-500237804,NUS Graduate School,68,transit,2026-10-07 08:30
-500237804,School of Continuing and Lifelong Education,75,transit,2026-10-07 08:30
-500237804,Faculty of Science,72,transit,2026-10-07 08:30
-500237804,School of Computing,78,transit,2026-10-07 08:30
-500237804,Saw Swee Hock School of Public Health,72,transit,2026-10-07 08:30
-500237804,Yong Siew Toh Conservatory of Music,79,transit,2026-10-07 08:30
 500237858,NUS Business School,35,transit,2026-10-07 08:30
 500237858,College of Design and Engineering,31,transit,2026-10-07 08:30
 500237858,Faculty of Dentistry,45,transit,2026-10-07 08:30
@@ -4399,38 +2959,6 @@ listing_id,faculty,minutes,mode,departure
 500237913,School of Computing,70,transit,2026-10-07 08:30
 500237913,Saw Swee Hock School of Public Health,67,transit,2026-10-07 08:30
 500237913,Yong Siew Toh Conservatory of Music,81,transit,2026-10-07 08:30
-500238092,NUS Business School,47,transit,2026-10-07 08:30
-500238092,College of Design and Engineering,45,transit,2026-10-07 08:30
-500238092,Faculty of Dentistry,46,transit,2026-10-07 08:30
-500238092,Duke-NUS Medical School,56,transit,2026-10-07 08:30
-500238092,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500238092,NUS Institute of Systems Science,58,transit,2026-10-07 08:30
-500238092,Faculty of Law,39,transit,2026-10-07 08:30
-500238092,Lee Kuan Yew School of Public Policy,62,transit,2026-10-07 08:30
-500238092,Yong Loo Lin School of Medicine,47,transit,2026-10-07 08:30
-500238092,NUS College,38,transit,2026-10-07 08:30
-500238092,NUS Graduate School,45,transit,2026-10-07 08:30
-500238092,School of Continuing and Lifelong Education,46,transit,2026-10-07 08:30
-500238092,Faculty of Science,47,transit,2026-10-07 08:30
-500238092,School of Computing,49,transit,2026-10-07 08:30
-500238092,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-500238092,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500238616,NUS Business School,,,2026-10-07 08:30
-500238616,College of Design and Engineering,,,2026-10-07 08:30
-500238616,Faculty of Dentistry,,,2026-10-07 08:30
-500238616,Duke-NUS Medical School,,,2026-10-07 08:30
-500238616,Faculty of Arts and Social Sciences,,,2026-10-07 08:30
-500238616,NUS Institute of Systems Science,,,2026-10-07 08:30
-500238616,Faculty of Law,,,2026-10-07 08:30
-500238616,Lee Kuan Yew School of Public Policy,,,2026-10-07 08:30
-500238616,Yong Loo Lin School of Medicine,,,2026-10-07 08:30
-500238616,NUS College,,,2026-10-07 08:30
-500238616,NUS Graduate School,,,2026-10-07 08:30
-500238616,School of Continuing and Lifelong Education,,,2026-10-07 08:30
-500238616,Faculty of Science,,,2026-10-07 08:30
-500238616,School of Computing,,,2026-10-07 08:30
-500238616,Saw Swee Hock School of Public Health,,,2026-10-07 08:30
-500238616,Yong Siew Toh Conservatory of Music,,,2026-10-07 08:30
 500238705,NUS Business School,22,transit,2026-10-07 08:30
 500238705,College of Design and Engineering,19,transit,2026-10-07 08:30
 500238705,Faculty of Dentistry,25,transit,2026-10-07 08:30
@@ -4447,22 +2975,6 @@ listing_id,faculty,minutes,mode,departure
 500238705,School of Computing,21,transit,2026-10-07 08:30
 500238705,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
 500238705,Yong Siew Toh Conservatory of Music,20,transit,2026-10-07 08:30
-500238906,NUS Business School,59,transit,2026-10-07 08:30
-500238906,College of Design and Engineering,69,transit,2026-10-07 08:30
-500238906,Faculty of Dentistry,49,transit,2026-10-07 08:30
-500238906,Duke-NUS Medical School,51,transit,2026-10-07 08:30
-500238906,Faculty of Arts and Social Sciences,61,transit,2026-10-07 08:30
-500238906,NUS Institute of Systems Science,64,transit,2026-10-07 08:30
-500238906,Faculty of Law,56,transit,2026-10-07 08:30
-500238906,Lee Kuan Yew School of Public Policy,51,transit,2026-10-07 08:30
-500238906,Yong Loo Lin School of Medicine,49,transit,2026-10-07 08:30
-500238906,NUS College,55,transit,2026-10-07 08:30
-500238906,NUS Graduate School,54,transit,2026-10-07 08:30
-500238906,School of Continuing and Lifelong Education,57,transit,2026-10-07 08:30
-500238906,Faculty of Science,54,transit,2026-10-07 08:30
-500238906,School of Computing,61,transit,2026-10-07 08:30
-500238906,Saw Swee Hock School of Public Health,54,transit,2026-10-07 08:30
-500238906,Yong Siew Toh Conservatory of Music,62,transit,2026-10-07 08:30
 500238931,NUS Business School,41,transit,2026-10-07 08:30
 500238931,College of Design and Engineering,37,transit,2026-10-07 08:30
 500238931,Faculty of Dentistry,36,transit,2026-10-07 08:30
@@ -4495,22 +3007,6 @@ listing_id,faculty,minutes,mode,departure
 500239697,School of Computing,53,transit,2026-10-07 08:30
 500239697,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 500239697,Yong Siew Toh Conservatory of Music,56,transit,2026-10-07 08:30
-500240705,NUS Business School,40,transit,2026-10-07 08:30
-500240705,College of Design and Engineering,49,transit,2026-10-07 08:30
-500240705,Faculty of Dentistry,30,transit,2026-10-07 08:30
-500240705,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-500240705,Faculty of Arts and Social Sciences,43,transit,2026-10-07 08:30
-500240705,NUS Institute of Systems Science,45,transit,2026-10-07 08:30
-500240705,Faculty of Law,39,transit,2026-10-07 08:30
-500240705,Lee Kuan Yew School of Public Policy,29,transit,2026-10-07 08:30
-500240705,Yong Loo Lin School of Medicine,30,transit,2026-10-07 08:30
-500240705,NUS College,39,transit,2026-10-07 08:30
-500240705,NUS Graduate School,38,transit,2026-10-07 08:30
-500240705,School of Continuing and Lifelong Education,39,transit,2026-10-07 08:30
-500240705,Faculty of Science,35,transit,2026-10-07 08:30
-500240705,School of Computing,42,transit,2026-10-07 08:30
-500240705,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500240705,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
 500240734,NUS Business School,54,transit,2026-10-07 08:30
 500240734,College of Design and Engineering,53,transit,2026-10-07 08:30
 500240734,Faculty of Dentistry,44,transit,2026-10-07 08:30
@@ -4527,22 +3023,6 @@ listing_id,faculty,minutes,mode,departure
 500240734,School of Computing,53,transit,2026-10-07 08:30
 500240734,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
 500240734,Yong Siew Toh Conservatory of Music,55,transit,2026-10-07 08:30
-500242546,NUS Business School,58,transit,2026-10-07 08:30
-500242546,College of Design and Engineering,64,transit,2026-10-07 08:30
-500242546,Faculty of Dentistry,52,transit,2026-10-07 08:30
-500242546,Duke-NUS Medical School,35,transit,2026-10-07 08:30
-500242546,Faculty of Arts and Social Sciences,62,transit,2026-10-07 08:30
-500242546,NUS Institute of Systems Science,63,transit,2026-10-07 08:30
-500242546,Faculty of Law,59,transit,2026-10-07 08:30
-500242546,Lee Kuan Yew School of Public Policy,56,transit,2026-10-07 08:30
-500242546,Yong Loo Lin School of Medicine,53,transit,2026-10-07 08:30
-500242546,NUS College,58,transit,2026-10-07 08:30
-500242546,NUS Graduate School,54,transit,2026-10-07 08:30
-500242546,School of Continuing and Lifelong Education,58,transit,2026-10-07 08:30
-500242546,Faculty of Science,57,transit,2026-10-07 08:30
-500242546,School of Computing,61,transit,2026-10-07 08:30
-500242546,Saw Swee Hock School of Public Health,57,transit,2026-10-07 08:30
-500242546,Yong Siew Toh Conservatory of Music,66,transit,2026-10-07 08:30
 500243246,NUS Business School,66,transit,2026-10-07 08:30
 500243246,College of Design and Engineering,63,transit,2026-10-07 08:30
 500243246,Faculty of Dentistry,61,transit,2026-10-07 08:30
@@ -4655,22 +3135,6 @@ listing_id,faculty,minutes,mode,departure
 500246494,School of Computing,48,transit,2026-10-07 08:30
 500246494,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
 500246494,Yong Siew Toh Conservatory of Music,48,transit,2026-10-07 08:30
-500246739,NUS Business School,60,transit,2026-10-07 08:30
-500246739,College of Design and Engineering,54,transit,2026-10-07 08:30
-500246739,Faculty of Dentistry,55,transit,2026-10-07 08:30
-500246739,Duke-NUS Medical School,63,transit,2026-10-07 08:30
-500246739,Faculty of Arts and Social Sciences,54,transit,2026-10-07 08:30
-500246739,NUS Institute of Systems Science,70,transit,2026-10-07 08:30
-500246739,Faculty of Law,48,transit,2026-10-07 08:30
-500246739,Lee Kuan Yew School of Public Policy,71,transit,2026-10-07 08:30
-500246739,Yong Loo Lin School of Medicine,55,transit,2026-10-07 08:30
-500246739,NUS College,48,transit,2026-10-07 08:30
-500246739,NUS Graduate School,56,transit,2026-10-07 08:30
-500246739,School of Continuing and Lifelong Education,54,transit,2026-10-07 08:30
-500246739,Faculty of Science,59,transit,2026-10-07 08:30
-500246739,School of Computing,56,transit,2026-10-07 08:30
-500246739,Saw Swee Hock School of Public Health,60,transit,2026-10-07 08:30
-500246739,Yong Siew Toh Conservatory of Music,55,transit,2026-10-07 08:30
 500247770,NUS Business School,87,transit,2026-10-07 08:30
 500247770,College of Design and Engineering,85,transit,2026-10-07 08:30
 500247770,Faculty of Dentistry,72,transit,2026-10-07 08:30
@@ -4703,38 +3167,6 @@ listing_id,faculty,minutes,mode,departure
 500248105,School of Computing,53,transit,2026-10-07 08:30
 500248105,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
 500248105,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500248425,NUS Business School,41,transit,2026-10-07 08:30
-500248425,College of Design and Engineering,47,transit,2026-10-07 08:30
-500248425,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500248425,Duke-NUS Medical School,24,transit,2026-10-07 08:30
-500248425,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500248425,NUS Institute of Systems Science,44,transit,2026-10-07 08:30
-500248425,Faculty of Law,41,transit,2026-10-07 08:30
-500248425,Lee Kuan Yew School of Public Policy,39,transit,2026-10-07 08:30
-500248425,Yong Loo Lin School of Medicine,35,transit,2026-10-07 08:30
-500248425,NUS College,41,transit,2026-10-07 08:30
-500248425,NUS Graduate School,44,transit,2026-10-07 08:30
-500248425,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500248425,Faculty of Science,43,transit,2026-10-07 08:30
-500248425,School of Computing,48,transit,2026-10-07 08:30
-500248425,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
-500248425,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500248454,NUS Business School,36,transit,2026-10-07 08:30
-500248454,College of Design and Engineering,49,transit,2026-10-07 08:30
-500248454,Faculty of Dentistry,30,transit,2026-10-07 08:30
-500248454,Duke-NUS Medical School,12,transit,2026-10-07 08:30
-500248454,Faculty of Arts and Social Sciences,40,transit,2026-10-07 08:30
-500248454,NUS Institute of Systems Science,41,transit,2026-10-07 08:30
-500248454,Faculty of Law,45,transit,2026-10-07 08:30
-500248454,Lee Kuan Yew School of Public Policy,49,transit,2026-10-07 08:30
-500248454,Yong Loo Lin School of Medicine,30,transit,2026-10-07 08:30
-500248454,NUS College,41,transit,2026-10-07 08:30
-500248454,NUS Graduate School,36,transit,2026-10-07 08:30
-500248454,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500248454,Faculty of Science,36,transit,2026-10-07 08:30
-500248454,School of Computing,45,transit,2026-10-07 08:30
-500248454,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500248454,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 500248538,NUS Business School,68,transit,2026-10-07 08:30
 500248538,College of Design and Engineering,76,transit,2026-10-07 08:30
 500248538,Faculty of Dentistry,60,transit,2026-10-07 08:30
@@ -4751,54 +3183,6 @@ listing_id,faculty,minutes,mode,departure
 500248538,School of Computing,70,transit,2026-10-07 08:30
 500248538,Saw Swee Hock School of Public Health,67,transit,2026-10-07 08:30
 500248538,Yong Siew Toh Conservatory of Music,81,transit,2026-10-07 08:30
-500248616,NUS Business School,33,transit,2026-10-07 08:30
-500248616,College of Design and Engineering,27,transit,2026-10-07 08:30
-500248616,Faculty of Dentistry,30,transit,2026-10-07 08:30
-500248616,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-500248616,Faculty of Arts and Social Sciences,26,transit,2026-10-07 08:30
-500248616,NUS Institute of Systems Science,44,transit,2026-10-07 08:30
-500248616,Faculty of Law,19,transit,2026-10-07 08:30
-500248616,Lee Kuan Yew School of Public Policy,30,transit,2026-10-07 08:30
-500248616,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-500248616,NUS College,19,transit,2026-10-07 08:30
-500248616,NUS Graduate School,34,transit,2026-10-07 08:30
-500248616,School of Continuing and Lifelong Education,23,transit,2026-10-07 08:30
-500248616,Faculty of Science,36,transit,2026-10-07 08:30
-500248616,School of Computing,26,transit,2026-10-07 08:30
-500248616,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500248616,Yong Siew Toh Conservatory of Music,21,transit,2026-10-07 08:30
-500248619,NUS Business School,33,transit,2026-10-07 08:30
-500248619,College of Design and Engineering,27,transit,2026-10-07 08:30
-500248619,Faculty of Dentistry,30,transit,2026-10-07 08:30
-500248619,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-500248619,Faculty of Arts and Social Sciences,26,transit,2026-10-07 08:30
-500248619,NUS Institute of Systems Science,44,transit,2026-10-07 08:30
-500248619,Faculty of Law,19,transit,2026-10-07 08:30
-500248619,Lee Kuan Yew School of Public Policy,30,transit,2026-10-07 08:30
-500248619,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-500248619,NUS College,19,transit,2026-10-07 08:30
-500248619,NUS Graduate School,34,transit,2026-10-07 08:30
-500248619,School of Continuing and Lifelong Education,23,transit,2026-10-07 08:30
-500248619,Faculty of Science,36,transit,2026-10-07 08:30
-500248619,School of Computing,26,transit,2026-10-07 08:30
-500248619,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500248619,Yong Siew Toh Conservatory of Music,21,transit,2026-10-07 08:30
-500248621,NUS Business School,33,transit,2026-10-07 08:30
-500248621,College of Design and Engineering,27,transit,2026-10-07 08:30
-500248621,Faculty of Dentistry,30,transit,2026-10-07 08:30
-500248621,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-500248621,Faculty of Arts and Social Sciences,26,transit,2026-10-07 08:30
-500248621,NUS Institute of Systems Science,44,transit,2026-10-07 08:30
-500248621,Faculty of Law,19,transit,2026-10-07 08:30
-500248621,Lee Kuan Yew School of Public Policy,30,transit,2026-10-07 08:30
-500248621,Yong Loo Lin School of Medicine,31,transit,2026-10-07 08:30
-500248621,NUS College,19,transit,2026-10-07 08:30
-500248621,NUS Graduate School,34,transit,2026-10-07 08:30
-500248621,School of Continuing and Lifelong Education,23,transit,2026-10-07 08:30
-500248621,Faculty of Science,36,transit,2026-10-07 08:30
-500248621,School of Computing,26,transit,2026-10-07 08:30
-500248621,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
-500248621,Yong Siew Toh Conservatory of Music,21,transit,2026-10-07 08:30
 500248677,NUS Business School,22,transit,2026-10-07 08:30
 500248677,College of Design and Engineering,31,transit,2026-10-07 08:30
 500248677,Faculty of Dentistry,25,transit,2026-10-07 08:30
@@ -4815,38 +3199,6 @@ listing_id,faculty,minutes,mode,departure
 500248677,School of Computing,29,transit,2026-10-07 08:30
 500248677,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
 500248677,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
-500248852,NUS Business School,50,transit,2026-10-07 08:30
-500248852,College of Design and Engineering,46,transit,2026-10-07 08:30
-500248852,Faculty of Dentistry,46,transit,2026-10-07 08:30
-500248852,Duke-NUS Medical School,54,transit,2026-10-07 08:30
-500248852,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500248852,NUS Institute of Systems Science,59,transit,2026-10-07 08:30
-500248852,Faculty of Law,38,transit,2026-10-07 08:30
-500248852,Lee Kuan Yew School of Public Policy,61,transit,2026-10-07 08:30
-500248852,Yong Loo Lin School of Medicine,50,transit,2026-10-07 08:30
-500248852,NUS College,38,transit,2026-10-07 08:30
-500248852,NUS Graduate School,47,transit,2026-10-07 08:30
-500248852,School of Continuing and Lifelong Education,44,transit,2026-10-07 08:30
-500248852,Faculty of Science,49,transit,2026-10-07 08:30
-500248852,School of Computing,47,transit,2026-10-07 08:30
-500248852,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
-500248852,Yong Siew Toh Conservatory of Music,42,transit,2026-10-07 08:30
-500248924,NUS Business School,32,transit,2026-10-07 08:30
-500248924,College of Design and Engineering,34,transit,2026-10-07 08:30
-500248924,Faculty of Dentistry,24,transit,2026-10-07 08:30
-500248924,Duke-NUS Medical School,24,transit,2026-10-07 08:30
-500248924,Faculty of Arts and Social Sciences,33,transit,2026-10-07 08:30
-500248924,NUS Institute of Systems Science,38,transit,2026-10-07 08:30
-500248924,Faculty of Law,28,transit,2026-10-07 08:30
-500248924,Lee Kuan Yew School of Public Policy,37,transit,2026-10-07 08:30
-500248924,Yong Loo Lin School of Medicine,27,transit,2026-10-07 08:30
-500248924,NUS College,28,transit,2026-10-07 08:30
-500248924,NUS Graduate School,25,transit,2026-10-07 08:30
-500248924,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-500248924,Faculty of Science,27,transit,2026-10-07 08:30
-500248924,School of Computing,32,transit,2026-10-07 08:30
-500248924,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
-500248924,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
 500249024,NUS Business School,53,transit,2026-10-07 08:30
 500249024,College of Design and Engineering,65,transit,2026-10-07 08:30
 500249024,Faculty of Dentistry,48,transit,2026-10-07 08:30
@@ -4879,38 +3231,6 @@ listing_id,faculty,minutes,mode,departure
 500249175,School of Computing,47,transit,2026-10-07 08:30
 500249175,Saw Swee Hock School of Public Health,38,transit,2026-10-07 08:30
 500249175,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500249258,NUS Business School,43,transit,2026-10-07 08:30
-500249258,College of Design and Engineering,40,transit,2026-10-07 08:30
-500249258,Faculty of Dentistry,41,transit,2026-10-07 08:30
-500249258,Duke-NUS Medical School,59,transit,2026-10-07 08:30
-500249258,Faculty of Arts and Social Sciences,40,transit,2026-10-07 08:30
-500249258,NUS Institute of Systems Science,53,transit,2026-10-07 08:30
-500249258,Faculty of Law,34,transit,2026-10-07 08:30
-500249258,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500249258,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-500249258,NUS College,33,transit,2026-10-07 08:30
-500249258,NUS Graduate School,40,transit,2026-10-07 08:30
-500249258,School of Continuing and Lifelong Education,39,transit,2026-10-07 08:30
-500249258,Faculty of Science,42,transit,2026-10-07 08:30
-500249258,School of Computing,43,transit,2026-10-07 08:30
-500249258,Saw Swee Hock School of Public Health,44,transit,2026-10-07 08:30
-500249258,Yong Siew Toh Conservatory of Music,38,transit,2026-10-07 08:30
-500249409,NUS Business School,27,transit,2026-10-07 08:30
-500249409,College of Design and Engineering,36,transit,2026-10-07 08:30
-500249409,Faculty of Dentistry,23,transit,2026-10-07 08:30
-500249409,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-500249409,Faculty of Arts and Social Sciences,31,transit,2026-10-07 08:30
-500249409,NUS Institute of Systems Science,32,transit,2026-10-07 08:30
-500249409,Faculty of Law,37,transit,2026-10-07 08:30
-500249409,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500249409,Yong Loo Lin School of Medicine,23,transit,2026-10-07 08:30
-500249409,NUS College,36,transit,2026-10-07 08:30
-500249409,NUS Graduate School,25,transit,2026-10-07 08:30
-500249409,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-500249409,Faculty of Science,28,transit,2026-10-07 08:30
-500249409,School of Computing,32,transit,2026-10-07 08:30
-500249409,Saw Swee Hock School of Public Health,28,transit,2026-10-07 08:30
-500249409,Yong Siew Toh Conservatory of Music,34,transit,2026-10-07 08:30
 500250282,NUS Business School,19,transit,2026-10-07 08:30
 500250282,College of Design and Engineering,23,transit,2026-10-07 08:30
 500250282,Faculty of Dentistry,28,transit,2026-10-07 08:30
@@ -4927,22 +3247,6 @@ listing_id,faculty,minutes,mode,departure
 500250282,School of Computing,25,transit,2026-10-07 08:30
 500250282,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
 500250282,Yong Siew Toh Conservatory of Music,23,walk,2026-10-07 08:30
-500250396,NUS Business School,43,transit,2026-10-07 08:30
-500250396,College of Design and Engineering,46,transit,2026-10-07 08:30
-500250396,Faculty of Dentistry,32,transit,2026-10-07 08:30
-500250396,Duke-NUS Medical School,42,transit,2026-10-07 08:30
-500250396,Faculty of Arts and Social Sciences,46,transit,2026-10-07 08:30
-500250396,NUS Institute of Systems Science,48,transit,2026-10-07 08:30
-500250396,Faculty of Law,40,transit,2026-10-07 08:30
-500250396,Lee Kuan Yew School of Public Policy,58,transit,2026-10-07 08:30
-500250396,Yong Loo Lin School of Medicine,33,transit,2026-10-07 08:30
-500250396,NUS College,39,transit,2026-10-07 08:30
-500250396,NUS Graduate School,36,transit,2026-10-07 08:30
-500250396,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-500250396,Faculty of Science,38,transit,2026-10-07 08:30
-500250396,School of Computing,50,transit,2026-10-07 08:30
-500250396,Saw Swee Hock School of Public Health,37,transit,2026-10-07 08:30
-500250396,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
 500250753,NUS Business School,32,transit,2026-10-07 08:30
 500250753,College of Design and Engineering,33,transit,2026-10-07 08:30
 500250753,Faculty of Dentistry,23,transit,2026-10-07 08:30
@@ -4975,38 +3279,6 @@ listing_id,faculty,minutes,mode,departure
 500251289,School of Computing,48,transit,2026-10-07 08:30
 500251289,Saw Swee Hock School of Public Health,42,transit,2026-10-07 08:30
 500251289,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
-500251909,NUS Business School,52,transit,2026-10-07 08:30
-500251909,College of Design and Engineering,46,transit,2026-10-07 08:30
-500251909,Faculty of Dentistry,47,transit,2026-10-07 08:30
-500251909,Duke-NUS Medical School,55,transit,2026-10-07 08:30
-500251909,Faculty of Arts and Social Sciences,46,transit,2026-10-07 08:30
-500251909,NUS Institute of Systems Science,60,transit,2026-10-07 08:30
-500251909,Faculty of Law,41,transit,2026-10-07 08:30
-500251909,Lee Kuan Yew School of Public Policy,62,transit,2026-10-07 08:30
-500251909,Yong Loo Lin School of Medicine,50,transit,2026-10-07 08:30
-500251909,NUS College,40,transit,2026-10-07 08:30
-500251909,NUS Graduate School,48,transit,2026-10-07 08:30
-500251909,School of Continuing and Lifelong Education,46,transit,2026-10-07 08:30
-500251909,Faculty of Science,50,transit,2026-10-07 08:30
-500251909,School of Computing,49,transit,2026-10-07 08:30
-500251909,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
-500251909,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
-500251950,NUS Business School,60,transit,2026-10-07 08:30
-500251950,College of Design and Engineering,52,transit,2026-10-07 08:30
-500251950,Faculty of Dentistry,51,transit,2026-10-07 08:30
-500251950,Duke-NUS Medical School,60,transit,2026-10-07 08:30
-500251950,Faculty of Arts and Social Sciences,52,transit,2026-10-07 08:30
-500251950,NUS Institute of Systems Science,69,transit,2026-10-07 08:30
-500251950,Faculty of Law,47,transit,2026-10-07 08:30
-500251950,Lee Kuan Yew School of Public Policy,67,transit,2026-10-07 08:30
-500251950,Yong Loo Lin School of Medicine,51,transit,2026-10-07 08:30
-500251950,NUS College,46,transit,2026-10-07 08:30
-500251950,NUS Graduate School,54,transit,2026-10-07 08:30
-500251950,School of Continuing and Lifelong Education,50,transit,2026-10-07 08:30
-500251950,Faculty of Science,56,transit,2026-10-07 08:30
-500251950,School of Computing,53,transit,2026-10-07 08:30
-500251950,Saw Swee Hock School of Public Health,56,transit,2026-10-07 08:30
-500251950,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
 500252241,NUS Business School,69,transit,2026-10-07 08:30
 500252241,College of Design and Engineering,76,transit,2026-10-07 08:30
 500252241,Faculty of Dentistry,62,transit,2026-10-07 08:30
@@ -5055,86 +3327,6 @@ listing_id,faculty,minutes,mode,departure
 500252288,School of Computing,27,transit,2026-10-07 08:30
 500252288,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
 500252288,Yong Siew Toh Conservatory of Music,22,transit,2026-10-07 08:30
-500252501,NUS Business School,47,transit,2026-10-07 08:30
-500252501,College of Design and Engineering,41,transit,2026-10-07 08:30
-500252501,Faculty of Dentistry,40,transit,2026-10-07 08:30
-500252501,Duke-NUS Medical School,49,transit,2026-10-07 08:30
-500252501,Faculty of Arts and Social Sciences,41,transit,2026-10-07 08:30
-500252501,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-500252501,Faculty of Law,34,transit,2026-10-07 08:30
-500252501,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-500252501,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-500252501,NUS College,34,transit,2026-10-07 08:30
-500252501,NUS Graduate School,39,transit,2026-10-07 08:30
-500252501,School of Continuing and Lifelong Education,38,transit,2026-10-07 08:30
-500252501,Faculty of Science,45,transit,2026-10-07 08:30
-500252501,School of Computing,41,transit,2026-10-07 08:30
-500252501,Saw Swee Hock School of Public Health,45,transit,2026-10-07 08:30
-500252501,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-500252556,NUS Business School,29,transit,2026-10-07 08:30
-500252556,College of Design and Engineering,39,transit,2026-10-07 08:30
-500252556,Faculty of Dentistry,25,transit,2026-10-07 08:30
-500252556,Duke-NUS Medical School,30,transit,2026-10-07 08:30
-500252556,Faculty of Arts and Social Sciences,33,transit,2026-10-07 08:30
-500252556,NUS Institute of Systems Science,34,transit,2026-10-07 08:30
-500252556,Faculty of Law,39,transit,2026-10-07 08:30
-500252556,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500252556,Yong Loo Lin School of Medicine,25,transit,2026-10-07 08:30
-500252556,NUS College,35,transit,2026-10-07 08:30
-500252556,NUS Graduate School,30,transit,2026-10-07 08:30
-500252556,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-500252556,Faculty of Science,30,transit,2026-10-07 08:30
-500252556,School of Computing,35,transit,2026-10-07 08:30
-500252556,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
-500252556,Yong Siew Toh Conservatory of Music,40,transit,2026-10-07 08:30
-500252868,NUS Business School,42,transit,2026-10-07 08:30
-500252868,College of Design and Engineering,44,transit,2026-10-07 08:30
-500252868,Faculty of Dentistry,27,transit,2026-10-07 08:30
-500252868,Duke-NUS Medical School,13,walk,2026-10-07 08:30
-500252868,Faculty of Arts and Social Sciences,44,transit,2026-10-07 08:30
-500252868,NUS Institute of Systems Science,48,transit,2026-10-07 08:30
-500252868,Faculty of Law,40,transit,2026-10-07 08:30
-500252868,Lee Kuan Yew School of Public Policy,52,transit,2026-10-07 08:30
-500252868,Yong Loo Lin School of Medicine,28,transit,2026-10-07 08:30
-500252868,NUS College,37,transit,2026-10-07 08:30
-500252868,NUS Graduate School,32,transit,2026-10-07 08:30
-500252868,School of Continuing and Lifelong Education,43,transit,2026-10-07 08:30
-500252868,Faculty of Science,34,transit,2026-10-07 08:30
-500252868,School of Computing,46,transit,2026-10-07 08:30
-500252868,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
-500252868,Yong Siew Toh Conservatory of Music,41,transit,2026-10-07 08:30
-500253046,NUS Business School,20,transit,2026-10-07 08:30
-500253046,College of Design and Engineering,21,transit,2026-10-07 08:30
-500253046,Faculty of Dentistry,27,transit,2026-10-07 08:30
-500253046,Duke-NUS Medical School,45,transit,2026-10-07 08:30
-500253046,Faculty of Arts and Social Sciences,22,transit,2026-10-07 08:30
-500253046,NUS Institute of Systems Science,31,transit,2026-10-07 08:30
-500253046,Faculty of Law,22,transit,2026-10-07 08:30
-500253046,Lee Kuan Yew School of Public Policy,49,transit,2026-10-07 08:30
-500253046,Yong Loo Lin School of Medicine,28,transit,2026-10-07 08:30
-500253046,NUS College,18,transit,2026-10-07 08:30
-500253046,NUS Graduate School,27,transit,2026-10-07 08:30
-500253046,School of Continuing and Lifelong Education,23,transit,2026-10-07 08:30
-500253046,Faculty of Science,29,transit,2026-10-07 08:30
-500253046,School of Computing,27,transit,2026-10-07 08:30
-500253046,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
-500253046,Yong Siew Toh Conservatory of Music,22,transit,2026-10-07 08:30
-500253188,NUS Business School,80,transit,2026-10-07 08:30
-500253188,College of Design and Engineering,77,transit,2026-10-07 08:30
-500253188,Faculty of Dentistry,73,transit,2026-10-07 08:30
-500253188,Duke-NUS Medical School,61,transit,2026-10-07 08:30
-500253188,Faculty of Arts and Social Sciences,76,transit,2026-10-07 08:30
-500253188,NUS Institute of Systems Science,87,transit,2026-10-07 08:30
-500253188,Faculty of Law,69,transit,2026-10-07 08:30
-500253188,Lee Kuan Yew School of Public Policy,59,transit,2026-10-07 08:30
-500253188,Yong Loo Lin School of Medicine,73,transit,2026-10-07 08:30
-500253188,NUS College,68,transit,2026-10-07 08:30
-500253188,NUS Graduate School,69,transit,2026-10-07 08:30
-500253188,School of Continuing and Lifelong Education,76,transit,2026-10-07 08:30
-500253188,Faculty of Science,79,transit,2026-10-07 08:30
-500253188,School of Computing,81,transit,2026-10-07 08:30
-500253188,Saw Swee Hock School of Public Health,78,transit,2026-10-07 08:30
-500253188,Yong Siew Toh Conservatory of Music,80,transit,2026-10-07 08:30
 500253412,NUS Business School,68,transit,2026-10-07 08:30
 500253412,College of Design and Engineering,64,transit,2026-10-07 08:30
 500253412,Faculty of Dentistry,60,transit,2026-10-07 08:30
@@ -5151,70 +3343,6 @@ listing_id,faculty,minutes,mode,departure
 500253412,School of Computing,59,transit,2026-10-07 08:30
 500253412,Saw Swee Hock School of Public Health,65,transit,2026-10-07 08:30
 500253412,Yong Siew Toh Conservatory of Music,55,transit,2026-10-07 08:30
-500253628,NUS Business School,23,transit,2026-10-07 08:30
-500253628,College of Design and Engineering,36,transit,2026-10-07 08:30
-500253628,Faculty of Dentistry,25,transit,2026-10-07 08:30
-500253628,Duke-NUS Medical School,42,transit,2026-10-07 08:30
-500253628,Faculty of Arts and Social Sciences,27,transit,2026-10-07 08:30
-500253628,NUS Institute of Systems Science,32,transit,2026-10-07 08:30
-500253628,Faculty of Law,38,transit,2026-10-07 08:30
-500253628,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500253628,Yong Loo Lin School of Medicine,26,transit,2026-10-07 08:30
-500253628,NUS College,38,transit,2026-10-07 08:30
-500253628,NUS Graduate School,35,transit,2026-10-07 08:30
-500253628,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-500253628,Faculty of Science,31,transit,2026-10-07 08:30
-500253628,School of Computing,30,transit,2026-10-07 08:30
-500253628,Saw Swee Hock School of Public Health,31,transit,2026-10-07 08:30
-500253628,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-500253719,NUS Business School,83,transit,2026-10-07 08:30
-500253719,College of Design and Engineering,85,transit,2026-10-07 08:30
-500253719,Faculty of Dentistry,65,transit,2026-10-07 08:30
-500253719,Duke-NUS Medical School,62,transit,2026-10-07 08:30
-500253719,Faculty of Arts and Social Sciences,86,transit,2026-10-07 08:30
-500253719,NUS Institute of Systems Science,86,transit,2026-10-07 08:30
-500253719,Faculty of Law,86,transit,2026-10-07 08:30
-500253719,Lee Kuan Yew School of Public Policy,63,transit,2026-10-07 08:30
-500253719,Yong Loo Lin School of Medicine,66,transit,2026-10-07 08:30
-500253719,NUS College,85,transit,2026-10-07 08:30
-500253719,NUS Graduate School,81,transit,2026-10-07 08:30
-500253719,School of Continuing and Lifelong Education,87,transit,2026-10-07 08:30
-500253719,Faculty of Science,71,transit,2026-10-07 08:30
-500253719,School of Computing,88,transit,2026-10-07 08:30
-500253719,Saw Swee Hock School of Public Health,70,transit,2026-10-07 08:30
-500253719,Yong Siew Toh Conservatory of Music,92,transit,2026-10-07 08:30
-500253731,NUS Business School,39,transit,2026-10-07 08:30
-500253731,College of Design and Engineering,37,transit,2026-10-07 08:30
-500253731,Faculty of Dentistry,28,transit,2026-10-07 08:30
-500253731,Duke-NUS Medical School,31,transit,2026-10-07 08:30
-500253731,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-500253731,NUS Institute of Systems Science,45,transit,2026-10-07 08:30
-500253731,Faculty of Law,30,transit,2026-10-07 08:30
-500253731,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-500253731,Yong Loo Lin School of Medicine,28,transit,2026-10-07 08:30
-500253731,NUS College,30,transit,2026-10-07 08:30
-500253731,NUS Graduate School,25,transit,2026-10-07 08:30
-500253731,School of Continuing and Lifelong Education,29,transit,2026-10-07 08:30
-500253731,Faculty of Science,27,transit,2026-10-07 08:30
-500253731,School of Computing,32,transit,2026-10-07 08:30
-500253731,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
-500253731,Yong Siew Toh Conservatory of Music,32,transit,2026-10-07 08:30
-500254382,NUS Business School,72,transit,2026-10-07 08:30
-500254382,College of Design and Engineering,92,transit,2026-10-07 08:30
-500254382,Faculty of Dentistry,55,transit,2026-10-07 08:30
-500254382,Duke-NUS Medical School,58,transit,2026-10-07 08:30
-500254382,Faculty of Arts and Social Sciences,74,transit,2026-10-07 08:30
-500254382,NUS Institute of Systems Science,78,transit,2026-10-07 08:30
-500254382,Faculty of Law,72,transit,2026-10-07 08:30
-500254382,Lee Kuan Yew School of Public Policy,57,transit,2026-10-07 08:30
-500254382,Yong Loo Lin School of Medicine,56,transit,2026-10-07 08:30
-500254382,NUS College,69,transit,2026-10-07 08:30
-500254382,NUS Graduate School,67,transit,2026-10-07 08:30
-500254382,School of Continuing and Lifelong Education,71,transit,2026-10-07 08:30
-500254382,Faculty of Science,61,transit,2026-10-07 08:30
-500254382,School of Computing,74,transit,2026-10-07 08:30
-500254382,Saw Swee Hock School of Public Health,61,transit,2026-10-07 08:30
-500254382,Yong Siew Toh Conservatory of Music,76,transit,2026-10-07 08:30
 500255361,NUS Business School,46,transit,2026-10-07 08:30
 500255361,College of Design and Engineering,48,transit,2026-10-07 08:30
 500255361,Faculty of Dentistry,37,transit,2026-10-07 08:30
@@ -5247,54 +3375,6 @@ listing_id,faculty,minutes,mode,departure
 500255958,School of Computing,34,transit,2026-10-07 08:30
 500255958,Saw Swee Hock School of Public Health,32,transit,2026-10-07 08:30
 500255958,Yong Siew Toh Conservatory of Music,30,transit,2026-10-07 08:30
-500256563,NUS Business School,49,transit,2026-10-07 08:30
-500256563,College of Design and Engineering,57,transit,2026-10-07 08:30
-500256563,Faculty of Dentistry,41,transit,2026-10-07 08:30
-500256563,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-500256563,Faculty of Arts and Social Sciences,52,transit,2026-10-07 08:30
-500256563,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-500256563,Faculty of Law,52,transit,2026-10-07 08:30
-500256563,Lee Kuan Yew School of Public Policy,38,transit,2026-10-07 08:30
-500256563,Yong Loo Lin School of Medicine,41,transit,2026-10-07 08:30
-500256563,NUS College,51,transit,2026-10-07 08:30
-500256563,NUS Graduate School,45,transit,2026-10-07 08:30
-500256563,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-500256563,Faculty of Science,45,transit,2026-10-07 08:30
-500256563,School of Computing,52,transit,2026-10-07 08:30
-500256563,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-500256563,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-500256724,NUS Business School,38,transit,2026-10-07 08:30
-500256724,College of Design and Engineering,36,transit,2026-10-07 08:30
-500256724,Faculty of Dentistry,24,transit,2026-10-07 08:30
-500256724,Duke-NUS Medical School,22,transit,2026-10-07 08:30
-500256724,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-500256724,NUS Institute of Systems Science,43,transit,2026-10-07 08:30
-500256724,Faculty of Law,30,transit,2026-10-07 08:30
-500256724,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-500256724,Yong Loo Lin School of Medicine,25,transit,2026-10-07 08:30
-500256724,NUS College,29,transit,2026-10-07 08:30
-500256724,NUS Graduate School,28,transit,2026-10-07 08:30
-500256724,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-500256724,Faculty of Science,30,transit,2026-10-07 08:30
-500256724,School of Computing,40,transit,2026-10-07 08:30
-500256724,Saw Swee Hock School of Public Health,30,transit,2026-10-07 08:30
-500256724,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
-500256760,NUS Business School,35,transit,2026-10-07 08:30
-500256760,College of Design and Engineering,35,transit,2026-10-07 08:30
-500256760,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500256760,Duke-NUS Medical School,53,transit,2026-10-07 08:30
-500256760,Faculty of Arts and Social Sciences,36,transit,2026-10-07 08:30
-500256760,NUS Institute of Systems Science,45,transit,2026-10-07 08:30
-500256760,Faculty of Law,34,transit,2026-10-07 08:30
-500256760,Lee Kuan Yew School of Public Policy,62,transit,2026-10-07 08:30
-500256760,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-500256760,NUS College,30,transit,2026-10-07 08:30
-500256760,NUS Graduate School,35,transit,2026-10-07 08:30
-500256760,School of Continuing and Lifelong Education,37,transit,2026-10-07 08:30
-500256760,Faculty of Science,37,transit,2026-10-07 08:30
-500256760,School of Computing,41,transit,2026-10-07 08:30
-500256760,Saw Swee Hock School of Public Health,39,transit,2026-10-07 08:30
-500256760,Yong Siew Toh Conservatory of Music,36,transit,2026-10-07 08:30
 500256983,NUS Business School,37,transit,2026-10-07 08:30
 500256983,College of Design and Engineering,30,transit,2026-10-07 08:30
 500256983,Faculty of Dentistry,40,transit,2026-10-07 08:30
@@ -5327,38 +3407,6 @@ listing_id,faculty,minutes,mode,departure
 500257072,School of Computing,43,transit,2026-10-07 08:30
 500257072,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
 500257072,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
-500257137,NUS Business School,77,transit,2026-10-07 08:30
-500257137,College of Design and Engineering,90,transit,2026-10-07 08:30
-500257137,Faculty of Dentistry,57,transit,2026-10-07 08:30
-500257137,Duke-NUS Medical School,54,transit,2026-10-07 08:30
-500257137,Faculty of Arts and Social Sciences,83,transit,2026-10-07 08:30
-500257137,NUS Institute of Systems Science,78,transit,2026-10-07 08:30
-500257137,Faculty of Law,79,transit,2026-10-07 08:30
-500257137,Lee Kuan Yew School of Public Policy,59,transit,2026-10-07 08:30
-500257137,Yong Loo Lin School of Medicine,58,transit,2026-10-07 08:30
-500257137,NUS College,79,transit,2026-10-07 08:30
-500257137,NUS Graduate School,75,transit,2026-10-07 08:30
-500257137,School of Continuing and Lifelong Education,81,transit,2026-10-07 08:30
-500257137,Faculty of Science,69,transit,2026-10-07 08:30
-500257137,School of Computing,84,transit,2026-10-07 08:30
-500257137,Saw Swee Hock School of Public Health,62,transit,2026-10-07 08:30
-500257137,Yong Siew Toh Conservatory of Music,86,transit,2026-10-07 08:30
-500257274,NUS Business School,51,transit,2026-10-07 08:30
-500257274,College of Design and Engineering,61,transit,2026-10-07 08:30
-500257274,Faculty of Dentistry,46,transit,2026-10-07 08:30
-500257274,Duke-NUS Medical School,36,transit,2026-10-07 08:30
-500257274,Faculty of Arts and Social Sciences,55,transit,2026-10-07 08:30
-500257274,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-500257274,Faculty of Law,57,transit,2026-10-07 08:30
-500257274,Lee Kuan Yew School of Public Policy,46,transit,2026-10-07 08:30
-500257274,Yong Loo Lin School of Medicine,46,transit,2026-10-07 08:30
-500257274,NUS College,57,transit,2026-10-07 08:30
-500257274,NUS Graduate School,55,transit,2026-10-07 08:30
-500257274,School of Continuing and Lifelong Education,54,transit,2026-10-07 08:30
-500257274,Faculty of Science,51,transit,2026-10-07 08:30
-500257274,School of Computing,57,transit,2026-10-07 08:30
-500257274,Saw Swee Hock School of Public Health,51,transit,2026-10-07 08:30
-500257274,Yong Siew Toh Conservatory of Music,61,transit,2026-10-07 08:30
 500257322,NUS Business School,43,transit,2026-10-07 08:30
 500257322,College of Design and Engineering,45,transit,2026-10-07 08:30
 500257322,Faculty of Dentistry,28,transit,2026-10-07 08:30
@@ -5391,54 +3439,6 @@ listing_id,faculty,minutes,mode,departure
 500257364,School of Computing,39,transit,2026-10-07 08:30
 500257364,Saw Swee Hock School of Public Health,33,transit,2026-10-07 08:30
 500257364,Yong Siew Toh Conservatory of Music,43,transit,2026-10-07 08:30
-500257377,NUS Business School,61,transit,2026-10-07 08:30
-500257377,College of Design and Engineering,53,transit,2026-10-07 08:30
-500257377,Faculty of Dentistry,52,transit,2026-10-07 08:30
-500257377,Duke-NUS Medical School,61,transit,2026-10-07 08:30
-500257377,Faculty of Arts and Social Sciences,53,transit,2026-10-07 08:30
-500257377,NUS Institute of Systems Science,65,transit,2026-10-07 08:30
-500257377,Faculty of Law,45,transit,2026-10-07 08:30
-500257377,Lee Kuan Yew School of Public Policy,50,transit,2026-10-07 08:30
-500257377,Yong Loo Lin School of Medicine,53,transit,2026-10-07 08:30
-500257377,NUS College,45,transit,2026-10-07 08:30
-500257377,NUS Graduate School,52,transit,2026-10-07 08:30
-500257377,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-500257377,Faculty of Science,54,transit,2026-10-07 08:30
-500257377,School of Computing,52,transit,2026-10-07 08:30
-500257377,Saw Swee Hock School of Public Health,56,transit,2026-10-07 08:30
-500257377,Yong Siew Toh Conservatory of Music,48,transit,2026-10-07 08:30
-500257493,NUS Business School,27,transit,2026-10-07 08:30
-500257493,College of Design and Engineering,39,transit,2026-10-07 08:30
-500257493,Faculty of Dentistry,23,transit,2026-10-07 08:30
-500257493,Duke-NUS Medical School,32,transit,2026-10-07 08:30
-500257493,Faculty of Arts and Social Sciences,31,transit,2026-10-07 08:30
-500257493,NUS Institute of Systems Science,32,transit,2026-10-07 08:30
-500257493,Faculty of Law,37,transit,2026-10-07 08:30
-500257493,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-500257493,Yong Loo Lin School of Medicine,24,transit,2026-10-07 08:30
-500257493,NUS College,34,transit,2026-10-07 08:30
-500257493,NUS Graduate School,29,transit,2026-10-07 08:30
-500257493,School of Continuing and Lifelong Education,33,transit,2026-10-07 08:30
-500257493,Faculty of Science,29,transit,2026-10-07 08:30
-500257493,School of Computing,34,transit,2026-10-07 08:30
-500257493,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
-500257493,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-500257502,NUS Business School,46,transit,2026-10-07 08:30
-500257502,College of Design and Engineering,43,transit,2026-10-07 08:30
-500257502,Faculty of Dentistry,45,transit,2026-10-07 08:30
-500257502,Duke-NUS Medical School,55,transit,2026-10-07 08:30
-500257502,Faculty of Arts and Social Sciences,43,transit,2026-10-07 08:30
-500257502,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-500257502,Faculty of Law,37,transit,2026-10-07 08:30
-500257502,Lee Kuan Yew School of Public Policy,61,transit,2026-10-07 08:30
-500257502,Yong Loo Lin School of Medicine,45,transit,2026-10-07 08:30
-500257502,NUS College,36,transit,2026-10-07 08:30
-500257502,NUS Graduate School,48,transit,2026-10-07 08:30
-500257502,School of Continuing and Lifelong Education,47,transit,2026-10-07 08:30
-500257502,Faculty of Science,50,transit,2026-10-07 08:30
-500257502,School of Computing,50,transit,2026-10-07 08:30
-500257502,Saw Swee Hock School of Public Health,50,transit,2026-10-07 08:30
-500257502,Yong Siew Toh Conservatory of Music,49,transit,2026-10-07 08:30
 500257615,NUS Business School,37,transit,2026-10-07 08:30
 500257615,College of Design and Engineering,34,transit,2026-10-07 08:30
 500257615,Faculty of Dentistry,27,transit,2026-10-07 08:30
@@ -5487,86 +3487,6 @@ listing_id,faculty,minutes,mode,departure
 500257827,School of Computing,58,transit,2026-10-07 08:30
 500257827,Saw Swee Hock School of Public Health,49,transit,2026-10-07 08:30
 500257827,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
-500257856,NUS Business School,45,transit,2026-10-07 08:30
-500257856,College of Design and Engineering,56,transit,2026-10-07 08:30
-500257856,Faculty of Dentistry,37,transit,2026-10-07 08:30
-500257856,Duke-NUS Medical School,38,transit,2026-10-07 08:30
-500257856,Faculty of Arts and Social Sciences,50,transit,2026-10-07 08:30
-500257856,NUS Institute of Systems Science,50,transit,2026-10-07 08:30
-500257856,Faculty of Law,46,transit,2026-10-07 08:30
-500257856,Lee Kuan Yew School of Public Policy,39,transit,2026-10-07 08:30
-500257856,Yong Loo Lin School of Medicine,37,transit,2026-10-07 08:30
-500257856,NUS College,46,transit,2026-10-07 08:30
-500257856,NUS Graduate School,45,transit,2026-10-07 08:30
-500257856,School of Continuing and Lifelong Education,49,transit,2026-10-07 08:30
-500257856,Faculty of Science,43,transit,2026-10-07 08:30
-500257856,School of Computing,52,transit,2026-10-07 08:30
-500257856,Saw Swee Hock School of Public Health,43,transit,2026-10-07 08:30
-500257856,Yong Siew Toh Conservatory of Music,50,transit,2026-10-07 08:30
-500257870,NUS Business School,39,transit,2026-10-07 08:30
-500257870,College of Design and Engineering,32,transit,2026-10-07 08:30
-500257870,Faculty of Dentistry,22,transit,2026-10-07 08:30
-500257870,Duke-NUS Medical School,28,transit,2026-10-07 08:30
-500257870,Faculty of Arts and Social Sciences,30,transit,2026-10-07 08:30
-500257870,NUS Institute of Systems Science,37,transit,2026-10-07 08:30
-500257870,Faculty of Law,24,transit,2026-10-07 08:30
-500257870,Lee Kuan Yew School of Public Policy,37,transit,2026-10-07 08:30
-500257870,Yong Loo Lin School of Medicine,25,transit,2026-10-07 08:30
-500257870,NUS College,24,transit,2026-10-07 08:30
-500257870,NUS Graduate School,22,transit,2026-10-07 08:30
-500257870,School of Continuing and Lifelong Education,27,transit,2026-10-07 08:30
-500257870,Faculty of Science,25,transit,2026-10-07 08:30
-500257870,School of Computing,30,transit,2026-10-07 08:30
-500257870,Saw Swee Hock School of Public Health,26,transit,2026-10-07 08:30
-500257870,Yong Siew Toh Conservatory of Music,34,transit,2026-10-07 08:30
-500257888,NUS Business School,43,transit,2026-10-07 08:30
-500257888,College of Design and Engineering,38,transit,2026-10-07 08:30
-500257888,Faculty of Dentistry,40,transit,2026-10-07 08:30
-500257888,Duke-NUS Medical School,52,transit,2026-10-07 08:30
-500257888,Faculty of Arts and Social Sciences,38,transit,2026-10-07 08:30
-500257888,NUS Institute of Systems Science,51,transit,2026-10-07 08:30
-500257888,Faculty of Law,31,transit,2026-10-07 08:30
-500257888,Lee Kuan Yew School of Public Policy,37,transit,2026-10-07 08:30
-500257888,Yong Loo Lin School of Medicine,40,transit,2026-10-07 08:30
-500257888,NUS College,31,transit,2026-10-07 08:30
-500257888,NUS Graduate School,38,transit,2026-10-07 08:30
-500257888,School of Continuing and Lifelong Education,35,transit,2026-10-07 08:30
-500257888,Faculty of Science,45,transit,2026-10-07 08:30
-500257888,School of Computing,38,transit,2026-10-07 08:30
-500257888,Saw Swee Hock School of Public Health,45,transit,2026-10-07 08:30
-500257888,Yong Siew Toh Conservatory of Music,33,transit,2026-10-07 08:30
-500258257,NUS Business School,50,transit,2026-10-07 08:30
-500258257,College of Design and Engineering,53,transit,2026-10-07 08:30
-500258257,Faculty of Dentistry,41,transit,2026-10-07 08:30
-500258257,Duke-NUS Medical School,31,transit,2026-10-07 08:30
-500258257,Faculty of Arts and Social Sciences,54,transit,2026-10-07 08:30
-500258257,NUS Institute of Systems Science,55,transit,2026-10-07 08:30
-500258257,Faculty of Law,48,transit,2026-10-07 08:30
-500258257,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-500258257,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-500258257,NUS College,47,transit,2026-10-07 08:30
-500258257,NUS Graduate School,47,transit,2026-10-07 08:30
-500258257,School of Continuing and Lifelong Education,51,transit,2026-10-07 08:30
-500258257,Faculty of Science,47,transit,2026-10-07 08:30
-500258257,School of Computing,54,transit,2026-10-07 08:30
-500258257,Saw Swee Hock School of Public Health,47,transit,2026-10-07 08:30
-500258257,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
-500258426,NUS Business School,45,transit,2026-10-07 08:30
-500258426,College of Design and Engineering,52,transit,2026-10-07 08:30
-500258426,Faculty of Dentistry,41,transit,2026-10-07 08:30
-500258426,Duke-NUS Medical School,27,transit,2026-10-07 08:30
-500258426,Faculty of Arts and Social Sciences,51,transit,2026-10-07 08:30
-500258426,NUS Institute of Systems Science,50,transit,2026-10-07 08:30
-500258426,Faculty of Law,47,transit,2026-10-07 08:30
-500258426,Lee Kuan Yew School of Public Policy,43,transit,2026-10-07 08:30
-500258426,Yong Loo Lin School of Medicine,42,transit,2026-10-07 08:30
-500258426,NUS College,46,transit,2026-10-07 08:30
-500258426,NUS Graduate School,48,transit,2026-10-07 08:30
-500258426,School of Continuing and Lifelong Education,48,transit,2026-10-07 08:30
-500258426,Faculty of Science,47,transit,2026-10-07 08:30
-500258426,School of Computing,51,transit,2026-10-07 08:30
-500258426,Saw Swee Hock School of Public Health,46,transit,2026-10-07 08:30
-500258426,Yong Siew Toh Conservatory of Music,53,transit,2026-10-07 08:30
 500258553,NUS Business School,27,transit,2026-10-07 08:30
 500258553,College of Design and Engineering,39,transit,2026-10-07 08:30
 500258553,Faculty of Dentistry,23,transit,2026-10-07 08:30
@@ -5583,38 +3503,6 @@ listing_id,faculty,minutes,mode,departure
 500258553,School of Computing,34,transit,2026-10-07 08:30
 500258553,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
 500258553,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-500258646,NUS Business School,51,transit,2026-10-07 08:30
-500258646,College of Design and Engineering,59,transit,2026-10-07 08:30
-500258646,Faculty of Dentistry,42,transit,2026-10-07 08:30
-500258646,Duke-NUS Medical School,33,transit,2026-10-07 08:30
-500258646,Faculty of Arts and Social Sciences,58,transit,2026-10-07 08:30
-500258646,NUS Institute of Systems Science,56,transit,2026-10-07 08:30
-500258646,Faculty of Law,51,transit,2026-10-07 08:30
-500258646,Lee Kuan Yew School of Public Policy,41,transit,2026-10-07 08:30
-500258646,Yong Loo Lin School of Medicine,43,transit,2026-10-07 08:30
-500258646,NUS College,51,transit,2026-10-07 08:30
-500258646,NUS Graduate School,47,transit,2026-10-07 08:30
-500258646,School of Continuing and Lifelong Education,50,transit,2026-10-07 08:30
-500258646,Faculty of Science,48,transit,2026-10-07 08:30
-500258646,School of Computing,54,transit,2026-10-07 08:30
-500258646,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-500258646,Yong Siew Toh Conservatory of Music,54,transit,2026-10-07 08:30
-500258722,NUS Business School,36,transit,2026-10-07 08:30
-500258722,College of Design and Engineering,30,transit,2026-10-07 08:30
-500258722,Faculty of Dentistry,37,transit,2026-10-07 08:30
-500258722,Duke-NUS Medical School,45,transit,2026-10-07 08:30
-500258722,Faculty of Arts and Social Sciences,29,transit,2026-10-07 08:30
-500258722,NUS Institute of Systems Science,47,transit,2026-10-07 08:30
-500258722,Faculty of Law,22,transit,2026-10-07 08:30
-500258722,Lee Kuan Yew School of Public Policy,34,transit,2026-10-07 08:30
-500258722,Yong Loo Lin School of Medicine,38,transit,2026-10-07 08:30
-500258722,NUS College,21,transit,2026-10-07 08:30
-500258722,NUS Graduate School,32,transit,2026-10-07 08:30
-500258722,School of Continuing and Lifelong Education,25,transit,2026-10-07 08:30
-500258722,Faculty of Science,43,transit,2026-10-07 08:30
-500258722,School of Computing,29,transit,2026-10-07 08:30
-500258722,Saw Swee Hock School of Public Health,40,transit,2026-10-07 08:30
-500258722,Yong Siew Toh Conservatory of Music,24,transit,2026-10-07 08:30
 500258769,NUS Business School,27,transit,2026-10-07 08:30
 500258769,College of Design and Engineering,39,transit,2026-10-07 08:30
 500258769,Faculty of Dentistry,23,transit,2026-10-07 08:30
@@ -5631,22 +3519,6 @@ listing_id,faculty,minutes,mode,departure
 500258769,School of Computing,34,transit,2026-10-07 08:30
 500258769,Saw Swee Hock School of Public Health,29,transit,2026-10-07 08:30
 500258769,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-500258825,NUS Business School,42,transit,2026-10-07 08:30
-500258825,College of Design and Engineering,50,transit,2026-10-07 08:30
-500258825,Faculty of Dentistry,36,transit,2026-10-07 08:30
-500258825,Duke-NUS Medical School,41,transit,2026-10-07 08:30
-500258825,Faculty of Arts and Social Sciences,45,transit,2026-10-07 08:30
-500258825,NUS Institute of Systems Science,47,transit,2026-10-07 08:30
-500258825,Faculty of Law,40,transit,2026-10-07 08:30
-500258825,Lee Kuan Yew School of Public Policy,35,transit,2026-10-07 08:30
-500258825,Yong Loo Lin School of Medicine,33,transit,2026-10-07 08:30
-500258825,NUS College,40,transit,2026-10-07 08:30
-500258825,NUS Graduate School,37,transit,2026-10-07 08:30
-500258825,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-500258825,Faculty of Science,39,transit,2026-10-07 08:30
-500258825,School of Computing,44,transit,2026-10-07 08:30
-500258825,Saw Swee Hock School of Public Health,41,transit,2026-10-07 08:30
-500258825,Yong Siew Toh Conservatory of Music,45,transit,2026-10-07 08:30
 60005328,NUS Business School,19,transit,2026-10-07 08:30
 60005328,College of Design and Engineering,22,transit,2026-10-07 08:30
 60005328,Faculty of Dentistry,28,transit,2026-10-07 08:30
@@ -5743,22 +3615,6 @@ listing_id,faculty,minutes,mode,departure
 60103681,School of Computing,41,transit,2026-10-07 08:30
 60103681,Saw Swee Hock School of Public Health,35,transit,2026-10-07 08:30
 60103681,Yong Siew Toh Conservatory of Music,42,transit,2026-10-07 08:30
-60112279,NUS Business School,18,transit,2026-10-07 08:30
-60112279,College of Design and Engineering,15,transit,2026-10-07 08:30
-60112279,Faculty of Dentistry,20,transit,2026-10-07 08:30
-60112279,Duke-NUS Medical School,39,transit,2026-10-07 08:30
-60112279,Faculty of Arts and Social Sciences,15,transit,2026-10-07 08:30
-60112279,NUS Institute of Systems Science,29,transit,2026-10-07 08:30
-60112279,Faculty of Law,12,walk,2026-10-07 08:30
-60112279,Lee Kuan Yew School of Public Policy,44,transit,2026-10-07 08:30
-60112279,Yong Loo Lin School of Medicine,21,transit,2026-10-07 08:30
-60112279,NUS College,11,transit,2026-10-07 08:30
-60112279,NUS Graduate School,19,transit,2026-10-07 08:30
-60112279,School of Continuing and Lifelong Education,16,transit,2026-10-07 08:30
-60112279,Faculty of Science,21,transit,2026-10-07 08:30
-60112279,School of Computing,20,transit,2026-10-07 08:30
-60112279,Saw Swee Hock School of Public Health,23,transit,2026-10-07 08:30
-60112279,Yong Siew Toh Conservatory of Music,16,transit,2026-10-07 08:30
 60115868,NUS Business School,24,transit,2026-10-07 08:30
 60115868,College of Design and Engineering,20,transit,2026-10-07 08:30
 60115868,Faculty of Dentistry,25,transit,2026-10-07 08:30
@@ -5887,22 +3743,6 @@ listing_id,faculty,minutes,mode,departure
 60167487,School of Computing,44,transit,2026-10-07 08:30
 60167487,Saw Swee Hock School of Public Health,37,transit,2026-10-07 08:30
 60167487,Yong Siew Toh Conservatory of Music,46,transit,2026-10-07 08:30
-60173165,NUS Business School,45,transit,2026-10-07 08:30
-60173165,College of Design and Engineering,41,transit,2026-10-07 08:30
-60173165,Faculty of Dentistry,43,transit,2026-10-07 08:30
-60173165,Duke-NUS Medical School,51,transit,2026-10-07 08:30
-60173165,Faculty of Arts and Social Sciences,41,transit,2026-10-07 08:30
-60173165,NUS Institute of Systems Science,54,transit,2026-10-07 08:30
-60173165,Faculty of Law,35,transit,2026-10-07 08:30
-60173165,Lee Kuan Yew School of Public Policy,59,transit,2026-10-07 08:30
-60173165,Yong Loo Lin School of Medicine,44,transit,2026-10-07 08:30
-60173165,NUS College,35,transit,2026-10-07 08:30
-60173165,NUS Graduate School,44,transit,2026-10-07 08:30
-60173165,School of Continuing and Lifelong Education,41,transit,2026-10-07 08:30
-60173165,Faculty of Science,47,transit,2026-10-07 08:30
-60173165,School of Computing,44,transit,2026-10-07 08:30
-60173165,Saw Swee Hock School of Public Health,48,transit,2026-10-07 08:30
-60173165,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
 60186053,NUS Business School,38,transit,2026-10-07 08:30
 60186053,College of Design and Engineering,40,transit,2026-10-07 08:30
 60186053,Faculty of Dentistry,31,transit,2026-10-07 08:30
@@ -5967,38 +3807,6 @@ listing_id,faculty,minutes,mode,departure
 60191632,School of Computing,39,transit,2026-10-07 08:30
 60191632,Saw Swee Hock School of Public Health,38,transit,2026-10-07 08:30
 60191632,Yong Siew Toh Conservatory of Music,39,transit,2026-10-07 08:30
-60206353,NUS Business School,92,transit,2026-10-07 08:30
-60206353,College of Design and Engineering,92,transit,2026-10-07 08:30
-60206353,Faculty of Dentistry,81,transit,2026-10-07 08:30
-60206353,Duke-NUS Medical School,74,transit,2026-10-07 08:30
-60206353,Faculty of Arts and Social Sciences,96,transit,2026-10-07 08:30
-60206353,NUS Institute of Systems Science,97,transit,2026-10-07 08:30
-60206353,Faculty of Law,98,transit,2026-10-07 08:30
-60206353,Lee Kuan Yew School of Public Policy,103,transit,2026-10-07 08:30
-60206353,Yong Loo Lin School of Medicine,81,transit,2026-10-07 08:30
-60206353,NUS College,97,transit,2026-10-07 08:30
-60206353,NUS Graduate School,92,transit,2026-10-07 08:30
-60206353,School of Continuing and Lifelong Education,95,transit,2026-10-07 08:30
-60206353,Faculty of Science,95,transit,2026-10-07 08:30
-60206353,School of Computing,98,transit,2026-10-07 08:30
-60206353,Saw Swee Hock School of Public Health,96,transit,2026-10-07 08:30
-60206353,Yong Siew Toh Conservatory of Music,98,transit,2026-10-07 08:30
-60219353,NUS Business School,60,transit,2026-10-07 08:30
-60219353,College of Design and Engineering,68,transit,2026-10-07 08:30
-60219353,Faculty of Dentistry,50,transit,2026-10-07 08:30
-60219353,Duke-NUS Medical School,52,transit,2026-10-07 08:30
-60219353,Faculty of Arts and Social Sciences,63,transit,2026-10-07 08:30
-60219353,NUS Institute of Systems Science,65,transit,2026-10-07 08:30
-60219353,Faculty of Law,59,transit,2026-10-07 08:30
-60219353,Lee Kuan Yew School of Public Policy,52,transit,2026-10-07 08:30
-60219353,Yong Loo Lin School of Medicine,51,transit,2026-10-07 08:30
-60219353,NUS College,59,transit,2026-10-07 08:30
-60219353,NUS Graduate School,55,transit,2026-10-07 08:30
-60219353,School of Continuing and Lifelong Education,59,transit,2026-10-07 08:30
-60219353,Faculty of Science,58,transit,2026-10-07 08:30
-60219353,School of Computing,62,transit,2026-10-07 08:30
-60219353,Saw Swee Hock School of Public Health,59,transit,2026-10-07 08:30
-60219353,Yong Siew Toh Conservatory of Music,64,transit,2026-10-07 08:30
 60225922,NUS Business School,52,transit,2026-10-07 08:30
 60225922,College of Design and Engineering,48,transit,2026-10-07 08:30
 60225922,Faculty of Dentistry,45,transit,2026-10-07 08:30
@@ -7007,22 +4815,6 @@ listing_id,faculty,minutes,mode,departure
 25254608,NUS Graduate School,43,transit,2026-10-21 08:30
 25254608,School of Continuing and Lifelong Education,47,transit,2026-10-21 08:30
 25254608,NUS Institute of Systems Science,56,transit,2026-10-21 08:30
-25264046,NUS Business School,33,transit,2026-10-21 08:30
-25264046,School of Computing,40,transit,2026-10-21 08:30
-25264046,College of Design and Engineering,48,transit,2026-10-21 08:30
-25264046,Faculty of Arts and Social Sciences,44,transit,2026-10-21 08:30
-25264046,Faculty of Science,35,transit,2026-10-21 08:30
-25264046,Yong Loo Lin School of Medicine,30,transit,2026-10-21 08:30
-25264046,Faculty of Dentistry,29,transit,2026-10-21 08:30
-25264046,Saw Swee Hock School of Public Health,34,transit,2026-10-21 08:30
-25264046,Yong Siew Toh Conservatory of Music,47,transit,2026-10-21 08:30
-25264046,Faculty of Law,38,transit,2026-10-21 08:30
-25264046,Lee Kuan Yew School of Public Policy,48,transit,2026-10-21 08:30
-25264046,Duke-NUS Medical School,23,transit,2026-10-21 08:30
-25264046,NUS College,42,transit,2026-10-21 08:30
-25264046,NUS Graduate School,37,transit,2026-10-21 08:30
-25264046,School of Continuing and Lifelong Education,41,transit,2026-10-21 08:30
-25264046,NUS Institute of Systems Science,38,transit,2026-10-21 08:30
 25274661,NUS Business School,28,transit,2026-10-21 08:30
 25274661,School of Computing,21,transit,2026-10-21 08:30
 25274661,College of Design and Engineering,27,transit,2026-10-21 08:30
@@ -7151,22 +4943,6 @@ listing_id,faculty,minutes,mode,departure
 25625013,NUS Graduate School,18,transit,2026-10-21 08:30
 25625013,School of Continuing and Lifelong Education,22,transit,2026-10-21 08:30
 25625013,NUS Institute of Systems Science,31,transit,2026-10-21 08:30
-25626364,NUS Business School,40,transit,2026-10-21 08:30
-25626364,School of Computing,45,transit,2026-10-21 08:30
-25626364,College of Design and Engineering,46,transit,2026-10-21 08:30
-25626364,Faculty of Arts and Social Sciences,46,transit,2026-10-21 08:30
-25626364,Faculty of Science,40,transit,2026-10-21 08:30
-25626364,Yong Loo Lin School of Medicine,36,transit,2026-10-21 08:30
-25626364,Faculty of Dentistry,36,transit,2026-10-21 08:30
-25626364,Saw Swee Hock School of Public Health,41,transit,2026-10-21 08:30
-25626364,Yong Siew Toh Conservatory of Music,45,transit,2026-10-21 08:30
-25626364,Faculty of Law,40,transit,2026-10-21 08:30
-25626364,Lee Kuan Yew School of Public Policy,41,transit,2026-10-21 08:30
-25626364,Duke-NUS Medical School,22,transit,2026-10-21 08:30
-25626364,NUS College,39,transit,2026-10-21 08:30
-25626364,NUS Graduate School,38,transit,2026-10-21 08:30
-25626364,School of Continuing and Lifelong Education,42,transit,2026-10-21 08:30
-25626364,NUS Institute of Systems Science,45,transit,2026-10-21 08:30
 25634208,NUS Business School,9,transit,2026-10-21 08:30
 25634208,School of Computing,15,transit,2026-10-21 08:30
 25634208,College of Design and Engineering,14,walk,2026-10-21 08:30
@@ -7823,22 +5599,6 @@ listing_id,faculty,minutes,mode,departure
 500269414,NUS Graduate School,31,transit,2026-10-21 08:30
 500269414,School of Continuing and Lifelong Education,38,transit,2026-10-21 08:30
 500269414,NUS Institute of Systems Science,34,transit,2026-10-21 08:30
-500269589,NUS Business School,45,transit,2026-10-21 08:30
-500269589,School of Computing,50,transit,2026-10-21 08:30
-500269589,College of Design and Engineering,50,transit,2026-10-21 08:30
-500269589,Faculty of Arts and Social Sciences,51,transit,2026-10-21 08:30
-500269589,Faculty of Science,46,transit,2026-10-21 08:30
-500269589,Yong Loo Lin School of Medicine,41,transit,2026-10-21 08:30
-500269589,Faculty of Dentistry,40,transit,2026-10-21 08:30
-500269589,Saw Swee Hock School of Public Health,45,transit,2026-10-21 08:30
-500269589,Yong Siew Toh Conservatory of Music,52,transit,2026-10-21 08:30
-500269589,Faculty of Law,44,transit,2026-10-21 08:30
-500269589,Lee Kuan Yew School of Public Policy,38,transit,2026-10-21 08:30
-500269589,Duke-NUS Medical School,27,transit,2026-10-21 08:30
-500269589,NUS College,44,transit,2026-10-21 08:30
-500269589,NUS Graduate School,43,transit,2026-10-21 08:30
-500269589,School of Continuing and Lifelong Education,47,transit,2026-10-21 08:30
-500269589,NUS Institute of Systems Science,50,transit,2026-10-21 08:30
 500271597,NUS Business School,27,transit,2026-10-21 08:30
 500271597,School of Computing,23,transit,2026-10-21 08:30
 500271597,College of Design and Engineering,28,transit,2026-10-21 08:30
@@ -8079,22 +5839,6 @@ listing_id,faculty,minutes,mode,departure
 500279647,NUS Graduate School,43,transit,2026-10-21 08:30
 500279647,School of Continuing and Lifelong Education,47,transit,2026-10-21 08:30
 500279647,NUS Institute of Systems Science,48,transit,2026-10-21 08:30
-500279845,NUS Business School,52,transit,2026-10-21 08:30
-500279845,School of Computing,49,transit,2026-10-21 08:30
-500279845,College of Design and Engineering,48,transit,2026-10-21 08:30
-500279845,Faculty of Arts and Social Sciences,46,transit,2026-10-21 08:30
-500279845,Faculty of Science,49,transit,2026-10-21 08:30
-500279845,Yong Loo Lin School of Medicine,45,transit,2026-10-21 08:30
-500279845,Faculty of Dentistry,45,transit,2026-10-21 08:30
-500279845,Saw Swee Hock School of Public Health,50,transit,2026-10-21 08:30
-500279845,Yong Siew Toh Conservatory of Music,45,transit,2026-10-21 08:30
-500279845,Faculty of Law,39,transit,2026-10-21 08:30
-500279845,Lee Kuan Yew School of Public Policy,43,transit,2026-10-21 08:30
-500279845,Duke-NUS Medical School,63,transit,2026-10-21 08:30
-500279845,NUS College,38,transit,2026-10-21 08:30
-500279845,NUS Graduate School,47,transit,2026-10-21 08:30
-500279845,School of Continuing and Lifelong Education,46,transit,2026-10-21 08:30
-500279845,NUS Institute of Systems Science,59,transit,2026-10-21 08:30
 500279887,NUS Business School,42,transit,2026-10-21 08:30
 500279887,School of Computing,46,transit,2026-10-21 08:30
 500279887,College of Design and Engineering,46,transit,2026-10-21 08:30
@@ -8687,22 +6431,6 @@ listing_id,faculty,minutes,mode,departure
 500297052,NUS Graduate School,25,transit,2026-10-21 08:30
 500297052,School of Continuing and Lifelong Education,23,transit,2026-10-21 08:30
 500297052,NUS Institute of Systems Science,34,transit,2026-10-21 08:30
-500297734,NUS Business School,46,transit,2026-10-21 08:30
-500297734,School of Computing,45,transit,2026-10-21 08:30
-500297734,College of Design and Engineering,46,transit,2026-10-21 08:30
-500297734,Faculty of Arts and Social Sciences,46,transit,2026-10-21 08:30
-500297734,Faculty of Science,41,transit,2026-10-21 08:30
-500297734,Yong Loo Lin School of Medicine,37,transit,2026-10-21 08:30
-500297734,Faculty of Dentistry,36,transit,2026-10-21 08:30
-500297734,Saw Swee Hock School of Public Health,41,transit,2026-10-21 08:30
-500297734,Yong Siew Toh Conservatory of Music,46,transit,2026-10-21 08:30
-500297734,Faculty of Law,41,transit,2026-10-21 08:30
-500297734,Lee Kuan Yew School of Public Policy,50,transit,2026-10-21 08:30
-500297734,Duke-NUS Medical School,12,transit,2026-10-21 08:30
-500297734,NUS College,40,transit,2026-10-21 08:30
-500297734,NUS Graduate School,39,transit,2026-10-21 08:30
-500297734,School of Continuing and Lifelong Education,42,transit,2026-10-21 08:30
-500297734,NUS Institute of Systems Science,51,transit,2026-10-21 08:30
 500297851,NUS Business School,20,transit,2026-10-21 08:30
 500297851,School of Computing,27,transit,2026-10-21 08:30
 500297851,College of Design and Engineering,29,transit,2026-10-21 08:30
@@ -8735,22 +6463,6 @@ listing_id,faculty,minutes,mode,departure
 500297868,NUS Graduate School,16,transit,2026-10-21 08:30
 500297868,School of Continuing and Lifelong Education,20,transit,2026-10-21 08:30
 500297868,NUS Institute of Systems Science,32,transit,2026-10-21 08:30
-500297987,NUS Business School,39,transit,2026-10-21 08:30
-500297987,School of Computing,34,transit,2026-10-21 08:30
-500297987,College of Design and Engineering,33,transit,2026-10-21 08:30
-500297987,Faculty of Arts and Social Sciences,33,transit,2026-10-21 08:30
-500297987,Faculty of Science,44,transit,2026-10-21 08:30
-500297987,Yong Loo Lin School of Medicine,35,transit,2026-10-21 08:30
-500297987,Faculty of Dentistry,34,transit,2026-10-21 08:30
-500297987,Saw Swee Hock School of Public Health,44,transit,2026-10-21 08:30
-500297987,Yong Siew Toh Conservatory of Music,30,transit,2026-10-21 08:30
-500297987,Faculty of Law,27,transit,2026-10-21 08:30
-500297987,Lee Kuan Yew School of Public Policy,45,transit,2026-10-21 08:30
-500297987,Duke-NUS Medical School,48,transit,2026-10-21 08:30
-500297987,NUS College,27,transit,2026-10-21 08:30
-500297987,NUS Graduate School,38,transit,2026-10-21 08:30
-500297987,School of Continuing and Lifelong Education,31,transit,2026-10-21 08:30
-500297987,NUS Institute of Systems Science,49,transit,2026-10-21 08:30
 500298034,NUS Business School,13,transit,2026-10-21 08:30
 500298034,School of Computing,18,transit,2026-10-21 08:30
 500298034,College of Design and Engineering,17,walk,2026-10-21 08:30
@@ -9039,22 +6751,6 @@ listing_id,faculty,minutes,mode,departure
 60132995,NUS Graduate School,18,transit,2026-10-21 08:30
 60132995,School of Continuing and Lifelong Education,25,transit,2026-10-21 08:30
 60132995,NUS Institute of Systems Science,44,transit,2026-10-21 08:30
-60135875,NUS Business School,64,transit,2026-10-21 08:30
-60135875,School of Computing,57,transit,2026-10-21 08:30
-60135875,College of Design and Engineering,61,transit,2026-10-21 08:30
-60135875,Faculty of Arts and Social Sciences,57,transit,2026-10-21 08:30
-60135875,Faculty of Science,62,transit,2026-10-21 08:30
-60135875,Yong Loo Lin School of Medicine,57,transit,2026-10-21 08:30
-60135875,Faculty of Dentistry,56,transit,2026-10-21 08:30
-60135875,Saw Swee Hock School of Public Health,61,transit,2026-10-21 08:30
-60135875,Yong Siew Toh Conservatory of Music,52,transit,2026-10-21 08:30
-60135875,Faculty of Law,50,transit,2026-10-21 08:30
-60135875,Lee Kuan Yew School of Public Policy,55,transit,2026-10-21 08:30
-60135875,Duke-NUS Medical School,65,transit,2026-10-21 08:30
-60135875,NUS College,50,transit,2026-10-21 08:30
-60135875,NUS Graduate School,60,transit,2026-10-21 08:30
-60135875,School of Continuing and Lifelong Education,54,transit,2026-10-21 08:30
-60135875,NUS Institute of Systems Science,75,transit,2026-10-21 08:30
 60137887,NUS Business School,46,transit,2026-10-21 08:30
 60137887,School of Computing,48,transit,2026-10-21 08:30
 60137887,College of Design and Engineering,43,transit,2026-10-21 08:30
@@ -9071,38 +6767,6 @@ listing_id,faculty,minutes,mode,departure
 60137887,NUS Graduate School,38,transit,2026-10-21 08:30
 60137887,School of Continuing and Lifelong Education,45,transit,2026-10-21 08:30
 60137887,NUS Institute of Systems Science,49,transit,2026-10-21 08:30
-60141943,NUS Business School,26,transit,2026-10-21 08:30
-60141943,School of Computing,25,transit,2026-10-21 08:30
-60141943,College of Design and Engineering,30,transit,2026-10-21 08:30
-60141943,Faculty of Arts and Social Sciences,26,transit,2026-10-21 08:30
-60141943,Faculty of Science,20,transit,2026-10-21 08:30
-60141943,Yong Loo Lin School of Medicine,18,transit,2026-10-21 08:30
-60141943,Faculty of Dentistry,17,transit,2026-10-21 08:30
-60141943,Saw Swee Hock School of Public Health,22,transit,2026-10-21 08:30
-60141943,Yong Siew Toh Conservatory of Music,27,transit,2026-10-21 08:30
-60141943,Faculty of Law,21,transit,2026-10-21 08:30
-60141943,Lee Kuan Yew School of Public Policy,32,transit,2026-10-21 08:30
-60141943,Duke-NUS Medical School,29,transit,2026-10-21 08:30
-60141943,NUS College,21,transit,2026-10-21 08:30
-60141943,NUS Graduate School,18,transit,2026-10-21 08:30
-60141943,School of Continuing and Lifelong Education,22,transit,2026-10-21 08:30
-60141943,NUS Institute of Systems Science,31,transit,2026-10-21 08:30
-60152456,NUS Business School,36,transit,2026-10-21 08:30
-60152456,School of Computing,34,transit,2026-10-21 08:30
-60152456,College of Design and Engineering,29,transit,2026-10-21 08:30
-60152456,Faculty of Arts and Social Sciences,30,transit,2026-10-21 08:30
-60152456,Faculty of Science,40,transit,2026-10-21 08:30
-60152456,Yong Loo Lin School of Medicine,41,transit,2026-10-21 08:30
-60152456,Faculty of Dentistry,41,transit,2026-10-21 08:30
-60152456,Saw Swee Hock School of Public Health,42,transit,2026-10-21 08:30
-60152456,Yong Siew Toh Conservatory of Music,33,transit,2026-10-21 08:30
-60152456,Faculty of Law,28,transit,2026-10-21 08:30
-60152456,Lee Kuan Yew School of Public Policy,56,transit,2026-10-21 08:30
-60152456,Duke-NUS Medical School,49,transit,2026-10-21 08:30
-60152456,NUS College,28,transit,2026-10-21 08:30
-60152456,NUS Graduate School,42,transit,2026-10-21 08:30
-60152456,School of Continuing and Lifelong Education,31,transit,2026-10-21 08:30
-60152456,NUS Institute of Systems Science,47,transit,2026-10-21 08:30
 60162625,NUS Business School,41,transit,2026-10-21 08:30
 60162625,School of Computing,36,transit,2026-10-21 08:30
 60162625,College of Design and Engineering,33,transit,2026-10-21 08:30

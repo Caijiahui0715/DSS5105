@@ -1,7 +1,8 @@
+import time
 from datetime import datetime
 from uuid import uuid4
 import streamlit as st
-from adapters.backend_client import BackendClient, BackendError
+from adapters.backend_client import BackendClient, BackendError, TURN_TIMEOUT_SECONDS
 from adapters.configuration import backend_url
 from adapters.http_agent_api import recommendations
 from content.i18n import t, language
@@ -161,6 +162,31 @@ def busy(conv):
 
 def waiting_for_reply(conv):
     return bool(conv['messages']) and conv['messages'][-1]['role'] == 'user'
+
+
+def wait_for_reply(conv, sending=False):
+    """The agent works on the conversation's latest message (sending: one this run sends, not among
+    its messages yet). Until the reply is seen or a turn's time is up, the history shows a spinner on
+    it, even after the page leaves it. A wait already noted is kept, unless a message is sent."""
+    if sending or 'waiting_since' not in conv:
+        conv['waiting_since'] = time.time()
+        # How many messages the conversation has once the reply is there.
+        conv['reply_count'] = len(conv['messages']) + (2 if sending else 1)
+
+
+def stop_waiting(conv):
+    conv.pop('waiting_since', None)
+    conv.pop('reply_count', None)
+
+
+def replying(conv):
+    since = conv.get('waiting_since')
+    return live() and since is not None and time.time() - since <= TURN_TIMEOUT_SECONDS
+
+
+def replied(conv, messages):
+    """messages, the conversation's as the backend has them, include the reply waited for."""
+    return len(messages) >= conv.get('reply_count', 0) and bool(messages) and messages[-1]['role'] == 'assistant'
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

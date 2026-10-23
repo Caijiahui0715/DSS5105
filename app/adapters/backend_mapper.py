@@ -35,7 +35,9 @@ class BackendMapper:
         # titles. Original titles remain untouched in the domain facts.
         english_excerpts = {'25024859':'Super Nice Classic House', '19877684':'Modern GCB at Maryland Drive for Rent'}
         facts['displayTitle'] = english_excerpts.get(str(row['listing_id']), row['title'])
-        images = listing_images(safe_image_urls([evidence.get('thumbnail_url')]), safe_image_urls(evidence.get('image_urls')))
+        # The photos the V2 data lists, else those of the V1 source record.
+        photos = safe_image_urls(row.get('photos'))
+        images = listing_images((), photos) if photos else listing_images(safe_image_urls([evidence.get('thumbnail_url')]), safe_image_urls(evidence.get('image_urls')))
         meta = {'availabilityStatus': metadata['availability_status'], 'reviewFlags': list(metadata['review_flags'])}
         ev = {'cardText': evidence.get('card_text'), 'availabilityText': evidence.get('availability_text'), 'sourceUrl': evidence.get('source_url'), 'fieldEvidence': evidence.get('original_field_evidence'), 'ruleEvidence': evidence.get('rule_evidence')}
         provenance = {key: provenance_for(value) for key, value in {**facts, **meta, **ev}.items()}

@@ -15,7 +15,7 @@ from tools import search_listings
 def _memory() -> MemorySaver:
     return MemorySaver(
         serde=JsonPlusSerializer(
-            allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation")]
+            allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")]
         )
     )
 

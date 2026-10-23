@@ -13,7 +13,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from group_db import Database
 
 # The state holds these Pydantic models; loading refuses any other class.
-STATE_MODULES = [("models", "SearchPreferences"), ("models", "NearbyLocation")]
+STATE_MODULES = [("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")]
 _TABLES = (
     "CREATE TABLE IF NOT EXISTS threads ("
     "thread_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', "

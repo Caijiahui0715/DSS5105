@@ -1,6 +1,7 @@
+import json
 import pytest
 from pathlib import Path
-from adapters.backend_mapper import listing_images, safe_image_urls
+from adapters.backend_mapper import BackendMapper, listing_images, safe_image_urls
 from data.source_loader import read_sources
 
 def test_counts(sources):
@@ -27,3 +28,16 @@ def test_listing_images_leave_out_agents_and_site_icons():
 def test_missing_required_data():
     with pytest.raises(ValueError,match='Unable to load required rental data'):
         read_sources(Path(__file__).resolve().parent/'nonexistent-source-directory')
+
+
+def test_photos_in_the_data_come_before_the_source_record():
+    photo = 'https://sg1-cdn.pgimgs.com/listing/1/UPHO.1.V800/home.jpg'
+    project = 'https://sg1-cdn.pgimgs.com/projectnet-project/2/ZPPHO.2.V800/development.jpg'
+    old = 'https://sg1-cdn.pgimgs.com/listing/1/UPHO.9.V800/old.jpg'
+    row = {'listing_id': '1', 'title': 'Test', 'rent_monthly_sgd': 1000, 'rent_monthly_sgd_now': None}
+    meta, district = {'availability_status': 'unknown', 'review_flags': []}, {'district': 'Test'}
+    evidence = {'thumbnail_url': old, 'image_urls': json.dumps([old])}
+    # The home's own photos first, then the development's.
+    assert BackendMapper.listing({**row, 'photos': [project, photo]}, meta, district, evidence).images == (photo, project)
+    # Without photos in the data, the source record's.
+    assert BackendMapper.listing({**row, 'photos': []}, meta, district, evidence).images == (old,)

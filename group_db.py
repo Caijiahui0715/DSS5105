@@ -105,6 +105,9 @@ SELECT
     round(((coalesce(a.fnb_position, 0) + coalesce(a.hawker_position, 0)) / nullif(
         (a.fnb_position IS NOT NULL)::int + (a.hawker_position IS NOT NULL)::int, 0))::numeric, 3)::float8 AS food_rank,
     coalesce(c.commutes, '{{}}'::jsonb) AS commutes,
+    coalesce(p.place_commutes, '{{}}'::jsonb) AS place_commutes,
+    -- Up to six photo links from the V2 data (migration_photos.sql), the home's own first.
+    coalesce(a.photos, '{{}}'::text[]) AS photos,
     s.space_rank,
     {', '.join(f'a.{name}_rank' for name in AMENITY_FIELDS)},
     -- The agent uses the rechecked rent when V2 has one; the card rent stays for evidence.
@@ -142,6 +145,12 @@ LEFT JOIN LATERAL (
         ORDER BY d.faculty_name, t.duration_min, t.travel_mode = 'walk'
     ) trips
 ) c ON TRUE
+-- {{"1.28520,103.82720": {{"minutes": 18, "mode": "transit"}}, ...}}: routes to the places users named
+-- (place_routes.py), by place; a place with no route has no entry.
+LEFT JOIN LATERAL (
+    SELECT jsonb_object_agg(place_key, jsonb_build_object('minutes', minutes, 'mode', mode)) AS place_commutes
+    FROM place_routes WHERE listing_id = a.listing_id AND minutes IS NOT NULL
+) p ON TRUE
 LEFT JOIN listing_metadata m USING (listing_id)
 LEFT JOIN district_lookup d USING (district_code)
 LEFT JOIN listing_health h USING (listing_id)
@@ -157,6 +166,11 @@ _TABLES = (
     "CREATE TABLE IF NOT EXISTS {schema}.listing_route_enrichment ("
     "listing_id TEXT PRIMARY KEY, mrt_walk_distance_m INTEGER, mrt_walk_seconds INTEGER, "
     "mrt_walk_minutes INTEGER, checked_at TEXT NOT NULL)",
+    # OneMap routes to a place a user named as the other destination, worked out on first use and
+    # kept (place_routes.py); minutes is null when OneMap has no route.
+    "CREATE TABLE IF NOT EXISTS {schema}.place_routes ("
+    "place_key TEXT NOT NULL, listing_id TEXT NOT NULL, minutes DOUBLE PRECISION, mode TEXT, "
+    "departure TEXT NOT NULL, checked_at TEXT NOT NULL, PRIMARY KEY (place_key, listing_id))",
 )
 
 

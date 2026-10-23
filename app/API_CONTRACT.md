@@ -31,7 +31,7 @@ server, so a change on either side that breaks the other fails there.
 | GET /api/me | sign in from the remember-me cookie | `{username, faculty}` |
 | PUT /api/me/faculty | Profile `{faculty}` (null clears it) | `{username, faculty}` |
 | POST /api/logout | sign out; revokes the token | `{ok}` |
-| GET /api/listings?limit=200&offset=N | map and selectors, in pages | `{total, listings}` |
+| GET /api/listings?limit=200&offset=N | map and selectors, in pages | `{total, listings}`; each listing's `commutes` by faculty, `place_commutes` by place (`"lat,lng"` to 5 decimals) and `photos` (up to six image links, the home's own first; empty without) |
 | GET /api/listings/{id} | listing details with photos and page text | `{listing, source_evidence}`; 404 when gone |
 | GET /api/conversations | the conversation panel after sign-in | `[{id, title, created_at, updated_at}]` |
 | DELETE /api/conversations/{id} | the open conversation's delete button, after confirming; waits for a reply in progress | `{ok}`; 404 when already gone |
@@ -93,6 +93,7 @@ then one `event: reply` (or `event: error` with `{"message"}`):
       "mrt_minutes": 9,
       "commute_minutes_to_faculty": 23,
       "commute_mode": "transit",
+      "other_commute": {"faculty": null, "query": "Tiong Bahru Plaza", "name": "健身房", "minutes": 18, "mode": "transit"},
       "lease_term": "1 year",
       "link_status": "active",
       "link_note": "active",
@@ -107,7 +108,10 @@ then one `event: reply` (or `event: error` with `{"message"}`):
 the listings it already shows. `status` is `match` (meets every condition) or
 `needs_confirmation` (the listing does not state some conditions, named in
 `unknown_condition_labels`). `preview: true` means a what-if search that left
-the saved criteria unchanged. `preferences` holds only the criteria that are
+the saved criteria unchanged. `other_commute` is the trip to the conversation's
+other destination (`null` without one): `faculty` when it is an NUS faculty, `query`
+and `name` as the user named it, and `minutes` (`null` without a route) and `mode`.
+`preferences` holds only the criteria that are
 set; `domain/criteria.py` maps them onto the criteria form (`lease_months` is the
 lease length the user will sign, in months), and back with `to_backend` for the
 Profile page. `sources` says where each criterion came from (the user's words and
@@ -121,7 +125,7 @@ duty, deposit, what is paid at signing) arrive as part of `text`.
 `comparison` is `null` unless the turn compared listings (`compare_listings`, two or
 three at a time). It is the table Home shows from its Compare bar: `listing_ids` in
 the order the user chose, then one row per fact (rent and how much more than the
-cheapest, commute, MRT, rental type and room, area, bathroom, furnishing, lease,
+cheapest, commute, the commute to the other destination when there is one, MRT, rental type and room, area, bathroom, furnishing, lease,
 availability, whether each meets the criteria as of `date`, link check), every
 label and value in both languages. `summary` is the key differences in a line,
 worked out from the data. `left_out` names listings not compared (an inactive link,

@@ -409,7 +409,7 @@ class DecisionTest(unittest.TestCase):
 
         mix = rental_scope_mix(preferences, strict, shown)
         self.assertEqual(mix["shown_scopes"], ["room"])
-        self.assertEqual(mix["entire_unit"], {"database_count": 123, "cheapest_sgd": 1350})
+        self.assertEqual(mix["entire_unit"], {"database_count": 115, "cheapest_sgd": 1350})
         self.assertIsNone(rental_scope_mix(preferences.model_copy(update={"rental_scope": "room"}), strict, shown))
         # Under S$1,500 every match is a room, so there is no mix to mention.
         self.assertIsNone(rental_scope_mix(preferences, room_only, room_only[:3]))

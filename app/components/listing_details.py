@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import re
 from components.listing_card import image, actions, heading, commute_text, mrt_text, link_note, lease_text
+from state.session_store import live
 from components.provenance_badge import fact, explanation
 from content.i18n import t
 from domain.location import coordinates, location_note
@@ -17,6 +18,9 @@ def details(listing, recommendation=None, key='detail'):
     if listing.provenance['displayTitle'] == 'derived':
         st.caption(t('Derived display: English excerpt from the original bilingual title. Original source record is unchanged.', '派生显示：取自原双语标题的英文部分，原始记录未改动。'))
     image(listing)
+    if live() and len(listing.images) > 1:
+        # Every photo, small, loaded by the browser straight from the links.
+        st.image(list(listing.images), width=110)
     fact(t('Latest recorded monthly rent (SGD)', '最新记录的月租（新元）'), f['effectiveRentMonthlySgd'])
     fact(t('Original advertised monthly rent (SGD)', '原广告月租（新元）'), f['rentMonthlySgd'])
     source_notes(listing)
@@ -94,6 +98,8 @@ def compact_details(listing, recommendation):
     if listing.provenance['displayTitle'] == 'derived':
         st.caption(t('English source-title excerpt · Derived display', '英文标题摘录 · 派生显示'))
     st.markdown(t(f"**SGD {f['effectiveRentMonthlySgd']:,.0f} / month** · {display(f['rentPriceType'])}", f"**每月 {f['effectiveRentMonthlySgd']:,.0f} 新元** · {display(f['rentPriceType'])}"))
+    if live():
+        image(listing, width='stretch')
     source_notes(listing)
     st.write(f"{display(f['propertyType'])} · {display(f['rentalScope'])}")
     st.caption(f"{f['districtCode']} · {f['address']}")

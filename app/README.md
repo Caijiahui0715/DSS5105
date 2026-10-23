@@ -72,7 +72,9 @@ project to work around an environment issue.
 The persistent icon rail has exactly three destinations: Home, Favorites and
 Profile. Home has a collapsible conversation-history panel (the open conversation,
 once started, has a delete button on its row: it asks first, waits while the agent
-replies, and a new conversation takes its place), a chat-only center,
+replies, and a new conversation takes its place; a conversation the agent is
+replying in has a spinner, kept after leaving it until the backend has the reply,
+checked every 2 seconds), a chat-only center,
 and two fixed right-hand panels: map above and compact listing card below.
 Recommendations and requirement summaries do not appear in the chat column.
 The map has no markers until recommendations exist; the listing panel starts
@@ -80,7 +82,8 @@ empty with suggested prompts. Its content scrolls internally without pagination.
 The map's graduation cap is the user's faculty (the NUS anchor without one).
 Listing cards show the agent's rank, whether the listing meets every condition
 or needs confirmation (and which conditions the listing does not state), rent,
-MRT, the commute to the user's faculty, the advert's lease term (the shortest
+MRT, the commute to the user's faculty (and to the conversation's other destination,
+such as a roommate's faculty or a gym, when it has one), the advert's lease term (the shortest
 lease the landlord accepts) and the link check; there is no 0–100
 score with the backend. Favorites are the agent's shortlist, kept with the account
 and shared by every conversation, so the agent can compare them in chat.
@@ -214,8 +217,12 @@ compare but not compared yet, and the selected listing, last for the Streamlit
 session. In the offline demo everything lasts only for the session. Logout
 clears session-owned state. Compare up to three listings.
 
-Source photos are optional, read into memory with a timeout, never saved to
-disk, and replaced by a placeholder on failure. OpenStreetMap tiles and Folium
+Photos come from the listing's `photos` links in the V2 data (PropertyGuru's
+image CDN), or from the V1 source record when a listing has none. A card shows
+the first, read into memory with a timeout, never saved to disk, replaced by a
+placeholder on failure, and captioned as PropertyGuru's with a link to the
+original listing; a favorite's details add every photo as small pictures, which
+the browser loads straight from the links. OpenStreetMap tiles and Folium
 external assets need internet; no paid key is required. If the map cannot load,
 the listing selectors remain available. Source links may expire. Narrow-screen
 columns stack; this is not a native mobile app or a custom bottom-navigation UI.

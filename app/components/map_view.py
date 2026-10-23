@@ -4,7 +4,7 @@ import streamlit as st
 from streamlit_folium import st_folium
 from data.demo_enrichment import NUS_POSITION
 from content.i18n import t
-from domain.location import coordinates, location_note
+from domain.location import coordinates
 from state.session_store import live, current_faculty
 
 
@@ -37,8 +37,8 @@ def _listing_map(api, ids, compared_ids, favorite_ids, highlight, frame):
     for listing in positioned:
         f = listing.facts
         chosen = highlight == listing.id
-        # The tooltip starts with the ID, which a click reads.
-        tooltip = f'{listing.id} | {html.escape(f["displayTitle"])} | SGD {f["effectiveRentMonthlySgd"]:,.0f} | {html.escape(location_note(listing))}'
+        # The tooltip starts with the ID, which a click reads; where the position comes from is not shown.
+        tooltip = f'{listing.id} | {html.escape(f["displayTitle"])} | SGD {f["effectiveRentMonthlySgd"]:,.0f}'
         if listing.id in number:
             tooltip = f'{listing.id} | {t("Compared", "比较")} #{number[listing.id]} | ' + tooltip.split(' | ', 1)[1]
             # Inline styles: the map is drawn in its own frame, which the page's CSS does not reach.
@@ -52,7 +52,7 @@ def _listing_map(api, ids, compared_ids, favorite_ids, highlight, frame):
         else:
             inferred = listing.provenance['coordinates'] == 'derived'
             icon = folium.Icon(color='orange' if chosen else 'purple' if inferred else 'blue', icon='home', prefix='fa')
-        folium.Marker(positions[listing.id], tooltip=tooltip, popup=f'{listing.id} | {html.escape(location_note(listing))}', icon=icon).add_to(map_object)
+        folium.Marker(positions[listing.id], tooltip=tooltip, popup=listing.id, icon=icon).add_to(map_object)
     return map_object, positions
 
 
@@ -70,7 +70,7 @@ def _clicked(result, positions):
 def map_view(api, key='rental-map', height=330, listing_ids=None, compact=False, compared_ids=()):
     """compared_ids: the listings being compared, in the table's order. They show as numbered teal
     markers, even when not among listing_ids, and the map frames them with the faculty."""
-    # The compact map fills its panel; each marker's tooltip says when a position is approximate.
+    # The compact map fills its panel; a purple marker's position is approximate.
     if not compact:
         st.caption(t('Map positions come from V2 data. Inferred locations are approximate. The NUS anchor and commute estimates remain illustrative.', '地图位置来自 V2 数据，推断的位置是近似值。'))
     selected = st.session_state.selected_listing

@@ -43,6 +43,7 @@ TABLE_SCRIPTS = (
     ("migration_commute_benchmark.sql", _HAS_COLUMN, ("listing_commutes", "benchmark_date")),
     ("migration_lease_term.sql", _HAS_COLUMN, ("listings", "lease_term")),
     ("migration_mrt_nullable.sql", _MRT_NULLABLE, ("listings", "mrt_station")),
+    ("migration_photos.sql", _HAS_COLUMN, ("listings", "photos")),
 )
 
 

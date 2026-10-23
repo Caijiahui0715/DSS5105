@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,8 @@ LISTING_COLUMNS = [
     "scrape_status",
     # Added by migration_lease_term.sql; run it before this script.
     "lease_term",
+    # Added by migration_photos.sql: the photo links (see photo_links).
+    "photos",
 ]
 
 
@@ -107,6 +110,23 @@ def clean_value(value: Any) -> Any:
             pass
 
     return value
+
+
+def photo_links(value: Any) -> list[str] | None:
+    """
+    The photos column is a JSON list of image links; None when a row
+    (or an older file without the column) has none.
+    """
+
+    if not value:
+        return None
+    try:
+        links = json.loads(value)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(links, list):
+        return None
+    return [link for link in links if isinstance(link, str) and link.startswith("https://")] or None
 
 
 def dataframe_to_records(df: pd.DataFrame) -> list[dict]:
@@ -250,6 +270,8 @@ def main():
 
     active_records = dataframe_to_records(active_df)
     removed_records = dataframe_to_records(removed_df)
+    for record in active_records:
+        record["photos"] = photo_links(record.get("photos"))
 
     print(f"Active V2 rows: {len(active_records)}")
     print(f"Removed rows: {len(removed_records)}")
@@ -282,4 +304,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()

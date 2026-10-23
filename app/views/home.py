@@ -5,12 +5,12 @@ import streamlit as st
 from components.navigation import conversation_sidebar
 from components.map_view import map_view, big_map
 from components.listing_details import compact_details
-from components.listing_card import heading, mrt_text, commute_text, link_note
+from components.listing_card import heading, mrt_text, commute_text, link_note, image
 from components.criteria_panel import criteria_form, drop_message, label, other_criteria
 from content.en import PROMPTS, PROMPTS_ZH
 from content.i18n import t, language, describe
 from domain.criteria import criteria_message
-from state.session_store import (current, live, busy, waiting_for_reply, read_profile, refresh_new_conversations, compare_message, NEW_TITLE,
+from state.session_store import (current, live, busy, waiting_for_reply, wait_for_reply, stop_waiting, replied, read_profile, refresh_new_conversations, compare_message, NEW_TITLE,
                                  favorite_ids, toggle_favorite, toggle_compare, compare_ids)
 from adapters.backend_client import SessionExpired, BackendError, TURN_TIMEOUT_SECONDS
 from domain.models import ApiError
@@ -25,11 +25,6 @@ def as_markdown(text):
 def send(message, agent, thread):
     """One message to the agent. The message shows at once in the thread, with the agent's progress under it."""
     conv = current()
-    # Named and moved up the list now, as the backend does: a click while the agent works ends this
-    # run before the reply, and the conversation should not stay "New conversation".
-    if conv['title'] in ('', NEW_TITLE):
-        conv['title'] = message[:55]
-    conv['updated'] = datetime.now().isoformat(timespec='seconds')
     with thread:
         with st.container(key=f"chat-user-{len(conv['messages'])}"):
             with st.chat_message('user'):
@@ -197,7 +192,8 @@ def map_dialog(api, conv):
 
 
 def map_card(api, conv, listing_id, recommended):
-    """The listing picked on the enlarged map: what it is and what to do with it."""
+    """The listing picked on the enlarged map: its photo, what it is, and what to do with it,
+    including opening the original listing."""
     listing = api.details(listing_id)
     if listing is None:
         st.info(t('This listing is no longer in the data.', '这套房源已不在当前数据里。'))
@@ -205,17 +201,22 @@ def map_card(api, conv, listing_id, recommended):
     rec = next((rec for rec in conv['recommendations'] or [] if rec.listing_id == listing_id), None)
     f = listing.facts
     with st.container(border=True, key='map-card'):
-        st.markdown(f"**{escape(f['displayTitle'])}** · {listing_id}")
-        st.markdown(t(f"SGD {f['effectiveRentMonthlySgd']:,.0f} / month", f"每月 {f['effectiveRentMonthlySgd']:,.0f} 新元"))
-        if rec:
-            heading(rec)
-        else:
-            st.caption(t('Not in this search’s recommendations (a favorite)', '不在本次推荐里（收藏的房源）'))
-        st.caption(mrt_text(listing, rec))
-        st.caption(commute_text(listing, rec))
-        link_note(rec)
+        photo, about = st.columns([2, 3])
+        with photo:
+            image(listing, width='stretch')
+        with about:
+            st.markdown(f"**{escape(f['displayTitle'])}** · {listing_id}")
+            st.markdown(t(f"SGD {f['effectiveRentMonthlySgd']:,.0f} / month", f"每月 {f['effectiveRentMonthlySgd']:,.0f} 新元"))
+            if rec:
+                heading(rec)
+            else:
+                st.caption(t('Not in this search’s recommendations (a favorite)', '不在本次推荐里（收藏的房源）'))
+            st.caption(mrt_text(listing, rec))
+            st.caption(commute_text(listing, rec))
+            link_note(rec)
         saved, comparing = listing_id in favorite_ids(), listing_id in compare_ids()
-        save, compare, details = st.columns(3)
+        link, save, compare, details = st.columns(4)
+        link.link_button(t('Open ↗', '打开 ↗'), f['listingUrl'], help=t('Open the original listing in a new tab', '在新标签页打开原始房源'), width='stretch')
         if save.button(t('Unsave', '取消收藏') if saved else t('Save', '收藏'), key='map-card-save', width='stretch'):
             toggle_favorite(listing_id)
             st.rerun(scope='fragment')
@@ -234,8 +235,8 @@ def await_reply(conv):
     """A reply this page stopped waiting for: a click while the agent works restarts the page, and
     the backend still finishes the turn. Ask the backend every 2 seconds and show the reply once it
     is there; after as long as a turn may take, say to send the message again."""
-    since = conv.setdefault('waiting_since', time.time())
-    if time.time() - since > TURN_TIMEOUT_SECONDS:
+    wait_for_reply(conv)
+    if time.time() - conv['waiting_since'] > TURN_TIMEOUT_SECONDS:
         st.info(t('No reply to this message arrived. Send it again.', '这条消息没有收到回复，请重新发送。'))
         st.button(t('Refresh', '刷新'), key='refresh-reply')
         return
@@ -247,7 +248,7 @@ def await_reply(conv):
             messages = st.session_state.client.messages(conv['thread_id'])
         except BackendError:
             return  # Asked again in 2 seconds.
-        if messages and messages[-1]['role'] == 'assistant':
+        if replied(conv, messages):
             # The whole page reads the conversation again and shows the reply.
             conv['loaded'] = False
             st.rerun()
@@ -326,8 +327,6 @@ def comparison_dialog(conv):
 
 
 def render(api, agent):
-    if st.session_state.get('history_open', True):
-        conversation_sidebar()
     conv = current()
     recs = conv['recommendations'] or []
     eligible_ids = [rec.listing_id for rec in recs]
@@ -357,7 +356,7 @@ def render(api, agent):
             if live() and waiting_for_reply(conv):
                 await_reply(conv)
             else:
-                conv.pop('waiting_since', None)
+                stop_waiting(conv)
         if live():
             auto_save_offer(conv)
         # A typed message, or one from another control or page (criteria, Compare, sign-up). It is
@@ -400,6 +399,18 @@ def render(api, agent):
                 st.selectbox(t('Recommended listings', '推荐的房源'), eligible_ids, key='recommended-listing-selector', format_func=label, on_change=select_listing)
                 selected = st.session_state.selected_listing
                 compact_details(api.details(selected), index[selected])
+    if outgoing:
+        st.session_state.sending = True  # also for a suggested request, chosen after the input
+        # Named and moved up the list now, as the backend does: a click while the agent works ends this
+        # run before the reply, and the conversation should not stay "New conversation".
+        if conv['title'] in ('', NEW_TITLE):
+            conv['title'] = outgoing[:55]
+        conv['updated'] = datetime.now().isoformat(timespec='seconds')
+        if live():
+            wait_for_reply(conv, sending=True)
+    # The history is fixed at the left, so it is drawn last: it shows what this run sends.
+    if st.session_state.get('history_open', True):
+        conversation_sidebar()
     if st.session_state.get('deferred_message'):
         send_once_shown()
     if outgoing:

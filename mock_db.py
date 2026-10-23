@@ -39,7 +39,7 @@ from setup_database import SCRIPT_FOLDER, TABLE_SCRIPTS
 ROOT = Path(__file__).parent
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
 # The tables the backend writes; emptied for every test.
-_AGENT_TABLES = ("listing_health", "listing_route_enrichment")
+_AGENT_TABLES = ("listing_health", "listing_route_enrichment", "place_routes")
 # Listing fields kept in listing_enrichment rather than listings (migration_v2.sql).
 _ENRICHMENT = {
     "enriched_at", "postcode", "street_name", "latitude", "longitude", "poi_hawker_1km", "poi_library_1km",

@@ -84,10 +84,10 @@ class SaveProfileIn(BaseModel):
     switch_on: bool = False
 
 
-def create_app(listings, model, storage: Storage, checkpointer, listing_checker=check_listing_url) -> FastAPI:
+def create_app(listings, model, storage: Storage, checkpointer, listing_checker=check_listing_url, place_router=None) -> FastAPI:
     accounts = Accounts(storage)
     profiles = UserProfiles(storage)
-    agent = build_agent(listings, model, checkpointer, listing_checker=listing_checker, profiles=profiles)
+    agent = build_agent(listings, model, checkpointer, listing_checker=listing_checker, profiles=profiles, place_router=place_router)
     _account_listings_once(storage, profiles, agent)
     # One turn at a time per conversation; a second message waits for the first.
     locks: dict[str, threading.Lock] = defaultdict(threading.Lock)

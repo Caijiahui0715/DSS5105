@@ -17,12 +17,12 @@ from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from config import postgres_settings
+from config import missing_db_settings, postgres_settings
 from models import AMENITY_FIELDS
 
 SCHEMA = "agent"
-UNAVAILABLE = "数据库暂时连不上，请稍后再试。"
-_SETUP_HINT = "先运行 python setup_database.py。"
+UNAVAILABLE = "The database cannot be reached right now. Try again in a moment."
+_SETUP_HINT = "Run python setup_database.py first."
 _SQM_PER_SQFT = 0.09290304
 # V2 labels mapped to the V1 values that search filters and reply templates use.
 _V1_LABELS = {
@@ -271,9 +271,9 @@ def ensure_database(name: str) -> bool:
 def open_database() -> Database:
     """The database for the backend, ready to search; stops the program with what to fix otherwise."""
     settings = postgres_settings()
-    place = f"{settings['host'] or 'localhost'}:{settings['port'] or 5432} 的 {settings['dbname']}"
-    if not settings["dbname"]:
-        raise SystemExit("在 .env 里填上 DB_HOST、DB_PORT、DB_NAME、DB_USER、DB_PASSWORD（见 .env.example）。")
+    if problem := missing_db_settings():
+        raise SystemExit(problem)
+    place = f"{settings['dbname']} on {settings['host']}:{settings['port']}"
     try:
         # A plain connection first: its error says why, where the pool would only time out.
         with connect() as connection:
@@ -283,22 +283,22 @@ def open_database() -> Database:
         database = Database(open_pool())
     except psycopg.OperationalError as error:
         raise SystemExit(
-            f"连不上 PostgreSQL（{place}）：{error}\n"
-            "检查 PostgreSQL 服务是否在运行，以及 .env 里的 DB_HOST、DB_PORT、DB_NAME、DB_USER、DB_PASSWORD。"
+            f"Cannot connect to PostgreSQL ({place}): {error}\n"
+            "Check that the PostgreSQL service is running, and DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD in .env."
         ) from error
     except psycopg.Error as error:
-        raise SystemExit(f"PostgreSQL（{place}）上建不了 {SCHEMA} schema：{error}\n检查 DB_USER 在这个数据库里的权限。") from error
+        raise SystemExit(f"Cannot create the {SCHEMA} schema in PostgreSQL ({place}): {error}\nCheck DB_USER's rights in this database.") from error
     try:
         with database.pool.connection() as connection:
             prepare(connection)
         listings = database.query("SELECT count(*) AS n FROM agent_listings")[0]["n"]
     except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn) as error:
         database.close()
-        raise SystemExit(f"{place} 里的房源表还不完整（{error.diag.message_primary}）：{_SETUP_HINT}") from error
+        raise SystemExit(f"The listing tables in {place} are incomplete ({error.diag.message_primary}). {_SETUP_HINT}") from error
     except psycopg.Error as error:
         database.close()
-        raise SystemExit(f"在 {place} 里准备 agent_listings 视图失败：{error}") from error
+        raise SystemExit(f"Could not prepare the agent_listings view in {place}: {error}") from error
     if not listings:
         database.close()
-        raise SystemExit(f"{place} 里没有可用的房源（scrape_status = 'active'）：{_SETUP_HINT}")
+        raise SystemExit(f"{place} has no usable listings (scrape_status = 'active'). {_SETUP_HINT}")
     return database

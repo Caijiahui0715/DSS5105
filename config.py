@@ -7,6 +7,20 @@ def env(name: str) -> str | None:
     return os.environ.get(name) or _dotenv().get(name)
 
 
+DB_SETTINGS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
+def missing_db_settings() -> str | None:
+    """What to fix when a DB_* setting is not set, else None. Each one is needed: without DB_USER,
+    for one, PostgreSQL's client quietly uses the computer's user name and the server answers with a
+    puzzling authentication error."""
+    missing = [name for name in DB_SETTINGS if not env(name)]
+    if not missing:
+        return None
+    names = missing[0] if len(missing) == 1 else f"{', '.join(missing[:-1])} and {missing[-1]}"
+    return f".env is missing {names}. Add {'it' if len(missing) == 1 else 'them'} and run again (see .env.example)."
+
+
 def postgres_settings() -> dict[str, str | None]:
     """Connection settings for the project's PostgreSQL, shared with the data pipeline."""
     return {

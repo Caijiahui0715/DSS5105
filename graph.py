@@ -1,9 +1,12 @@
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from decision import diagnose_conditions, explain_listing, load_source_evidence, occupant_rules, search_with_unknowns
 from exchange import CurrencyConversionError, convert_to_sgd
+from faculties import find_faculty
 from group_db import Database
 from models import (
     Listing,
@@ -17,10 +20,16 @@ from models import (
 )
 from parser import parse_turn
 from response import (
+    _check_summary_text,
     render_budget_conversion,
     render_comparison,
+    render_decision_context,
     render_intent_response,
     render_listing_details,
+    render_listing_explanation,
+    render_needs_confirmation,
+    render_no_faculty,
+    render_occupants,
     render_relaxation_preview,
     render_response,
 )
@@ -29,6 +38,7 @@ from tools import (
     check_listing_url,
     extract_restrictions,
     get_listings_by_ids,
+    own_commute_needed,
     rank_listings,
     search_listings,
     validate_ranked_listings,
@@ -37,6 +47,8 @@ from tools import (
 
 class AgentState(TypedDict, total=False):
     message: str
+    # The user's NUS faculty, from the caller (an account setting); copied into the preferences each turn.
+    faculty: str | None
     response_language: ResponseLanguage
     budget_amount: int | None
     budget_currency: str | None
@@ -55,6 +67,14 @@ class AgentState(TypedDict, total=False):
     shortlisted_listing_number: int | None
     preferences: SearchPreferences
     listings: list[Listing]
+    # Listings that meet every known condition but do not state some requirement, as the agent shows them.
+    pending_listings: list[Listing]
+    confirm_listings: list[RankingResult]
+    confirm_check_summary: ListingCheckSummary | None
+    # Without strict matches: what dropping each condition alone would yield (decision.diagnose_conditions).
+    decision_context: list[dict]
+    # What the number of people changed this turn (decision.occupant_rules), shown after the results.
+    occupant_note: dict | None
     restrictions: dict[str, RestrictionSummary]
     ranked_listings: list[RankingResult]
     listing_check_summary: ListingCheckSummary | None
@@ -66,6 +86,8 @@ class AgentState(TypedDict, total=False):
     missing_preferences: list[str]
     response_draft: str
     response: str
+    # This turn's replies that failed the fact check, and other steps worth showing with --trace.
+    trace: list[str]
 
 
 _ACCEPT_FIRST = {
@@ -108,6 +130,16 @@ _UNSUPPORTED_ACTION_OFFER = re.compile(
 )
 _CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 _HAN = re.compile(r"[\u4e00-\u9fff]")
+_OFFER = r"\b(?:I can(?!not|'t|’t)|I could(?! not|n't|n’t)|I will(?! not)|I'll(?! not)|let me(?! know)|shall I|want me to)\b[^.?!\n]{0,60}"
+_UNSUPPORTED_OFFER_EN = re.compile(
+    _OFFER + r"\b(?:contact|call|email|reach out|book|schedule|arrange|reserve|hold|confirm (?:the )?availability)",
+    re.IGNORECASE,
+)
+_NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
+_CLAIMED_NUMBER = re.compile(
+    rf"(?:S\$|SGD|\$)\s*({_NUMBER})|({_NUMBER})\s*(?:新币|新加坡元|SGD|元|分钟|mins?\b|minutes?\b|套|listings?\b)",
+    re.IGNORECASE,
+)
 
 _REFINEMENT_LABELS = {
     "zh": {
@@ -139,20 +171,28 @@ def build_graph(
             candidate_limit=len(ranked),
         )["ranked_listings"]
 
-    def language_node(state: AgentState):
-        return {
+    def begin_turn_node(state: AgentState):
+        faculty = _faculty(state.get("faculty"))
+        update: AgentState = {
             "response_language": _response_language(
                 state["message"], state.get("response_language")
-            )
+            ),
+            "faculty": faculty,
+            "occupant_note": None,
+            "trace": [],
         }
+        if state.get("preferences"):
+            update["preferences"] = state["preferences"].model_copy(update={"faculty": faculty})
+        return update
 
     def interpret_node(state: AgentState):
         previous = state.get("preferences")
         relaxations = state.get("relaxations", [])
         explicit_ids = _listing_ids_in(state["message"])
-        if explicit_ids and _asks_to_show_listing_details(state["message"]):
+        explains = _asks_to_explain(state["message"])
+        if explicit_ids and (explains or _asks_to_show_listing_details(state["message"])):
             return {
-                "intent": "show_listing_details",
+                "intent": "explain_listing" if explains else "show_listing_details",
                 "detail_listing_id": explicit_ids[0],
                 "detail_listing_number": None,
                 "relaxation_number": None,
@@ -216,7 +256,22 @@ def build_graph(
             state.get("shown_listing_ids"),
             state.get("shortlisted_listing_ids"),
             state.get("missing_preferences"),
+            state.get("faculty"),
         )
+        current = previous or SearchPreferences()
+        # Commute times here are to the faculty only; there is no other destination in the workflow.
+        preferences = turn.preferences.model_copy(
+            update={"faculty": state.get("faculty"), "other_destination": None, "max_other_commute_minutes": None}
+        )
+        changes = {
+            field: getattr(preferences, field)
+            for field in SearchPreferences.model_fields
+            if getattr(preferences, field) != getattr(current, field)
+        }
+        # The same rules as the agent for the number of people and the rental type.
+        extra, occupant_note = occupant_rules(current, changes)
+        if extra:
+            preferences = preferences.model_copy(update=extra)
         return {
             "intent": turn.intent,
             "relaxation_number": turn.relaxation_number,
@@ -235,7 +290,7 @@ def build_graph(
             ),
             "detail_listing_id": (
                 explicit_ids[0]
-                if turn.intent == "show_listing_details" and explicit_ids
+                if turn.intent in {"show_listing_details", "explain_listing"} and explicit_ids
                 else None
             ),
             "detail_listing_number": turn.detail_listing_number,
@@ -244,7 +299,8 @@ def build_graph(
             "budget_months": turn.budget_months,
             "shortlisted_listing_number": turn.shortlisted_listing_number,
             "last_excluded_listing_ids": [],
-            "preferences": turn.preferences,
+            "preferences": preferences,
+            "occupant_note": occupant_note,
         }
 
     def route_after_interpret(state: AgentState):
@@ -262,6 +318,8 @@ def build_graph(
             return "compare_shortlist"
         if state["intent"] == "show_listing_details":
             return "show_listing_details"
+        if state["intent"] == "explain_listing":
+            return "explain_listing"
         if state["intent"] == "search":
             return (
                 "search"
@@ -269,9 +327,10 @@ def build_graph(
                 or _has_search_criteria(state["preferences"])
                 else "clarify"
             )
+        shown = state.get("ranked_listings") or state.get("confirm_listings")
         if (
             state["intent"] == "show_results"
-            and not state.get("ranked_listings")
+            and not shown
             and not _has_search_criteria(state["preferences"])
         ):
             return "clarify"
@@ -279,7 +338,7 @@ def build_graph(
         if state["intent"] == "accept_relaxation":
             if 0 <= index < len(state.get("relaxations", [])):
                 return "accept"
-        if state["intent"] == "show_results" and not state.get("ranked_listings"):
+        if state["intent"] == "show_results" and not shown:
             if 0 <= index < len(state.get("relaxations", [])):
                 return "preview"
         return "conversation"
@@ -517,12 +576,7 @@ def build_graph(
             listing["listing_id"]: extract_restrictions(listing)
             for listing in listings
         }
-        ranked = validated(
-            rank_listings(
-                listings,
-                state.get("preferences", SearchPreferences()),
-            )
-        )
+        ranked = validated(rank_listings(listings, _preferences(state)))
         return {
             "response_draft": render_comparison(
                 ranked, restrictions, _language(state)
@@ -532,54 +586,48 @@ def build_graph(
             ],
         }
 
-    def show_listing_details_node(state: AgentState):
+    def chosen_listing(state: AgentState) -> tuple[str | None, str | None]:
+        """The listing a details or explain request means, or else the draft asking which one."""
         shown = state.get("shown_listing_ids", [])
         listing_id = state.get("detail_listing_id")
         number = state.get("detail_listing_number")
         if listing_id is None and number is not None:
             if not 1 <= number <= len(shown):
-                return {
-                    "response_draft": _text(
-                        state,
-                        f"请提供 1 到 {len(shown)} 之间的房源序号。"
-                        if shown
-                        else "目前没有已展示的房源，请直接提供房源编号。",
-                        f"Please provide a listing position from 1 to {len(shown)}."
-                        if shown
-                        else "There are no displayed listings. Please provide a listing ID directly.",
-                    )
-                }
+                return None, _text(
+                    state,
+                    f"请提供 1 到 {len(shown)} 之间的房源序号。"
+                    if shown
+                    else "目前没有已展示的房源，请直接提供房源编号。",
+                    f"Please provide a listing position from 1 to {len(shown)}."
+                    if shown
+                    else "There are no displayed listings. Please provide a listing ID directly.",
+                )
             listing_id = shown[number - 1]
         if listing_id is None and len(shown) == 1:
             listing_id = shown[0]
         if listing_id is None:
-            return {
-                "response_draft": _text(
-                    state,
-                    f"目前展示了 {len(shown)} 套房源，请告诉我想查看第几套。"
-                    if shown
-                    else "目前没有已展示的房源，请直接提供房源编号，例如 S010。",
-                    f"There are {len(shown)} displayed listings. Tell me which position to view."
-                    if shown
-                    else "There are no displayed listings. Please provide a listing ID directly, such as S010.",
-                )
-            }
+            return None, _text(
+                state,
+                f"目前展示了 {len(shown)} 套房源，请告诉我想查看第几套。"
+                if shown
+                else "目前没有已展示的房源，请直接提供房源编号，例如 S010。",
+                f"There are {len(shown)} displayed listings. Tell me which position to view."
+                if shown
+                else "There are no displayed listings. Please provide a listing ID directly, such as S010.",
+            )
+        return listing_id, None
 
+    def not_found(state: AgentState, listing_id: str) -> AgentState:
+        return {"response_draft": _text(state, f"没有找到房源 {listing_id}。", f"Listing {listing_id} was not found.")}
+
+    def show_listing_details_node(state: AgentState):
+        listing_id, question = chosen_listing(state)
+        if question:
+            return {"response_draft": question}
         listings = get_listings_by_ids(connection, [listing_id])
         if not listings:
-            return {
-                "response_draft": _text(
-                    state,
-                    f"没有找到房源 {listing_id}。",
-                    f"Listing {listing_id} was not found.",
-                )
-            }
-        ranked = validated(
-            rank_listings(
-                listings,
-                state.get("preferences", SearchPreferences()),
-            )
-        )
+            return not_found(state, listing_id)
+        ranked = validated(rank_listings(listings, _preferences(state)))
         if not ranked:
             return {
                 "response_draft": _text(
@@ -594,9 +642,22 @@ def build_graph(
                 listing,
                 extract_restrictions(listing),
                 _language(state),
+                ranked[0].get("commute"),
             ),
             "shown_listing_ids": [listing_id],
         }
+
+    def explain_listing_node(state: AgentState):
+        # As the agent's explain tool: ranking factors, each condition and where each fact comes from.
+        listing_id, question = chosen_listing(state)
+        if question:
+            return {"response_draft": question}
+        listings = get_listings_by_ids(connection, [listing_id])
+        if not listings:
+            return not_found(state, listing_id)
+        listing = listings[0]
+        explanation = explain_listing(listing, _preferences(state), load_source_evidence().get(listing["listing_id"]))
+        return {"response_draft": render_listing_explanation(explanation, _language(state))}
 
     def clarification_node(state: AgentState):
         missing = _open_preferences(state["preferences"])
@@ -671,6 +732,10 @@ def build_graph(
     def prepare_search_node(state: AgentState):
         return {
             "listings": [],
+            "pending_listings": [],
+            "confirm_listings": [],
+            "confirm_check_summary": None,
+            "decision_context": [],
             "restrictions": {},
             "ranked_listings": [],
             "listing_check_summary": None,
@@ -727,13 +792,13 @@ def build_graph(
         }
 
     def search_node(state: AgentState):
-        return {
-            "listings": search_listings(
-                connection,
-                state["preferences"],
-                _search_exclusions(state),
-            )
-        }
+        # As the agent searches: strict matches, and listings blocked only by data that does not say.
+        strict, pending = search_with_unknowns(
+            connection,
+            state["preferences"],
+            _search_exclusions(state),
+        )
+        return {"listings": strict, "pending_listings": pending}
 
     def restrictions_node(state: AgentState):
         return {
@@ -749,17 +814,40 @@ def build_graph(
         }
 
     def validate_listing_status_node(state: AgentState):
-        validation = validate_ranked_listings(
-            connection,
-            state["ranked_listings"],
-            listing_checker,
-            result_limit=3,
+        validation = (
+            validate_ranked_listings(
+                connection,
+                state["ranked_listings"],
+                listing_checker,
+                result_limit=3,
+            )
+            if state["ranked_listings"]
+            else None
         )
-        ranked = validation["ranked_listings"]
+        ranked = validation["ranked_listings"] if validation else []
         valid_ids = {item["listing"]["listing_id"] for item in ranked}
+        # Fewer strict matches than three are filled with listings to confirm, fewer unstated
+        # conditions first and rank order kept within each group, as the agent does.
+        pending = state.get("pending_listings", [])
+        confirm = (
+            validate_ranked_listings(
+                connection,
+                sorted(
+                    rank_listings(pending, state["preferences"]),
+                    key=lambda item: len(item["listing"]["unknown_conditions"]),
+                ),
+                listing_checker,
+                result_limit=3 - len(ranked),
+            )
+            if pending and len(ranked) < 3
+            else None
+        )
+        confirmed = confirm["ranked_listings"] if confirm else []
         return {
             "ranked_listings": ranked,
-            "listing_check_summary": validation["summary"],
+            "listing_check_summary": validation and validation["summary"],
+            "confirm_listings": confirmed,
+            "confirm_check_summary": confirm and confirm["summary"],
             "listings": [
                 listing
                 for listing in state["listings"]
@@ -767,8 +855,17 @@ def build_graph(
             ],
             "restrictions": {
                 item["listing"]["listing_id"]: extract_restrictions(item["listing"])
-                for item in ranked
+                for item in [*ranked, *confirmed]
             },
+        }
+
+    def diagnose_node(state: AgentState):
+        return {
+            "decision_context": diagnose_conditions(
+                connection,
+                state["preferences"],
+                _search_exclusions(state),
+            )
         }
 
     def relaxation_node(state: AgentState):
@@ -782,21 +879,22 @@ def build_graph(
         }
 
     def route_after_search(state: AgentState):
-        return "matches" if state["listings"] else "no_matches"
+        return "matches" if state["listings"] or state.get("pending_listings") else "no_matches"
 
     def route_after_validation(state: AgentState):
         return "matches" if state["ranked_listings"] else "no_matches"
 
     def respond_node(state: AgentState):
         ranked = state.get("ranked_listings", [])
-        missing = _open_preferences(state["preferences"])
-        response = render_response(
-            ranked,
-            state.get("restrictions"),
-            state.get("relaxations"),
-            language=_language(state),
-            check_summary=state.get("listing_check_summary"),
-        )
+        confirm = state.get("confirm_listings", [])
+        preferences = state["preferences"]
+        language = _language(state)
+        missing = _open_preferences(preferences)
+        response = results_text(state, ranked, confirm, state.get("relaxations"))
+        if not ranked:
+            response = "\n\n".join(
+                part for part in (response, render_decision_context(state.get("decision_context", []), language)) if part
+            )
         conversion = state.get("budget_conversion")
         if conversion:
             response = f"{render_budget_conversion(conversion, _language(state))}\n\n{response}"
@@ -814,30 +912,73 @@ def build_graph(
                 f"\n\n如果想继续缩小范围，可以补充{_REFINEMENT_LABELS[language][missing[0]]}。",
                 f"\n\nTo narrow the results, you can add {_REFINEMENT_LABELS[language][missing[0]]}.",
             )
-        if ranked and state["preferences"].move_in_date:
+        if (ranked or confirm) and preferences.move_in_date:
             response = _text(
                 state,
                 f"以下房源满足其他可验证条件，但具体入住日期仍需确认。\n\n{response}\n\n入住日期说明：现有数据不足以确认房源是否接受你的具体入住日期，也无法确认房源届时仍然可租；此 Agent 不能代为联系发布方。",
                 f"These listings meet the other verifiable criteria, but the exact move-in date still needs confirmation.\n\n{response}\n\nMove-in date note: the current data cannot confirm that a listing accepts your exact move-in date or will still be available then; this agent cannot contact the publisher for you.",
             )
+        footers = []
+        if state.get("occupant_note"):
+            footers.append(render_occupants(state["occupant_note"], language))
+        # Commute criteria measure to the user's faculty; without one they cannot be checked.
+        if own_commute_needed(preferences) and not preferences.faculty:
+            footers.append(render_no_faculty(language))
         return {
-            "response_draft": response,
-            "shown_listing_ids": _shown_listing_ids(ranked),
+            "response_draft": "\n\n".join([response, *footers]),
+            "shown_listing_ids": _shown_listing_ids(ranked) + [item["listing"]["listing_id"] for item in confirm],
             "missing_preferences": missing,
         }
 
-    def conversation_node(state: AgentState):
-        response = render_intent_response(
-            state["intent"],
-            state.get("ranked_listings"),
-            state.get("restrictions"),
-            state.get("relaxations"),
-            _language(state),
-            check_summary=state.get("listing_check_summary"),
+    def results_text(state: AgentState, ranked, confirm, relaxations=None) -> str:
+        """Strict matches, or why there are none, then the listings to confirm numbered after them."""
+        language = _language(state)
+        restrictions = state.get("restrictions")
+        if ranked or relaxations or not confirm:
+            head = render_response(
+                ranked,
+                restrictions,
+                relaxations,
+                language=language,
+                check_summary=state.get("listing_check_summary"),
+            )
+        else:
+            # Listings to confirm follow, so this does not say that nothing would help.
+            summary = state.get("listing_check_summary")
+            head = "\n\n".join(
+                part
+                for part in (
+                    summary and _check_summary_text(summary, language),
+                    _text(state, "当前没有可展示的严格匹配房源。", "There are currently no strict matches to display."),
+                )
+                if part
+            )
+        tail = render_needs_confirmation(
+            confirm,
+            restrictions,
+            language,
+            start=len(ranked[:3]) + 1,
+            check_summary=state.get("confirm_check_summary"),
         )
+        return "\n\n".join(part for part in (head, tail) if part)
+
+    def conversation_node(state: AgentState):
+        ranked = state.get("ranked_listings") or []
+        confirm = state.get("confirm_listings") or []
+        if state["intent"] == "show_results" and confirm:
+            response = results_text(state, ranked, confirm)
+        else:
+            response = render_intent_response(
+                state["intent"],
+                ranked,
+                state.get("restrictions"),
+                state.get("relaxations"),
+                _language(state),
+                check_summary=state.get("listing_check_summary"),
+            )
         update: AgentState = {"response_draft": response}
-        if state["intent"] == "show_results" and state.get("ranked_listings"):
-            update["shown_listing_ids"] = _shown_listing_ids(state["ranked_listings"])
+        if state["intent"] == "show_results" and (ranked or confirm):
+            update["shown_listing_ids"] = _shown_listing_ids(ranked) + [item["listing"]["listing_id"] for item in confirm]
         if state["intent"] == "reject_relaxation":
             update["relaxations"] = []
         return update
@@ -873,23 +1014,22 @@ def build_graph(
                     ),
                 ]
             )
-        except Exception:
-            return {"response": draft}
+        except Exception as error:
+            trace = [*state.get("trace", []), f"[rewrite] model call failed ({type(error).__name__}) -> verified draft"]
+            return {"response": draft, "trace": trace}
         content = getattr(reply, "content", None)
-        if isinstance(content, str) and (
-            _UNSUPPORTED_ACTION_OFFER.search(content) or _CYRILLIC.search(content)
-            or (_language(state) == "en" and _HAN.search(content))
-            or (_language(state) == "zh" and not _HAN.search(content))
-        ):
+        if not (isinstance(content, str) and content.strip()):
             return {"response": draft}
-        return {
-            "response": content.strip()
-            if isinstance(content, str) and content.strip()
-            else draft
-        }
+        # The agent's fact check: listing IDs and money, minute or count figures must come from the
+        # draft or the message, with no offer the system cannot keep and in the reply language.
+        problems = _reply_problems(content, [state["message"], draft], _language(state))
+        if problems:
+            trace = [*state.get("trace", []), f"[guard] rewrite rejected ({'; '.join(problems)}) -> verified draft"]
+            return {"response": draft, "trace": trace}
+        return {"response": content.strip()}
 
     graph = StateGraph(AgentState)
-    graph.add_node("language", language_node)
+    graph.add_node("begin_turn", begin_turn_node)
     graph.add_node("interpret", interpret_node)
     graph.add_node("apply_rejections", apply_rejections_node)
     graph.add_node("apply_relaxation", apply_relaxation_node)
@@ -898,6 +1038,7 @@ def build_graph(
     graph.add_node("show_shortlist", show_shortlist_node)
     graph.add_node("compare_shortlist", compare_shortlist_node)
     graph.add_node("show_listing_details", show_listing_details_node)
+    graph.add_node("explain_listing", explain_listing_node)
     graph.add_node("clarification", clarification_node)
     graph.add_node("normalize_budget", normalize_budget_node)
     graph.add_node("prepare_search", prepare_search_node)
@@ -906,12 +1047,13 @@ def build_graph(
     graph.add_node("restrictions", restrictions_node)
     graph.add_node("rank", rank_node)
     graph.add_node("validate_listing_status", validate_listing_status_node)
+    graph.add_node("diagnose", diagnose_node)
     graph.add_node("relaxation", relaxation_node)
     graph.add_node("respond", respond_node)
     graph.add_node("conversation", conversation_node)
     graph.add_node("generate_response", generate_response_node)
-    graph.add_edge(START, "language")
-    graph.add_edge("language", "interpret")
+    graph.add_edge(START, "begin_turn")
+    graph.add_edge("begin_turn", "interpret")
     graph.add_conditional_edges(
         "interpret",
         route_after_interpret,
@@ -925,6 +1067,7 @@ def build_graph(
             "show_shortlist": "show_shortlist",
             "compare_shortlist": "compare_shortlist",
             "show_listing_details": "show_listing_details",
+            "explain_listing": "explain_listing",
             "preview": "preview_relaxation",
             "conversation": "conversation",
         },
@@ -936,6 +1079,7 @@ def build_graph(
     graph.add_edge("show_shortlist", "generate_response")
     graph.add_edge("compare_shortlist", "generate_response")
     graph.add_edge("show_listing_details", "generate_response")
+    graph.add_edge("explain_listing", "generate_response")
     graph.add_conditional_edges(
         "normalize_budget",
         route_after_budget,
@@ -945,15 +1089,16 @@ def build_graph(
     graph.add_conditional_edges(
         "search",
         route_after_search,
-        {"matches": "restrictions", "no_matches": "relaxation"},
+        {"matches": "restrictions", "no_matches": "diagnose"},
     )
     graph.add_edge("restrictions", "rank")
     graph.add_edge("rank", "validate_listing_status")
     graph.add_conditional_edges(
         "validate_listing_status",
         route_after_validation,
-        {"matches": "respond", "no_matches": "relaxation"},
+        {"matches": "respond", "no_matches": "diagnose"},
     )
+    graph.add_edge("diagnose", "relaxation")
     graph.add_edge("relaxation", "respond")
     graph.add_edge("respond", "generate_response")
     graph.add_edge("conversation", "generate_response")
@@ -993,6 +1138,12 @@ def _asks_to_compare_listings(message: str) -> bool:
     )
 
 
+def _asks_to_explain(message: str) -> bool:
+    """Why a listing ranks where it does or where its facts come from (为什么推荐, 价格从哪来)."""
+    text = message.casefold()
+    return any(term in text for term in ("为什么", "为何", "从哪", "来源", "依据", "why", "where does", "where do", "source"))
+
+
 def _asks_to_show_listing_details(message: str) -> bool:
     text = message.casefold()
     return any(term in text for term in ("详情", "详细信息", "details")) or any(
@@ -1029,6 +1180,17 @@ def _selected_rejection_ids(state: AgentState) -> list[str]:
 
 def _shown_listing_ids(ranked: list[RankingResult]) -> list[str]:
     return [item["listing"]["listing_id"] for item in ranked[:3]]
+
+
+def _faculty(name: str | None) -> str | None:
+    """A recorded faculty's English name, from its English or Chinese name or abbreviation."""
+    faculty = find_faculty(name) if name else None
+    return faculty and faculty["name"]
+
+
+def _preferences(state: AgentState) -> SearchPreferences:
+    """The saved criteria with the faculty, also before the first search."""
+    return (state.get("preferences") or SearchPreferences()).model_copy(update={"faculty": state.get("faculty")})
 
 
 def _search_exclusions(state: AgentState) -> list[str]:
@@ -1096,3 +1258,28 @@ def _language(state: AgentState) -> ResponseLanguage:
 
 def _text(state: AgentState, zh: str, en: str) -> str:
     return en if _language(state) == "en" else zh
+
+
+def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) -> list[str]:
+    """Why a reply cannot be shown; listing IDs and money, minute or count figures need a source."""
+    source = "\n".join(sources)
+    problems = []
+    listing_ids = sorted(set(_listing_ids_in(reply)) - set(_listing_ids_in(source)))
+    if listing_ids:
+        problems.append(f"it names listings that no tool returned: {', '.join(listing_ids)}")
+    known = {_number(value) for value in re.findall(_NUMBER, source)}
+    figures = sorted({_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)} - known)
+    if figures:
+        problems.append(f"it states figures that no tool returned: {', '.join(figures)}")
+    if _UNSUPPORTED_ACTION_OFFER.search(reply) or _UNSUPPORTED_OFFER_EN.search(reply):
+        problems.append("it offers an action this agent cannot take")
+    if _CYRILLIC.search(reply) or (language == "en" and _HAN.search(reply)) or (language == "zh" and not _HAN.search(reply)):
+        problems.append("it is not in the reply language")
+    return problems
+
+
+def _number(text: str) -> str:
+    try:
+        return format(Decimal(text.replace(",", "")).normalize(), "f")
+    except InvalidOperation:
+        return text

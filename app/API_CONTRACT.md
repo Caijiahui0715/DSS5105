@@ -1,7 +1,7 @@
 # API contract — what this app calls on the agent backend
 
 The backend is `server.py` at the repository root (FastAPI). The repository
-README's "给前端的接口" section is the full description; this is the frontend's
+README's "API for the front end" section is the full description; this is the frontend's
 view of it. Every call goes through `adapters/backend_client.py`, and
 `tests/test_frontend_client.py` (repository root) runs that client against the
 server, so a change on either side that breaks the other fails there.
@@ -25,8 +25,8 @@ server, so a change on either side that breaks the other fails there.
 | Method and path | Used for | Response |
 |---|---|---|
 | GET /api/faculties | sign-up and Profile faculty choice, map anchor (no sign-in) | `[{name, zh, campus, code, latitude, longitude}]` |
-| GET /api/options | sign-up and Profile districts and property types (no sign-in) | `{districts: [{code, name}], property_types}` |
-| POST /api/register | create an account `{username, password, faculty}` | account; then POST /api/token |
+| GET /api/options | sign-up and Profile districts and property types (no sign-in) | `{districts: [{code, name}], property_types, invite_code_required}` |
+| POST /api/register | create an account `{username, password, faculty, invite_code}`; `invite_code` is needed when `invite_code_required` | account; then POST /api/token |
 | POST /api/token | sign in `{username, password}` | `{token, token_type, username, faculty}` |
 | GET /api/me | sign in from the remember-me cookie | `{username, faculty}` |
 | PUT /api/me/faculty | Profile `{faculty}` (null clears it) | `{username, faculty}` |
@@ -43,7 +43,7 @@ server, so a change on either side that breaks the other fails there.
 | POST /api/conversations/{id}/profile | saving it `{switch_on}` (true only after the user agreed to switch memory on; 409 while it is off otherwise) | `{changes, profile}` |
 | POST /api/conversations/{id}/auto-save | Home offer "Auto-save": switches auto-save on (and memory, when undecided) and saves what the conversation changed so far; 409 while memory is off | `{changes, profile}` |
 | GET /api/me/profile | Profile page, a new conversation before its first message, and the Home auto-save offer | `{memory, auto_save, auto_save_offer, saved_on, preferences, sources, budget, items, opening}` |
-| PUT /api/me/profile | Profile form `{changes: {criterion: value or null}}`; 409 while memory is off | the profile, as GET |
+| PUT /api/me/profile | Profile form `{changes: {criterion: value or null}, via}`, `via` `profile` (default) or `signup` (the sign-up criteria, saved right after the account is created); 409 while memory is off | the profile, as GET |
 | PUT /api/me/memory | Profile memory switch `{on}` | the profile, as GET |
 | PUT /api/me/auto-save | Profile auto-save switch `{on}`; on switches an undecided memory on; it waits while memory is off | the profile, as GET |
 | DELETE /api/me/auto-save/offer | Home offer "×": never offered again | the profile, as GET |

@@ -6,6 +6,43 @@ from models import ParsedTurn, RelaxationSuggestion, SearchPreferences
 from tools import resolve_search_location
 
 
+# How the user's words map to criteria; the agent's prompt uses the same rules.
+FIELD_RULES = """
+Criteria from the user's words
+- 整租 or a whole unit is rental_scope=entire_unit; 合租, 单间 or a room is rental_scope=room.
+  Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
+  or studio; district codes look like D05.
+- Set property_types only when a property type is named: 公寓, condo or private apartment means
+  condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means
+  hdb_flat; 有地住宅 or landed means the house types. Property type does not decide rental_scope.
+- Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
+  female means female, 我是男生 means male, a male-female couple or group means mixed. Never infer
+  gender from a name or writing style.
+- 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
+  furnished_required; 要空调 or aircon sets air_conditioning_required.
+- 只租 6 个月, 租一年 or 签两年 sets lease_months to 6, 12 or 24: the lease the user will sign. A
+  listing's lease term is the shortest lease its landlord accepts, so a 2-year listing does not
+  fit a 1-year lease. A move-in date alone is not a lease length.
+- Commute times are minutes from each listing to the user's NUS faculty (faculty in the
+  conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
+  is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 alone sets
+  max_commute_minutes=40. Asking for a short commute (离学校近, 通勤近一点, 越近越好, a short commute)
+  adds commute to ranking_priority, also when a limit comes with it: 离学院近，40 分钟以内 sets the
+  limit and adds commute. Saved priorities stay; commute is added to them.
+- 空间大一点, 宽敞, a larger room/home or spacious adds space to ranking_priority. This is enough
+  to search immediately; do not invent a minimum area, bedroom count or whole-unit preference.
+  Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
+  Space ranks sizes within the same rental_scope and area_scope. Always state which area is
+  advertised; floor_reported on a room listing is the whole home's size, not the room's size.
+- Put in ranking_priority only what the user asks to rank by. How many people will live there
+  is occupant_count, not a wish for space.
+- The number of people (三个人住, 我和女朋友两个人) sets only occupant_count. The system then
+  picks the rental type and bedrooms itself (whole units with a bedroom each for two or more
+  people, or one room when two people chose 合租) and tells the user. Set min_bedrooms only when
+  the user gives a bedroom count, such as how many bedrooms they need in total.
+"""
+
+
 PREFERENCE_GUIDANCE = """
 Additional preferences
 - 至少两个卫生间 sets min_bathrooms=2; 独立卫浴 sets private_bathroom_required=true;
@@ -53,6 +90,9 @@ leave it empty to compare the whole shortlist.
 Use show_listing_details when the user asks for more information about one listing.
 Set detail_listing_number for a displayed position such as "the second listing". Leave it
 null for "this listing"; the graph resolves it only when exactly one listing was shown.
+Use explain_listing when the user asks why a listing is recommended or ranked where it is, or
+where its facts such as its rent or commute come from (为什么推荐这套, 价格从哪来). Set
+detail_listing_number as for show_listing_details.
 Use accept_relaxation only when the user agrees to a pending relaxation.
 Use reject_relaxation when the user rejects a pending relaxation.
 Use reject_results when the user rejects shown listings without changing preferences.
@@ -91,36 +131,24 @@ Listing IDs may be synthetic IDs such as S010 or real PropertyGuru IDs containin
 digits. Never treat a budget, date, or MRT duration as a listing ID.
 Normalize Singapore district codes to uppercase and room types to snake_case values such
 as common_room, master_room, shared_room, studio, or room_unspecified.
-Set rental_scope to entire_unit for 整租 or a whole unit, and room for 合租, 单间 or a room;
-never encode rental scope as room_type.
-Set property_types only when a property type is named: 公寓, condo or private apartment means
-condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means hdb_flat;
-有地住宅 or landed means the house types. Property type does not decide rental_scope.
 The suggested_refinement_fields are optional, never search blockers. When room_type is
 suggested and the user says every/any room type is acceptable, keep room_type null, set
 room_type_flexible true, and use search. Set it false when a specific room type is chosen.
 Return move_in_date as YYYY-MM-DD. Resolve relative or yearless dates using the supplied
 current date. Set move_in_flexible only when the user explicitly says the date is flexible.
 Set cooking_required only when cooking is a requirement, not merely mentioned.
-Set min_bedrooms when the user gives a minimum bedroom count. Set occupant_count to the
-number of people who need to stay; tenant_count_reported is the advertised maximum allowed
-occupancy. The dataset has no reliable platform-verification field, so never invent or
-preserve a verified-only preference.
-Set tenant_gender only when the user states who will live there: female, male, or mixed for
-a male-female couple or group; never infer it from a name or wording. Set
-landlord_not_living_in when the user does not want a live-in owner, furnished_required for a
-furnished home and air_conditioning_required for air conditioning. max_commute_minutes is
-public-transport minutes to NUS only; leave it null for any other destination.
-Add space to ranking_priority for 空间大一点, 宽敞 or spacious; this alone is a search criterion.
-Set min_area_sqm only for an explicit minimum size; convert sqft with 0.09290304. Never invent
-a minimum size, bedroom count or rental scope from a request for more space.
+occupant_count is not tenant_count_reported, the advertised maximum allowed occupancy. The
+dataset has no reliable platform-verification field, so never invent or preserve a
+verified-only preference.
+Commute times here are to the user's faculty only: leave other_destination and
+max_other_commute_minutes null, and leave max_commute_minutes null for any other destination.
 Interpret MTR as MRT. Add price, mrt, amenities, commute or space to ranking_priority only when
 the user explicitly prefers it; a numeric limit alone does not imply priority. Use amenities when
 the user wants more places to eat nearby and commute for a shorter trip to NUS. With no stated
 priority, leave ranking_priority empty (balanced).
 When current preferences are supplied, preserve them unless the user explicitly changes them.
 """
-_SYSTEM_PROMPT += PREFERENCE_GUIDANCE
+_SYSTEM_PROMPT += FIELD_RULES + PREFERENCE_GUIDANCE
 
 
 def parse_turn(
@@ -132,6 +160,7 @@ def parse_turn(
     shown_listing_ids: list[str] | None = None,
     shortlisted_listing_ids: list[str] | None = None,
     suggested_refinement_fields: list[str] | None = None,
+    faculty: str | None = None,
 ) -> ParsedTurn:
     """Use one structured model call to classify intent and merge preferences."""
     if not text.strip():
@@ -139,6 +168,7 @@ def parse_turn(
 
     context = {
         "today": date.today().isoformat(),
+        "faculty": faculty,
         "current_preferences": previous.model_dump(mode="json") if previous else None,
         "matching_results_available": has_results,
         "shown_listing_ids_in_display_order": shown_listing_ids or [],

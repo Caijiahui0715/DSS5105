@@ -438,3 +438,38 @@ def _check(value, test) -> str:
 def _stated(value, test) -> str:
     """Like _check for text labels, where "unknown" also means the data does not say."""
     return _check(None if value == "unknown" else value, test)
+
+
+def occupant_rules(current: SearchPreferences, changes: dict) -> tuple[dict, dict | None]:
+    """Further changes and the note to show when the number of people or the rental type changes.
+
+    The system cannot find several rooms in one home, so two or more people search whole units
+    with a bedroom each, unless two chose to rent one room together. Bedrooms equal to the
+    earlier number of people count as set from it and follow it, or go when it drops below two.
+    """
+    if not {"occupant_count", "rental_scope"} & changes.keys():
+        return {}, None
+    before = current.occupant_count
+    people = changes.get("occupant_count", before)
+    scope = changes.get("rental_scope", current.rental_scope)
+    bedrooms = current.min_bedrooms
+    followed = before is not None and before >= 2 and bedrooms == before
+    own_bedrooms = "min_bedrooms" in changes
+    if people is not None and (people >= 3 or (people == 2 and scope != "room")):
+        extra = {"rental_scope": "entire_unit"}
+        if not own_bedrooms and (followed or bedrooms is None or bedrooms < people):
+            extra["min_bedrooms"] = people
+        set_bedrooms = extra.get("min_bedrooms") not in (None, bedrooms)
+        note = {
+            "kind": "whole_unit",
+            "from_room": scope == "room",
+            "bedrooms": set_bedrooms and people,
+            "earlier_bedrooms": set_bedrooms and not followed and bedrooms,
+        }
+        return extra, note if note["from_room"] or note["bedrooms"] else None
+    extra = {"min_bedrooms": None} if followed and not own_bedrooms else {}
+    if people == 2:
+        return extra, {"kind": "shared_room"}
+    if extra and scope == "entire_unit":
+        return extra, {"kind": "one_person", "people": people}
+    return extra, None

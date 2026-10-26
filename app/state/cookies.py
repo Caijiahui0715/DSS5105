@@ -30,5 +30,7 @@ def apply():
     # Deleting is writing it again, already expired.
     value, seconds = ('', 0) if action == 'delete' else (action, SECONDS)
     cookie = f'{COOKIE}={value}; path=/; max-age={seconds}; SameSite=Lax'
+    # Over HTTPS (the deployed site) the browser then never sends it over plain HTTP.
+    script = f'const page = window.parent; page.document.cookie = {json.dumps(cookie)} + (page.location.protocol === "https:" ? "; Secure" : "");'
     with st.container(key='cookie-writer'):
-        components.html(f'<script>window.parent.document.cookie = {json.dumps(cookie)};</script>', height=0)
+        components.html(f'<script>{script}</script>', height=0)

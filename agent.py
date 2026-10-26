@@ -6,7 +6,6 @@ graph.py stays as the fixed-workflow baseline (python demo.py --workflow).
 import json
 import re
 from datetime import date
-from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal, TypedDict
 from uuid import uuid4
@@ -34,6 +33,7 @@ from decision import (
     explain_listing,
     load_source_evidence,
     mrt_minutes,
+    occupant_rules,
     rental_scope_mix,
     route_candidates,
     search_with_unknowns,
@@ -44,13 +44,10 @@ from costs import lease_costs
 from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
 from faculties import FACULTIES, find_faculty
 from graph import (
-    _CYRILLIC,
-    _HAN,
     _REFINEMENT_LABELS,
-    _UNSUPPORTED_ACTION_OFFER,
     _has_search_criteria,
-    _listing_ids_in,
     _open_preferences,
+    _reply_problems,
     _response_language,
     _search_exclusions,
     _text,
@@ -58,7 +55,7 @@ from graph import (
 from group_db import Database
 from models import Destination, ResponseLanguage, SearchPreferences
 from onemap import OneMapError
-from parser import PREFERENCE_GUIDANCE
+from parser import FIELD_RULES, PREFERENCE_GUIDANCE
 from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
 from response import (
     _availability_text,
@@ -184,12 +181,6 @@ Using tools
   or a whole lease goes in budget with months set to 12 or the lease length, in any currency
   including SGD; never put such an amount in max_price_sgd. 一年的预算是30万人民币 is
   budget {{"amount": 300000, "currency": "CNY", "months": 12}}.
-- 整租 or a whole unit is rental_scope=entire_unit; 合租, 单间 or a room is rental_scope=room.
-  Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
-  or studio; district codes look like D05.
-- Set property_types only when a property type is named: 公寓, condo or private apartment means
-  condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means
-  hdb_flat; 有地住宅 or landed means the house types. Property type does not decide rental_scope.
 - Resolve relative move-in dates from today. Set cooking_required only when cooking is
   required. When the user accepts any room type, clear room_type and set room_type_flexible.
 - In search_listings, put only the fields that change in set; never echo saved or empty fields.
@@ -198,14 +189,6 @@ Using tools
   never needed for that. A ranking_priority in set replaces the saved list, so include the saved
   priorities the user keeps, for example ["space", "food_places"] when 也想要餐厅多 follows a
   saved space priority.
-- Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
-  female means female, 我是男生 means male, a male-female couple or group means mixed. Never infer
-  gender from a name or writing style.
-- 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
-  furnished_required; 要空调 or aircon sets air_conditioning_required.
-- 只租 6 个月, 租一年 or 签两年 sets lease_months to 6, 12 or 24: the lease the user will sign. A
-  listing's lease term is the shortest lease its landlord accepts, so a 2-year listing does not
-  fit a 1-year lease. A move-in date alone is not a lease length.
 - For what renting costs (一共要花多少, 印花税, 押金, 要先付多少, total cost, stamp duty, deposit,
   upfront), call estimate_costs; for 这套 resolve the listing as for any reference. Do not ask
   about the lease, deposit or agent first: the tool states its assumptions and offers to
@@ -213,17 +196,14 @@ Using tools
   sentences without repeating it. Pass lease_months, deposit_months, uses_agent or agent_fee_sgd
   only when the user states them, with user_quote; a stated lease length is saved as the lease
   criterion, the rest are kept for this conversation.
-- Commute times are minutes from each listing to the user's NUS faculty (faculty in the
-  conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
-  is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 sets
-  max_commute_minutes=40; a short commute adds commute to ranking_priority.
 - Besides the user's faculty, other_destination holds one more place the commute must suit: a
   roommate's NUS faculty (its English name from the list in query), or a Singapore place such as a
   gym or office (an English address, building name or postcode in query; ask when a Chinese place
   name cannot be reliably resolved). Put what it is to the user (室友的学院, 健身房, 公司) in name.
-  A limit for it goes in max_other_commute_minutes; 两边都 30 分钟以内 sets both limits to 30.
-  都方便 or 通勤近 without a number adds commute to ranking_priority, which ranks by the longer of
-  the two trips. Without a limit or that priority, its times are only shown.
+  A limit for it goes in max_other_commute_minutes; 两边都 30 分钟以内 alone sets both limits to 30.
+  都方便, 都近 or 通勤近 adds commute to ranking_priority, with or without a number: 两边都近，40 分钟
+  以内 sets both limits to 40 and adds commute. Commute ranks by the longer of the two trips. Without
+  a limit or that priority, its times are only shown.
 - Only one other destination: when the user names more than one besides their faculty, say so and
   ask which to keep. When one is saved and the user names another, call search_listings with it:
   the tool says what to ask, and replace_destination=true is only for after they agree.
@@ -232,17 +212,6 @@ Using tools
 - Ranking always weighs MRT walking distance, and rent when there is a budget; the named
   priorities share 70% of the weight. A listing without MRT data or near a station that is not
   open yet counts as a 10-minute walk.
-- 空间大一点, 宽敞, a larger room/home or spacious adds space to ranking_priority. This is enough
-  to search immediately; do not invent a minimum area, bedroom count or whole-unit preference.
-  Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
-  Space ranks sizes within the same rental_scope and area_scope. Always state which area is
-  advertised; floor_reported on a room listing is the whole home's size, not the room's size.
-- Put in ranking_priority only what the user asks to rank by. How many people will live there
-  is occupant_count, not a wish for space.
-- The number of people (三个人住, 我和女朋友两个人) sets only occupant_count. The system then
-  picks the rental type and bedrooms itself (whole units with a bedroom each for two or more
-  people, or one room when two people chose 合租) and tells the user. Set min_bedrooms only when
-  the user gives a bedroom count, such as how many bedrooms they need in total.
 - Present listings in the order and numbering the tools give. Changes to this conversation's criteria,
   budget conversions and budget_check notes, shortlist changes, exclusions, relaxation
   suggestions, the rental_scope_mix note (whether the shown listings are rooms or whole
@@ -250,7 +219,7 @@ Using tools
   automatically, so do not repeat them; you may ask whether the user wants a whole unit or a
   room.
 """
-_SYSTEM_PROMPT += PREFERENCE_GUIDANCE
+_SYSTEM_PROMPT += FIELD_RULES + PREFERENCE_GUIDANCE
 # Listed from faculties.py, so the prompt stays in step with the recorded addresses.
 _FACULTY_LIST = "; ".join(f"{faculty['name']} ({faculty['campus']})" for faculty in FACULTIES)
 _SYSTEM_PROMPT += f"""
@@ -311,16 +280,6 @@ _FALLBACK = (
 _RETRY = (
     "Your previous reply was not shown to the user because {problems}. Call a tool to get the "
     "facts you need, or answer without them. Reply only in {language}."
-)
-_OFFER = r"\b(?:I can(?!not|'t|’t)|I could(?! not|n't|n’t)|I will(?! not)|I'll(?! not)|let me(?! know)|shall I|want me to)\b[^.?!\n]{0,60}"
-_UNSUPPORTED_OFFER_EN = re.compile(
-    _OFFER + r"\b(?:contact|call|email|reach out|book|schedule|arrange|reserve|hold|confirm (?:the )?availability)",
-    re.IGNORECASE,
-)
-_NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
-_CLAIMED_NUMBER = re.compile(
-    rf"(?:S\$|SGD|\$)\s*({_NUMBER})|({_NUMBER})\s*(?:新币|新加坡元|SGD|元|分钟|mins?\b|minutes?\b|套|listings?\b)",
-    re.IGNORECASE,
 )
 
 
@@ -1774,41 +1733,6 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
     return {key: value for key, value in facts.items() if value not in (None, [], {})}
 
 
-def occupant_rules(current: SearchPreferences, changes: dict) -> tuple[dict, dict | None]:
-    """Further changes and the note to show when the number of people or the rental type changes.
-
-    The system cannot find several rooms in one home, so two or more people search whole units
-    with a bedroom each, unless two chose to rent one room together. Bedrooms equal to the
-    earlier number of people count as set from it and follow it, or go when it drops below two.
-    """
-    if not {"occupant_count", "rental_scope"} & changes.keys():
-        return {}, None
-    before = current.occupant_count
-    people = changes.get("occupant_count", before)
-    scope = changes.get("rental_scope", current.rental_scope)
-    bedrooms = current.min_bedrooms
-    followed = before is not None and before >= 2 and bedrooms == before
-    own_bedrooms = "min_bedrooms" in changes
-    if people is not None and (people >= 3 or (people == 2 and scope != "room")):
-        extra = {"rental_scope": "entire_unit"}
-        if not own_bedrooms and (followed or bedrooms is None or bedrooms < people):
-            extra["min_bedrooms"] = people
-        set_bedrooms = extra.get("min_bedrooms") not in (None, bedrooms)
-        note = {
-            "kind": "whole_unit",
-            "from_room": scope == "room",
-            "bedrooms": set_bedrooms and people,
-            "earlier_bedrooms": set_bedrooms and not followed and bedrooms,
-        }
-        return extra, note if note["from_room"] or note["bedrooms"] else None
-    extra = {"min_bedrooms": None} if followed and not own_bedrooms else {}
-    if people == 2:
-        return extra, {"kind": "shared_room"}
-    if extra and scope == "entire_unit":
-        return extra, {"kind": "one_person", "people": people}
-    return extra, None
-
-
 def _clean_ids(listing_ids: list[str]) -> list[str]:
     return list(dict.fromkeys(value.strip().upper() for value in listing_ids if value.strip()))
 
@@ -1820,28 +1744,3 @@ def _quotes(quote: str, message: str) -> bool:
 
 def _turn_start(messages: list[AnyMessage]) -> int:
     return max(index for index, message in enumerate(messages) if isinstance(message, HumanMessage))
-
-
-def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) -> list[str]:
-    """Why a reply cannot be shown; listing IDs and money, minute or count figures need a source."""
-    source = "\n".join(sources)
-    problems = []
-    listing_ids = sorted(set(_listing_ids_in(reply)) - set(_listing_ids_in(source)))
-    if listing_ids:
-        problems.append(f"it names listings that no tool returned: {', '.join(listing_ids)}")
-    known = {_number(value) for value in re.findall(_NUMBER, source)}
-    figures = sorted({_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)} - known)
-    if figures:
-        problems.append(f"it states figures that no tool returned: {', '.join(figures)}")
-    if _UNSUPPORTED_ACTION_OFFER.search(reply) or _UNSUPPORTED_OFFER_EN.search(reply):
-        problems.append("it offers an action this agent cannot take")
-    if _CYRILLIC.search(reply) or (language == "en" and _HAN.search(reply)) or (language == "zh" and not _HAN.search(reply)):
-        problems.append("it is not in the reply language")
-    return problems
-
-
-def _number(text: str) -> str:
-    try:
-        return format(Decimal(text.replace(",", "")).normalize(), "f")
-    except InvalidOperation:
-        return text

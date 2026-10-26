@@ -1,6 +1,6 @@
--- 2026-10-10: Sentosa Cove / 市中心扩展后, 部分房源周边没有 MRT,
--- mrt_* 四列允许 NULL ("附近没有 MRT" 是事实, 不是缺数据)。
--- 用 to_regclass 保护: 测试库(<DB_NAME>_test)里没有 public.listings 时自动跳过。
+-- 2026-10-10: since the data grew to Sentosa Cove and the city centre, some listings have no MRT nearby,
+-- so the four mrt_* columns allow NULL ("no MRT nearby" is a fact, not missing data).
+-- Guarded with to_regclass: skipped in the test database (<DB_NAME>_test), which has no public.listings.
 DO $$
 BEGIN
   IF to_regclass('public.listings') IS NOT NULL THEN

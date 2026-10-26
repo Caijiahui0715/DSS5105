@@ -38,9 +38,9 @@ def _conversation(title, requirements, preferences, thread_id=None, loaded=True,
             # whether its listings are only a preview, and its saved criteria as the backend sends them
             # ({'preferences', 'sources', 'items'}) for the criteria panel.
             'thread_id':thread_id, 'loaded':loaded, 'preview':False, 'criteria':dict(EMPTY),
-            # With the backend: the latest comparison table, the listings chosen to compare (those
-            # compared, less any removed since, plus one waiting for a second), and whether the
-            # table is new since the Compare bar was last opened.
+            # With the backend: the latest comparison table, the compare box (the listings to compare
+            # next, in the table's order: those last compared until the user changes it), and whether
+            # a table asked for in chat is new since the Compare bar was last opened.
             'comparison':None, 'compare':[], 'compare_new':False}
 
 
@@ -152,6 +152,9 @@ def load(conv):
     conv['compare'] = list((conv['comparison'] or {}).get('listing_ids') or [])
     st.session_state.shortlist = snapshot['shortlist']
     conv['loaded'] = not waiting_for_reply(conv)
+    # The reply to Compare, read here when a click restarted the page meanwhile: a new table opens.
+    if conv['loaded'] and (asked := conv.pop('compare_asked', None)) and conv['comparison'] and conv['comparison'] != asked[0]:
+        conv['compare_show'] = True
 
 
 def busy(conv):
@@ -251,18 +254,29 @@ def compare_message(ids):
 
 
 def toggle_compare(listing_id):
-    """Choose a listing to compare, or remove it, up to three. With the backend, choosing a second or
-    third sends the agent a message to compare them, from Home; removing one asks nothing. Offline,
-    the Favorites page shows the chosen listings in a table."""
+    """Put a listing in the compare box or take it out, up to three. With the backend nothing is asked
+    until Compare is pressed (start_compare). Offline, the Favorites page shows the chosen listings
+    in a table."""
     ids = current()['compare'] if live() else st.session_state.compare
     if listing_id in ids:
         ids.remove(listing_id)
+        if live():
+            st.session_state.notice = t('Taken out of the compare box.', '已移出比较框。')
     elif len(ids) >= 3:
-        st.session_state.notice = t('Compare up to three listings. Remove one before adding another.', '最多比较三套房源，请先移除一套。')
+        st.session_state.notice = (t('The compare box holds up to three listings. Take one out first.', '比较框最多放 3 套，请先拿出一套。') if live()
+                                   else t('Compare up to three listings. Remove one before adding another.', '最多比较三套房源，请先移除一套。'))
     else:
         ids.append(listing_id)
-        if live() and len(ids) >= 2:
-            send_from_home(compare_message(ids))
+        if live():
+            st.session_state.notice = t(f'In the compare box ({len(ids)} of 3). Press Compare to compare them.', f'已放进比较框（{len(ids)}/3 套），按“开始比较”才会比较。')
+
+
+def start_compare(conv):
+    """Ask the agent to compare the listings in the compare box, from Home. The table it replies with
+    opens by itself, once (see Home's compare bar)."""
+    # The comparison before, to tell the reply's from it when the page reads the reply again.
+    conv['compare_asked'] = (conv['comparison'],)
+    send_from_home(compare_message(conv['compare']))
 
 
 def send_from_home(message):

@@ -1,0 +1,6 @@
+# HTTPS for the site (Caddy gets and renews the certificate), passed on to Streamlit.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy frontend:8501
+}

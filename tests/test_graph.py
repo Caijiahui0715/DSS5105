@@ -6,10 +6,12 @@ from unittest.mock import Mock, patch
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
+import agent
+import parser
+from decision import search_with_unknowns
 from graph import _has_search_criteria, _listing_ids_in, _open_preferences, _response_language, build_graph
-from mock_db import create_mock_database
+from mock_db import create_database, create_mock_database
 from models import ParsedTurn, SearchPreferences
-from tools import search_listings
 
 
 def _memory() -> MemorySaver:
@@ -231,7 +233,7 @@ class GraphTest(unittest.TestCase):
 
         with (
             closing(create_mock_database()) as connection,
-            patch("graph.search_listings", wraps=search_listings) as search,
+            patch("graph.search_with_unknowns", wraps=search_with_unknowns) as search,
         ):
             result = build_graph(connection, model).invoke(
                 {"message": "我的预算是¥5000"}
@@ -286,7 +288,7 @@ class GraphTest(unittest.TestCase):
 
         with (
             closing(create_mock_database()) as connection,
-            patch("graph.search_listings", wraps=search_listings) as search,
+            patch("graph.search_with_unknowns", wraps=search_with_unknowns) as search,
         ):
             graph = build_graph(connection, model, _memory())
             config = {"configurable": {"thread_id": "progressive-search"}}
@@ -335,7 +337,7 @@ class GraphTest(unittest.TestCase):
 
         with (
             closing(create_mock_database()) as connection,
-            patch("graph.search_listings", wraps=search_listings) as search,
+            patch("graph.search_with_unknowns", wraps=search_with_unknowns) as search,
         ):
             result = build_graph(connection, model).invoke({"message": "帮我找房"})
 
@@ -566,7 +568,7 @@ class GraphTest(unittest.TestCase):
 
         with (
             closing(create_mock_database()) as connection,
-            patch("graph.search_listings", wraps=search_listings) as search,
+            patch("graph.search_with_unknowns", wraps=search_with_unknowns) as search,
         ):
             graph = build_graph(connection, model, _memory())
             config = {"configurable": {"thread_id": "show-saved-results"}}
@@ -1074,6 +1076,146 @@ class GraphTest(unittest.TestCase):
 
         self.assertEqual(result["shown_listing_ids"], ["S007"])
         self.assertIn("Synthetic Jurong East Master Room", result["response_draft"])
+
+
+def _active(listing_id, url):
+    return {"status": "active", "final_url": url, "http_status": 200}
+
+
+def _parsing(*turns: ParsedTurn) -> tuple[Mock, Mock]:
+    """A model whose parser returns these turns in order, and the parser."""
+    structured_model = Mock()
+    structured_model.invoke.side_effect = list(turns)
+    model = Mock()
+    model.with_structured_output.return_value = structured_model
+    return model, structured_model
+
+
+class WorkflowParityTest(unittest.TestCase):
+    """The workflow baseline does what the agent does for these, with the same code."""
+
+    def test_listings_with_an_unstated_requirement_are_shown_to_confirm(self):
+        # As the agent's test: V2 states no cooking policy for any whole unit.
+        preferences = SearchPreferences(max_price_sgd=4000, district_code="D03", rental_scope="entire_unit", cooking_required=True)
+        model, _ = _parsing(ParsedTurn(intent="search", preferences=preferences))
+        with closing(create_database()) as connection:
+            result = build_graph(connection, model, listing_checker=_active).invoke({"message": "预算4000，D03，整租，要能做饭"})
+
+        confirm = result["confirm_listings"]
+        blocking = max(result["decision_context"], key=lambda row: row["database_matches_without_it"])
+        self.assertEqual(result["ranked_listings"], [])
+        self.assertEqual(len(confirm), 3)
+        self.assertTrue(all("cooking_required" in item["listing"]["unknown_conditions"] for item in confirm))
+        self.assertEqual(result["shown_listing_ids"], [item["listing"]["listing_id"] for item in confirm])
+        self.assertEqual(blocking["condition"], "cooking_required")
+        draft = result["response_draft"]
+        self.assertIn("需确认（数据未注明）：做饭政策", draft)
+        self.assertIn("结果主要被以下条件卡住", draft)
+        self.assertIn("放开「做饭政策」", draft)
+        # Listings to confirm are shown, so it does not say that nothing would help.
+        self.assertNotIn("单项小幅放宽后也暂未找到", draft)
+
+    def test_strict_matches_come_first_and_listings_to_confirm_fill_the_rest(self):
+        # In D05 only S001 says the landlord does not live there; four more do not say.
+        preferences = SearchPreferences(district_code="D05", landlord_not_living_in=True)
+        model, _ = _parsing(ParsedTurn(intent="search", preferences=preferences))
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model, listing_checker=_active).invoke({"message": "D05，不要房东同住"})
+
+        confirm = result["confirm_listings"]
+        self.assertEqual([item["listing"]["listing_id"] for item in result["ranked_listings"]], ["S001"])
+        self.assertEqual(len(confirm), 2)
+        self.assertTrue(all(item["listing"]["unknown_conditions"] == ["landlord_not_living_in"] for item in confirm))
+        self.assertEqual(result["shown_listing_ids"], ["S001", *(item["listing"]["listing_id"] for item in confirm)])
+        draft = result["response_draft"]
+        self.assertLess(draft.index("1. "), draft.index("需要你向发布方确认"))
+        self.assertIn(f"2. {confirm[0]['listing']['title']}", draft.split("需要你向发布方确认")[1])
+        self.assertNotIn("结果主要被以下条件卡住", draft)
+
+    def test_commutes_use_the_faculty_given_with_each_turn(self):
+        preferences = SearchPreferences(district_code="D05", room_type="common_room", max_commute_minutes=30)
+        model, structured_model = _parsing(
+            ParsedTurn(intent="search", preferences=preferences),
+            ParsedTurn(intent="search", preferences=preferences),
+        )
+        with closing(create_mock_database()) as connection:
+            graph = build_graph(connection, model, _memory(), listing_checker=_active)
+            config = {"configurable": {"thread_id": "faculty"}}
+            with_faculty = graph.invoke({"message": "D05 common room，到学院30分钟内", "faculty": "SoC"}, config=config)
+            without = graph.invoke({"message": "再搜一次", "faculty": None}, config=config)
+
+        self.assertEqual(with_faculty["preferences"].faculty, "School of Computing")
+        # S006 takes 25 minutes and S010 28; S001 (35) and S011 (45) are too far.
+        self.assertEqual([item["listing"]["listing_id"] for item in with_faculty["ranked_listings"]], ["S006", "S010"])
+        self.assertIn("到计算机学院：公共交通约 25 分钟", with_faculty["response_draft"])
+        self.assertNotIn("还没有设置你的学院", with_faculty["response_draft"])
+        context = structured_model.invoke.call_args_list[0].args[0][-1][1]
+        self.assertIn('"faculty": "School of Computing"', context)
+        # Without a faculty nothing can be checked against the limit, as for the agent.
+        self.assertIsNone(without["preferences"].faculty)
+        self.assertEqual(without["ranked_listings"], [])
+        self.assertTrue(without["confirm_listings"])
+        self.assertIn("需确认（数据未注明）：到学院通勤时间", without["response_draft"])
+        self.assertIn("还没有设置你的学院", without["response_draft"])
+
+    def test_several_people_search_whole_units_with_a_bedroom_each(self):
+        model, _ = _parsing(ParsedTurn(intent="search", preferences=SearchPreferences(max_price_sgd=6500, occupant_count=3)))
+        with closing(create_database()) as connection:
+            result = build_graph(connection, model, listing_checker=_active).invoke({"message": "预算6500，要三个人住"})
+
+        preferences = result["preferences"]
+        self.assertEqual((preferences.rental_scope, preferences.min_bedrooms), ("entire_unit", 3))
+        self.assertTrue(result["shown_listing_ids"])
+        self.assertTrue(all(item["listing"]["rental_scope"] == "entire_unit" and item["listing"]["bedrooms"] >= 3 for item in result["ranked_listings"]))
+        self.assertIn("按整套、一人一间找了至少 3 个卧室。如果有人合住一间，告诉我一共需要几个卧室。", result["response_draft"])
+
+    def test_two_people_renting_one_room_keep_the_room_search(self):
+        model, _ = _parsing(ParsedTurn(intent="search", preferences=SearchPreferences(rental_scope="room", max_price_sgd=2000, occupant_count=2)))
+        with closing(create_database()) as connection:
+            result = build_graph(connection, model, listing_checker=_active).invoke({"message": "想合租，预算2000，我和女朋友两个人住一间"})
+
+        self.assertEqual((result["preferences"].rental_scope, result["preferences"].min_bedrooms), ("room", None))
+        self.assertIn("按两人合住一个单间找。", result["response_draft"])
+
+    def test_explains_a_listing_by_id_or_by_its_position(self):
+        preferences = SearchPreferences(max_price_sgd=1300, district_code="D05", room_type="common_room")
+        model, structured_model = _parsing(
+            ParsedTurn(intent="search", preferences=preferences),
+            ParsedTurn(intent="explain_listing", preferences=preferences, detail_listing_number=2),
+        )
+        with closing(create_mock_database()) as connection:
+            graph = build_graph(connection, model, _memory(), listing_checker=_active)
+            config = {"configurable": {"thread_id": "explain"}}
+            first = graph.invoke({"message": "预算1300，D05 common room"}, config=config)
+            by_id = graph.invoke({"message": "为什么推荐 S010"}, config=config)
+            by_position = graph.invoke({"message": "第二套的价格从哪来"}, config=config)
+
+        self.assertEqual(by_id["intent"], "explain_listing")
+        self.assertIn("房源 S010 的排序依据", by_id["response_draft"])
+        self.assertIn("数据来源：月租来自", by_id["response_draft"])
+        # The explanation keeps the shown listings, so positions still refer to them.
+        self.assertEqual(by_id["shown_listing_ids"], first["shown_listing_ids"])
+        second = first["shown_listing_ids"][1]
+        self.assertIn(f"房源 {second} 的排序依据", by_position["response_draft"])
+        self.assertEqual(structured_model.invoke.call_count, 2)
+
+    def test_a_rewrite_with_a_figure_not_in_the_draft_shows_the_draft(self):
+        preferences = SearchPreferences(max_price_sgd=1300, district_code="D05", room_type="common_room")
+        model, _ = _parsing(ParsedTurn(intent="search", preferences=preferences))
+        model.invoke.return_value.content = "找到两套房，最便宜的只要 S$999。"
+        with closing(create_mock_database()) as connection:
+            result = build_graph(connection, model, listing_checker=_active).invoke({"message": "预算1300，D05 common room"})
+
+        self.assertEqual(result["response"], result["response_draft"])
+        self.assertEqual(result["trace"], ["[guard] rewrite rejected (it states figures that no tool returned: 999) -> verified draft"])
+
+    def test_the_workflow_and_the_agent_read_the_same_wording_rules(self):
+        self.assertIn(parser.FIELD_RULES, parser._SYSTEM_PROMPT)
+        self.assertIn(parser.FIELD_RULES, agent._SYSTEM_PROMPT.format(language="English"))
+        self.assertIn("How many people will live there\n  is occupant_count", parser._SYSTEM_PROMPT)
+        # "Near" with a number is both: the limit and the ranking priority.
+        self.assertIn("also when a limit comes with it", agent._SYSTEM_PROMPT)
+        self.assertIn("with or without a number", agent._SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

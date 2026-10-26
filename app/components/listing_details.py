@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import re
 from components.listing_card import image, actions, heading, commute_text, mrt_text, link_note, lease_text
+from content.i18n import lease_term_label
 from state.session_store import live
 from components.provenance_badge import fact, explanation
 from content.i18n import t
@@ -86,6 +87,118 @@ def details(listing, recommendation=None, key='detail'):
                 st.json(evidence)
     actions(listing, key)
     st.caption(t('Historical source links may be unavailable or changed.', '历史来源链接可能已失效或变更。'))
+
+
+def full_details(listing, recommendation, key):
+    """Everything a renter may want about a listing, folded at the end of its card on Favorites:
+    tables by topic, "(estimated)" on what the system worked out rather than the advert said, and
+    "not stated" where the data says nothing."""
+    f = listing.facts
+    with st.expander(t('All details', '查看全部资料')):
+        if len(listing.images) > 1:
+            st.image(list(listing.images), width=110)
+        _table(t('Rent and home', '租金和房屋'), [
+            (t('Monthly rent', '月租'), _rent(f)),
+            (t('Rental scope', '出租方式'), _value(f.get('rentalScope'))),
+            (t('Property type', '物业类型'), _value(f.get('propertyType'))),
+            (t('Room type', '房型'), _value(f.get('roomType'))),
+            (t('Bedrooms', '卧室'), _value(f.get('bedrooms'))),
+            (t('Bathrooms', '卫生间'), _value(f.get('bathrooms'))),
+            (t('Area', '面积'), _area(f)),
+            (t('Lease', '租期'), lease_term_label(f.get('leaseTerm'))),
+        ])
+        _table(t('Location and getting around', '位置和交通'), [
+            (t('District', '区'), ' · '.join(str(part) for part in (f.get('districtCode'), f.get('districtName')) if part) or _value(None)),
+            (t('Address', '地址'), _value(f.get('address'))),
+            ('MRT', _mrt(f)),
+            # Each trip time is worked out from routes, not advertised.
+            (t('Commute', '通勤'), re.sub(r'(\d+ (?:min|分钟))', lambda found: found[1] + _estimated(), commute_text(listing, recommendation))),
+        ])
+        _table(t('Furnishing and living', '家具和生活'), [
+            (t('Furnishing', '家具'), _value(f.get('furnishing'))),
+            (t('Private bathroom', '独立卫浴'), _value(f.get('privateBathroom'))),
+            (t('Cooking', '做饭'), _value(f.get('cookingPolicy'))),
+            (t('Air conditioning', '空调'), _value(f.get('airConditioning'))),
+            (t('Landlord lives in', '房东同住'), _value(f.get('landlordLivesIn'))),
+            (t('Pets', '宠物'), _value(f.get('petsPolicy'))),
+            (t('People the advert mentions', '广告标注的人数'), _value(f.get('tenantCountReported'))),
+            (t('Gender restriction', '性别限制'), _value(f.get('genderRestriction'))),
+            (t('Gender preference', '性别偏好'), _value(f.get('genderPreference'))),
+        ])
+        _table(t('Availability and data', '可租和数据'), [
+            (t('Original link', '原链接'), _link(f)),
+            (t('Move-in', '可入住说明'), _value(listing.evidence.get('availabilityText'))),
+            (t('Listed', '发布日期'), _value(f.get('listedDate'))),
+            (t('Collected', '采集时间'), _value((f.get('collectedAt') or '')[:16].replace('T', ' '))),
+            (t('Data to check', '数据需核实'), ', '.join(listing.metadata['reviewFlags']) or t('Nothing flagged', '没有标记')),
+        ])
+        st.caption(t('"(estimated)" is worked out by the system, such as from map routes, not stated in the advert. "Not stated" means the data does not say. An active link does not mean the home is still for rent.',
+                     '“（推算）”是系统算出来的（比如按地图路线），不是广告写的；“未注明”表示数据里没有。链接有效不代表房子还在出租。'))
+        text = listing.evidence.get('cardText')
+        if text and st.toggle(t('Show the PropertyGuru card text', '显示 PropertyGuru 卡片原文'), key=f'card-text-{key}'):
+            if re.search('[㐀-鿿]', text):
+                st.caption(t('The original advertisement includes non-English text. Use the original listing link to inspect it; the source record has been preserved without translation.', '原广告含非英文内容，请打开原链接查看；来源记录未经翻译。'))
+            else:
+                st.text(text)
+
+
+def _estimated():
+    return t(' (estimated)', '（推算）')
+
+
+def _value(value):
+    return t('Not stated', '未注明') if value in (None, '', 'unknown') else display(value)
+
+
+def _rent(f):
+    rent = f.get('effectiveRentMonthlySgd')
+    if rent is None:
+        return _value(None)
+    text = f'S${rent:,.0f}' + (f" · {display(f['rentPriceType'])}" if f.get('rentPriceType') not in (None, '', 'unknown') else '')
+    if f.get('rentMonthlySgd') not in (None, rent):
+        text += t(f" (advertised at S${f['rentMonthlySgd']:,.0f} when collected)", f"（采集时广告写 S${f['rentMonthlySgd']:,.0f}）")
+    return text
+
+
+def _area(f):
+    area = f.get('areaSqm')
+    if area is None:
+        return _value(None)
+    scope = f.get('areaScope')
+    return f'{area:,.2f}㎡' + (t(f' ({display(scope)})', f'（{display(scope)}）') if scope not in (None, '', 'unknown') else '')
+
+
+def _mrt(f):
+    parts = [_value(f.get('mrtStation'))]
+    if f.get('mrtDistanceM') is not None:
+        parts.append(t(f"{f['mrtDistanceM']:,.0f} m", f"{f['mrtDistanceM']:,.0f} 米"))
+    if f.get('mrtWalkMinutes') is not None:
+        parts.append(t(f"about {f['mrtWalkMinutes']} min walk", f"步行约 {f['mrtWalkMinutes']} 分钟") + _estimated())
+    elif f.get('mrtMinutesReported') is not None:
+        parts.append(t(f"about {f['mrtMinutesReported']} min walk as advertised", f"广告写步行约 {f['mrtMinutesReported']} 分钟"))
+    if f.get('mrtOperationStatus') == 'under_construction':
+        parts.append(t('station not open yet', '车站尚未通车'))
+    return ' · '.join(parts)
+
+
+def _link(f):
+    day = (f.get('liveCheckedAt') or '')[:10]
+    if not day:
+        return t('Not checked yet', '还没检查过')
+    status = f.get('liveStatus')
+    if status == 'active':
+        return t(f'Active when checked on {day}', f'{day} 检查时有效')
+    if status == 'inactive':
+        return t(f'Inactive when checked on {day}', f'{day} 检查时已失效')
+    reason = f.get('liveErrorReason')
+    return t(f'Could not be confirmed on {day}', f'{day} 检查时无法确认') + (f' ({reason})' if reason else '')
+
+
+def _table(title, rows):
+    """A two-column table, the topic as its header; markdown, escaped for "$" and "|"."""
+    def cell(value):
+        return str(value).replace('\\', '\\\\').replace('|', '\\|').replace('$', '\\$').replace('\n', ' ')
+    st.markdown('\n'.join([f'| {cell(title)} | |', '|---|---|', *(f'| {cell(name)} | {cell(value)} |' for name, value in rows)]))
 
 
 def compact_details(listing, recommendation):

@@ -114,6 +114,17 @@ def image(listing, width=500):
             icon=':material/image:'
         )
 
+def box_label(comparing):
+    """With the backend, the compare button puts the listing in the compare box or takes it out."""
+    return t('Remove from compare', '移出比较框') if comparing else t('Add to compare', '放进比较框')
+
+
+def box_help(comparing):
+    return (t('Take this listing out of the compare box', '把这套房源从比较框里拿出来') if comparing
+            else t('Put this listing in the compare box (up to 3). Nothing is compared until you press Compare, in the Compare bar on Home or on Favorites.',
+                   '放进比较框（最多 3 套）。在首页的比较栏或收藏页按“开始比较”才会比较。'))
+
+
 def actions(listing, key):
     a,b,c = st.columns(3)
     a.link_button(t('Open ↗', '打开 ↗'), listing.facts['listingUrl'], help=t('Open the original listing in a new tab', '在新标签页打开原始房源'), width='stretch')
@@ -124,15 +135,17 @@ def actions(listing, key):
         st.rerun()
     comparing = listing.id in compare_ids()
     if live():
-        compare_help = t('Remove this listing from the comparison', '从比较中移除这套房源') if comparing else t('Compare up to 3 listings: choosing a second one asks the agent to compare them, and the table opens from the Compare bar on Home', '最多比较 3 套：选第二套时会让 agent 比较，对比表在首页的“比较”栏里')
+        compare_label, compare_help = box_label(comparing), box_help(comparing)
     else:
+        compare_label = t('Remove compare', '移出比较') if comparing else t('Compare', '比较')
         compare_help = t('Remove this listing from the comparison table in Favorites', '从收藏夹的对比表中移除这套房源') if comparing else t('Add to the comparison table in Favorites (up to 3 listings; no need to save first)', '加入收藏夹中的对比表（最多 3 套，无需先收藏）')
-    # One comparison at a time: not while the agent is still replying.
-    if c.button(t('Remove compare', '移出比较') if comparing else t('Compare', '比较'), key=f'compare-{key}', help=compare_help, width='stretch', disabled=live() and busy(current())):
+    # The compare box waits while the agent is still replying.
+    if c.button(compare_label, key=f'compare-{key}', help=compare_help, width='stretch', disabled=live() and busy(current())):
         toggle_compare(listing.id)
         st.rerun()
 
-def card(listing, rec, key):
+def card(listing, rec, key, more=None):
+    """more: drawn at the end inside the card, such as the folded full details on Favorites."""
     f = listing.facts
     with st.container(border=True):
         heading(rec)
@@ -162,3 +175,5 @@ def card(listing, rec, key):
             st.session_state.selected_listing = listing.id
             st.session_state.page = 'Home'
             st.rerun()
+        if more:
+            more()

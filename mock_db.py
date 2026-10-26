@@ -31,7 +31,7 @@ import psycopg
 from psycopg_pool import ConnectionPool
 
 from build_commutes import COMMUTE_DATA, import_commutes
-from config import postgres_settings
+from config import missing_db_settings, postgres_settings
 from group_db import Database, connect, ensure_database, open_pool, prepare
 from sessions import Storage
 from setup_database import SCRIPT_FOLDER, TABLE_SCRIPTS
@@ -152,10 +152,9 @@ def set_listing(database: Database, listing_id: str, **fields) -> None:
 
 def database_name() -> str:
     """The test database: DB_NAME in .env with _test after it."""
-    name = postgres_settings()["dbname"]
-    if not name:
-        _skip("没有在 .env 里配置 DB_NAME 等数据库连接")
-    return f"{name}_test"
+    if problem := missing_db_settings():
+        _skip(problem)
+    return f"{postgres_settings()['dbname']}_test"
 
 
 def _skip(reason: str):
@@ -174,7 +173,7 @@ def _pool(schema: str) -> ConnectionPool:
                 pg.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
             _pools[schema] = open_pool(schema, dbname=name)
         except psycopg.Error as error:
-            _skip(f"测试数据库 {name} 用不了：{error}")
+            _skip(f"The test database {name} cannot be used: {error}")
     return _pools[schema]
 
 

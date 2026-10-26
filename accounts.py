@@ -40,15 +40,15 @@ class Accounts:
     def register(self, username: str, password: str) -> str:
         user_id = username.strip().lower()
         if not USERNAME.fullmatch(user_id):
-            raise AccountError("用户名需为 3–20 个字母、数字或下划线。")
+            raise AccountError("Usernames are 3–20 letters, digits or underscores.")
         if len(password) < MIN_PASSWORD_LENGTH:
-            raise AccountError(f"密码至少 {MIN_PASSWORD_LENGTH} 位。")
+            raise AccountError(f"Passwords need at least {MIN_PASSWORD_LENGTH} characters.")
         added = self.storage.run(
             "INSERT INTO users (user_id, password_hash, created_at) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO NOTHING",
             (user_id, _hash_password(password), self._now()),
         )
         if not added:
-            raise AccountError("这个用户名已被注册。")
+            raise AccountError("This username is already taken.")
         return user_id
 
     def login(self, username: str, password: str) -> tuple[str, str]:
@@ -56,7 +56,7 @@ class Accounts:
         user_id = username.strip().lower()
         rows = self.storage.rows("SELECT password_hash, failed_logins, locked_until FROM users WHERE user_id = %s", (user_id,))
         if rows and rows[0][2] and rows[0][2] > self._now():
-            raise AccountError("密码错误次数过多，请 1 分钟后再试。")
+            raise AccountError("Too many wrong passwords. Try again in a minute.")
         if not rows or not _check_password(password, rows[0][0]):
             if rows:
                 failures = rows[0][1] + 1
@@ -65,7 +65,7 @@ class Accounts:
                     "UPDATE users SET failed_logins = %s, locked_until = %s WHERE user_id = %s",
                     (0 if locked else failures, self._now(LOCKOUT) if locked else None, user_id),
                 )
-            raise AccountError("用户名或密码不正确。")
+            raise AccountError("Wrong username or password.")
         self.storage.run("UPDATE users SET failed_logins = 0, locked_until = NULL WHERE user_id = %s", (user_id,))
         token = secrets.token_urlsafe(32)
         self.storage.run(

@@ -8,7 +8,7 @@ It runs in one of two modes:
 - **With the agent backend** (default): accounts, listings, the agent's replies
   and recommendations, commute times to the user's faculty, conversations and
   favorites all come from `server.py` at the repository root, which reads the
-  project's PostgreSQL (set it up as in the root `README.md`, 第一次启动).
+  project's PostgreSQL (set it up as in "Getting started" in the root `README.md`).
 - **Offline demo** (`AGENT_MODE=mock`): the original demonstration with static
   V2 files, a scripted demo Agent, demo scores and demo commute estimates. No
   backend and no real accounts. The tests run in this mode.
@@ -36,7 +36,7 @@ in a browser cookie for 7 days (readable by page scripts, unlike the backend
 page's HttpOnly cookie); signing out deletes it and revokes the token.
 
 Settings live in the environment or `app/.env` (ignored by Git; copy
-`app/.env.example`, and see `使用说明.md` in the repository root):
+`app/.env.example`, and see `USER_GUIDE.md` in the repository root):
 
 ```
 BACKEND_URL=http://127.0.0.1:8000   # where server.py listens (the default)
@@ -48,7 +48,12 @@ AGENT_MODE=mock                     # optional: the offline demo instead of the 
 The interface is in English by default; the login page and the conversation
 panel switch it to Chinese. The agent replies in the language of each message
 (Chinese for a Chinese message); the interface language decides only when a
-message shows none, such as `1000` or `D05`.
+message shows none, such as `1000` or `D05`. The interface follows the same way:
+a message in Chinese switches it to Chinese and one in English back to English,
+so the listing cards and the map match the reply, until the user picks a
+language with the switch; that choice then stays for the session.
+The backend's account and form errors are in English; the Chinese interface shows
+them in Chinese (`BACKEND_ZH` in `content/i18n.py`).
 
 The app is an independent, non-package uv project. Only its environment and
 lockfile are managed; the root Python project is unchanged. No Node tooling,
@@ -74,7 +79,8 @@ Profile. Home has a collapsible conversation-history panel (the open conversatio
 once started, has a delete button on its row: it asks first, waits while the agent
 replies, and a new conversation takes its place; a conversation the agent is
 replying in has a spinner, kept after leaving it until the backend has the reply,
-checked every 2 seconds), a chat-only center,
+checked every 2 seconds), a chat-only center (scrolled to the latest message when
+Home is opened from another page or a conversation is opened),
 and two fixed right-hand panels: map above and compact listing card below.
 Recommendations and requirement summaries do not appear in the chat column.
 The map has no markers until recommendations exist; the listing panel starts
@@ -87,20 +93,32 @@ such as a roommate's faculty or a gym, when it has one), the advert's lease term
 lease the landlord accepts) and the link check; there is no 0–100
 score with the backend. Favorites are the agent's shortlist, kept with the account
 and shared by every conversation, so the agent can compare them in chat.
-Compare on a listing chooses it (up to three); choosing a second or third sends
-the agent "Compare A and B" from Home. A Compare button between the map and the
-listings pulses with a "new" mark until opened; opening it shows the backend's
-comparison table, with the key differences, in a wide window. While two or three
-are compared, the map shows them as numbered markers (the table's column numbers)
-framed together with the faculty. A button over the map's top-right corner
-enlarges it in a wide window (600px high) with the recommended, favorite (red
-hearts) and compared listings and the faculty all in view, and a legend; a click on
-a listing there shows a card with Save, Compare and Details, and the window stays
-open. Removing a listing asks nothing:
-the table drops it and the bar offers to compare again. Compare buttons wait while
-the agent replies. The comparison belongs to the conversation (the backend keeps the
-latest); Favorites has no table of its own with the backend, and Compare there goes
-to Home. Offline, Compare fills the Favorites page's table as before. Above the map, a collapsible "This
+Each favorite's card folds "All details" at its end: tables of the rent and home,
+location and getting around, furnishing and living, and availability and data,
+with every photo; values the system worked out (route times) say "(estimated)" and
+missing ones "not stated", and a switch shows the PropertyGuru card text.
+"Add to compare" on a listing puts it in the conversation's compare box (up to
+three) and asks nothing. On Favorites the box sits above the cards: the favorites
+not in it on the left, the box on the right, and listings are dragged between them
+(with a mouse from anywhere on a listing, on a touch screen by its handle; Enter or
+Space moves the focused one). The box's order is the order of the table's columns.
+Compare under the box, or in the Compare bar between the map and the listings on
+Home, sends the agent "Compare A and B" from Home, and once the reply is in, its
+table opens by itself in a wide window, once: the key differences and the backend's
+comparison table. While the box holds the listings last compared, the button opens
+their table instead, in the box's order, without asking again; otherwise "Last
+comparison" opens the previous one. A comparison asked for in chat fills the box too,
+and the bar's button pulses with a "new" mark until opened. The map shows the
+compared listings as numbered markers (the table's column numbers) framed together
+with the faculty. A button over the map's top-right corner enlarges it in a wide
+window (600px high) with the recommended, favorite (red hearts) and compared
+listings and the faculty all in view, and a legend; a click on a listing there shows
+a card with Save, Add to compare and Details, and the window stays open (closing it
+draws the page again). The compare box and its buttons wait while the agent
+replies. The comparison belongs to the conversation (the backend keeps the latest,
+and the box starts from it when the conversation is opened); the box is built with
+Streamlit's own component API (`components/compare_box.py`), without another
+package. Offline, Compare fills the Favorites page's table as before. Above the map, a collapsible "This
 conversation's criteria" panel shows the conversation's criteria, with where each
 came from; its changes are sent to the agent as a message listing only what
 changed, and "Save to long-term profile" saves them after showing what changes.
@@ -131,7 +149,7 @@ use `st.cache_data` (refreshed every 5 minutes); application state uses
 
 The rest of this section and the next describe the offline demo. With the
 backend, the same V2 data comes from `GET /api/listings` (see the repository
-README, "给前端的接口").
+README, "API for the front end").
 
 Six existing files are read directly using paths resolved from the loader:
 
@@ -212,9 +230,8 @@ unsupported landlord-reliability claims. It never calls an LLM or live scraper.
 ## Session limits and external resources
 
 With the backend, accounts, conversations, criteria, favorites and each
-conversation's latest comparison are kept by the backend; a listing chosen to
-compare but not compared yet, and the selected listing, last for the Streamlit
-session. In the offline demo everything lasts only for the session. Logout
+conversation's latest comparison are kept by the backend; changes to the compare
+box not compared yet, and the selected listing, last for the Streamlit session. In the offline demo everything lasts only for the session. Logout
 clears session-owned state. Compare up to three listings.
 
 Photos come from the listing's `photos` links in the V2 data (PropertyGuru's

@@ -24,7 +24,7 @@ class AccountsTest(unittest.TestCase):
         for username, password in (("al", "long enough"), ("alice!", "long enough"), ("bob", "short")):
             with self.subTest(username=username), self.assertRaises(AccountError):
                 self.accounts.register(username, password)
-        with self.assertRaisesRegex(AccountError, "已被注册"):
+        with self.assertRaisesRegex(AccountError, "already taken"):
             self.accounts.register("ALICE_1", "another password")
         # Only a salted hash is stored.
         stored = self.storage.rows("SELECT password_hash FROM users")[0][0]
@@ -52,15 +52,15 @@ class AccountsTest(unittest.TestCase):
     def test_five_wrong_passwords_lock_the_account_for_a_minute(self):
         self.accounts.register("alice", "correct horse")
         for _ in range(5):
-            with self.assertRaisesRegex(AccountError, "用户名或密码不正确"):
+            with self.assertRaisesRegex(AccountError, "Wrong username or password"):
                 self.accounts.login("alice", "wrong password")
         # Locked even with the right password, then usable again after a minute.
-        with self.assertRaisesRegex(AccountError, "1 分钟后再试"):
+        with self.assertRaisesRegex(AccountError, "Try again in a minute"):
             self.accounts.login("alice", "correct horse")
         self.clock.now += timedelta(minutes=1, seconds=1)
         self.assertEqual(self.accounts.login("alice", "correct horse")[0], "alice")
         # An unknown user gets the same message as a wrong password.
-        with self.assertRaisesRegex(AccountError, "用户名或密码不正确"):
+        with self.assertRaisesRegex(AccountError, "Wrong username or password"):
             self.accounts.login("nobody", "whatever123")
 
 

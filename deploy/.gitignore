@@ -1,0 +1,2 @@
+# The server's settings and secrets, filled in from server.env.example.
+server.env

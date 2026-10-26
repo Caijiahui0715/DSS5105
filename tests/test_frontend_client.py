@@ -132,7 +132,7 @@ class FrontendClientTest(unittest.TestCase):
 
         with self.assertRaises(BackendError) as wrong:
             self.client.sign_in("nobody", "password123")
-        self.assertEqual((wrong.exception.status, wrong.exception.detail), (400, "用户名或密码不正确。"))
+        self.assertEqual((wrong.exception.status, wrong.exception.detail), (400, "Wrong username or password."))
 
         def down(request, timeout=None):
             raise URLError(ConnectionRefusedError(111, "Connection refused"))

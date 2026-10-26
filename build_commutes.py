@@ -30,6 +30,7 @@ from pathlib import Path
 from time import sleep
 from types import SimpleNamespace
 
+from config import missing_db_settings
 from faculties import FACULTIES
 from group_db import connect, open_database
 from onemap import OneMapError, load_token, public_transport_minutes, walking_minutes
@@ -151,8 +152,9 @@ def _check_database_is_current(pg, path: Path = COMMUTE_DATA) -> None:
         in_file = 0
     if in_database < in_file:
         raise SystemExit(
-            f"数据库里有 {in_database} 对通勤，比 {path.name} 的 {in_file} 行少，这次运行会用数据库的版本覆盖这个文件。\n"
-            "要保留文件里的结果，先运行 python build_commutes.py --import；确定用数据库的版本，就先运行 --export。"
+            f"The database has {in_database} commutes, fewer than the {in_file} rows of {path.name}, and this run would overwrite the file "
+            "with the database's version.\nTo keep the file's results, run python build_commutes.py --import first; to use the "
+            "database's version, run --export first."
         )
 
 
@@ -248,13 +250,15 @@ def _faster(row: dict, known: dict) -> bool:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    if problem := missing_db_settings():
+        raise SystemExit(problem)
     flags = sys.argv[1:]
     if flags in (["--import"], ["--export"]):
         with closing(connect()) as pg:
             if flags == ["--import"]:
-                print(f"已把 {COMMUTE_DATA.name} 的 {import_commutes(pg)} 行写入数据库。")
+                print(f"Wrote {import_commutes(pg)} rows of {COMMUTE_DATA.name} to the database.")
             else:
-                print(f"已把数据库里的 {export_commutes(pg)} 行通勤写入 {COMMUTE_DATA.name}。")
+                print(f"Wrote {export_commutes(pg)} commute rows from the database to {COMMUTE_DATA.name}.")
         return
     chosen = next((flag.split("=", 1)[1] for flag in flags if flag.startswith("--date=")), None)
     if len(flags) > (1 if chosen else 0):
@@ -265,8 +269,8 @@ def main() -> None:
     # The database is the source; the CSV is the working copy for this run.
     with closing(connect()) as pg:
         _check_database_is_current(pg)
-        print(f"从数据库导出 {export_commutes(pg)} 行到 {COMMUTE_DATA.name}。")
-    print(f"补全 {COMMUTE_DATA.name}：新路线按 {departure:%Y-%m-%d %H:%M} 出发的公共交通计算，1.5 公里内的学院再查步行路线。")
+        print(f"Exported {export_commutes(pg)} rows from the database to {COMMUTE_DATA.name}.")
+    print(f"Filling in {COMMUTE_DATA.name}: new routes by public transport leaving {departure:%Y-%m-%d %H:%M}, plus walking routes to faculties within 1.5 km.")
     token = load_token()
     try:
         asked = build(
@@ -278,13 +282,13 @@ def main() -> None:
             pause=_PAUSE_SECONDS,
         )
     except OneMapError as error:
-        raise SystemExit(f"OneMap 出错：{error}\n已查到的结果都已保存，稍后再运行一次会从中断处继续。") from error
+        raise SystemExit(f"OneMap failed: {error}\nEverything found so far is saved; run it again later to continue from here.") from error
     finally:
         # Also after an error: what was asked so far reaches the database, on a new connection
         # since the run takes about an hour.
         with closing(connect()) as pg:
-            print(f"已把 {import_commutes(pg)} 行写回数据库。")
-    print(f"完成：查询公共交通路线 {asked['transit']} 条、步行路线 {asked['walk']} 条，其中 {asked['walk_faster']} 对步行更快。")
+            print(f"Wrote {import_commutes(pg)} rows back to the database.")
+    print(f"Done: asked for {asked['transit']} public transport routes and {asked['walk']} walking routes; walking was faster for {asked['walk_faster']}.")
 
 
 if __name__ == "__main__":

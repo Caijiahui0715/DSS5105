@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-用 Google Routes API 步行矩阵重算 UNRELIABLE_TRANSIT 名单房源的通勤时间。
-OneMap 步行路网在 Normanton Park 等封闭小区缺失, 给出 7km 级别的绕路;
-Google 路网包含小区内部道路, 结果贴近真实。
-结果写回 commute_faculty.csv: mode=walk_google。
-用法: .venv/Scripts/python.exe fix_unreliable_commutes.py   (需 .env 里 GOOGLE_MAPS_API_KEY)
+Recompute the commutes of the UNRELIABLE_TRANSIT listings with the Google Routes API walking matrix.
+OneMap's walking network lacks the paths inside gated developments such as Normanton Park and gives
+detours of around 7 km; Google's network has the internal roads, so its results are close to reality.
+The results are written back to commute_faculty.csv with mode=walk_google.
+Usage: .venv/Scripts/python.exe fix_unreliable_commutes.py   (needs GOOGLE_MAPS_API_KEY in .env)
 """
 import csv
 import json
@@ -25,7 +25,7 @@ V2 = Path(r"C:\Users\23305\Desktop\nus\DSS5105\group project\DSS5105\output-fina
 
 
 def google_walk_matrix(token, origins, destinations):
-    """一次请求算 origins×destinations 的步行矩阵, 返回 {(oi, di): (minutes, meters)}"""
+    """The walking matrix of origins × destinations in one request: {(oi, di): (minutes, meters)}."""
     body = {
         "origins": [{"waypoint": {"location": {"latLng": {"latitude": la, "longitude": lo}}}}
                     for la, lo in origins],
@@ -54,9 +54,9 @@ def google_walk_matrix(token, origins, destinations):
 def main():
     key = env("GOOGLE_MAPS_API_KEY")
     if not key:
-        raise SystemExit(".env 缺少 GOOGLE_MAPS_API_KEY")
+        raise SystemExit(".env is missing GOOGLE_MAPS_API_KEY. Add it and run again.")
 
-    # 名单房源坐标
+    # The listed listings' coordinates
     v2 = {r["listing_id"]: r for r in csv.DictReader(open(V2, encoding="utf-8-sig"))}
     origins = []
     for lid in UNRELIABLE:
@@ -66,19 +66,19 @@ def main():
     dests = [(f["latitude"], f["longitude"]) for f in FACULTIES]
     fac_names = [f["name"] for f in FACULTIES]
 
-    print(f"请求 Google 步行矩阵: {len(origins)} 房源 x {len(dests)} 学院 ...", flush=True)
+    print(f"Asking Google for the walking matrix: {len(origins)} listings x {len(dests)} faculties ...", flush=True)
     matrix = google_walk_matrix(key, origins, dests)
 
-    # 打印并校验
+    # Print and check
     for oi, lid in enumerate(UNRELIABLE):
         for di, fname in enumerate(fac_names):
             res = matrix.get((oi, di))
             if res:
-                print(f"  {lid} -> {fname[:30]}: {res[0]} 分钟 ({res[1]} m)", flush=True)
+                print(f"  {lid} -> {fname[:30]}: {res[0]} min ({res[1]} m)", flush=True)
             else:
-                print(f"  {lid} -> {fname[:30]}: Google 也无路线", flush=True)
+                print(f"  {lid} -> {fname[:30]}: no route from Google either", flush=True)
 
-    # 写回 CSV
+    # Write back to the CSV
     rows = list(csv.DictReader(open(CSV_PATH, encoding="utf-8-sig")))
     fn = list(rows[0].keys())
     if "mode" not in fn:
@@ -101,7 +101,7 @@ def main():
         w = csv.DictWriter(f, fieldnames=fn, extrasaction="ignore")
         w.writeheader(); w.writerows(rows)
     tmp.replace(CSV_PATH)
-    print(f"写回 {n} 行 (mode=walk_google) -> {CSV_PATH.name}", flush=True)
+    print(f"Wrote back {n} rows (mode=walk_google) -> {CSV_PATH.name}", flush=True)
 
 
 if __name__ == "__main__":

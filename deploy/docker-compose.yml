@@ -1,0 +1,74 @@
+# The whole site on one server: remote.sh runs it with --env-file ~/dss5105-config/server.env and
+# DATA_DIR=~/dss5105-data. Only Caddy is reachable from outside (ports 80 and 443).
+services:
+  db:
+    # 17, not "latest": version 18 keeps its data in another folder of the volume.
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      # Used only when the volume is new; changing DB_PASSWORD later does not change the database's.
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in server.env}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in server.env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in server.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in server.env}
+      OPENAI_MODEL: ${OPENAI_MODEL:?set OPENAI_MODEL in server.env}
+      REGISTRATION_CODE: ${REGISTRATION_CODE:?set REGISTRATION_CODE in server.env}
+      ONEMAP_EMAIL: ${ONEMAP_EMAIL:-}
+      ONEMAP_PASSWORD: ${ONEMAP_PASSWORD:-}
+      ONEMAP_CALLS_PER_MINUTE: ${ONEMAP_CALLS_PER_MINUTE:-240}
+    volumes:
+      # The group's data: setup_database.py imports it, and explanations quote source_evidence_v1.json.
+      - ${DATA_DIR:?run through remote.sh}/output-final-delivery:/srv/app/output-final-delivery:ro
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_URL: http://backend:8000
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in server.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The HTTPS certificate, kept across restarts.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

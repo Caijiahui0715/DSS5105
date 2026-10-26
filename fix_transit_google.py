@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-用 Google Routes API (Compute Routes, TRANSIT) 重算 UNRELIABLE_TRANSIT 名单的 32 对通勤。
-出发时间 = 下一个工作日 08:30 (新加坡时区), 与 OneMap 口径一致。
-结果覆盖 commute_faculty.csv 里这 32 行: mode=transit_google。
-用法: .venv/Scripts/python.exe fix_transit_google.py
+Recompute the 32 commutes of the UNRELIABLE_TRANSIT listings with the Google Routes API (Compute Routes, TRANSIT).
+Departure = the next weekday at 08:30 (Singapore time), as for OneMap.
+The results replace these 32 rows in commute_faculty.csv, with mode=transit_google.
+Usage: .venv/Scripts/python.exe fix_transit_google.py
 """
 import csv
 import json
@@ -30,7 +30,7 @@ def transit_minutes(key, sla, slo, ela, elo, departure_iso):
         "origin": {"location": {"latLng": {"latitude": sla, "longitude": slo}}},
         "destination": {"location": {"latLng": {"latitude": ela, "longitude": elo}}},
         "travelMode": "TRANSIT",
-        "departureTime": departure_iso,  # 顶层字段, RFC3339
+        "departureTime": departure_iso,  # a top-level field, RFC3339
     }
     req = urllib.request.Request(
         URL,
@@ -50,7 +50,7 @@ def transit_minutes_address(key, origin_addr, ela, elo, departure_iso):
         "origin": {"address": origin_addr},
         "destination": {"location": {"latLng": {"latitude": ela, "longitude": elo}}},
         "travelMode": "TRANSIT",
-        "departureTime": departure_iso,  # 顶层字段, RFC3339
+        "departureTime": departure_iso,  # a top-level field, RFC3339
     }
     req = urllib.request.Request(
         URL,
@@ -69,13 +69,13 @@ def main():
     key = env("GOOGLE_MAPS_API_KEY")
     v2 = {r["listing_id"]: r for r in csv.DictReader(open(V2, encoding="utf-8-sig"))}
 
-    # 下一个工作日 08:30 新加坡时间 (UTC+8), RFC3339
+    # The next weekday at 08:30 Singapore time (UTC+8), RFC3339
     day = datetime.now(timezone.utc) + timedelta(days=1)
     while day.weekday() >= 5:
         day += timedelta(days=1)
     dep = datetime(day.year, day.month, day.day, 8, 30, tzinfo=timezone(timedelta(hours=8)))
     departure_iso = dep.isoformat()
-    print(f"出发时间: {departure_iso}", flush=True)
+    print(f"Departure: {departure_iso}", flush=True)
 
     rows = list(csv.DictReader(open(CSV_PATH, encoding="utf-8-sig")))
     fac_names = [f["name"] for f in FACULTIES]
@@ -83,8 +83,8 @@ def main():
     for r in rows:
         if r["listing_id"] not in UNRELIABLE:
             continue
-        # 2026-10: OneMap 给这两盘的坐标点在 AYE 高道南侧, 步行接驳绕路;
-        # 改用地址文本作起点, Google 解析到小区正确位置 (App 同款 20 分钟)
+        # 2026-10: OneMap puts these two developments' coordinates south of the AYE expressway, so the walk
+        # to transit takes a long detour; the address text as the start lets Google place them correctly (20 min, as in its app)
         origin_addr = f"{v2[r['listing_id']]['address'].split(',')[0]}, Singapore"
         for di, fname in enumerate(fac_names):
             if r["faculty"] != fname:
@@ -93,15 +93,15 @@ def main():
             try:
                 v = transit_minutes_address(key, origin_addr, f["latitude"], f["longitude"], departure_iso)
             except Exception as e:
-                print(f"  {r['listing_id']} -> {fname[:30]}: 出错 {e}", flush=True)
+                print(f"  {r['listing_id']} -> {fname[:30]}: failed {e}", flush=True)
                 time.sleep(2)
                 continue
             if v is not None:
                 r["minutes"], r["mode"] = str(v), "transit_google"
                 n += 1
-                print(f"  {r['listing_id']} -> {fname[:32]}: {v} 分钟", flush=True)
+                print(f"  {r['listing_id']} -> {fname[:32]}: {v} min", flush=True)
             else:
-                print(f"  {r['listing_id']} -> {fname[:30]}: 无公交方案", flush=True)
+                print(f"  {r['listing_id']} -> {fname[:30]}: no public transport route", flush=True)
             time.sleep(0.3)
 
     tmp = CSV_PATH.with_suffix(".csv.tmp")
@@ -109,7 +109,7 @@ def main():
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()), extrasaction="ignore")
         w.writeheader(); w.writerows(rows)
     tmp.replace(CSV_PATH)
-    print(f"写回 {n} 行 (mode=transit_google)", flush=True)
+    print(f"Wrote back {n} rows (mode=transit_google)", flush=True)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ from pathlib import Path
 import psycopg
 
 from build_commutes import COMMUTE_DATA, import_commutes
-from config import postgres_settings
+from config import missing_db_settings, postgres_settings
 from group_db import connect, ensure_database, open_database
 
 ROOT = Path(__file__).parent
@@ -60,19 +60,20 @@ def run_table_scripts(pg) -> list[str]:
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
+    if problem := missing_db_settings():
+        raise SystemExit(problem)
     name = postgres_settings()["dbname"]
-    if not name:
-        raise SystemExit("在 .env 里填上 DB_HOST、DB_PORT、DB_NAME、DB_USER、DB_PASSWORD（见 .env.example）。")
     missing = [path.name for path in DATA_FILES if not path.exists()]
     if missing:
-        raise SystemExit(f"output-final-delivery 里缺少 {', '.join(missing)}：这些是组里共享的最终数据（不在 Git 里），放进去再运行。")
+        raise SystemExit(f"output-final-delivery is missing {', '.join(missing)}: put the final data files there and run again.")
     try:
         if ensure_database(name):
-            print(f"已新建数据库 {name}。")
+            print(f"Created the database {name}.")
     except psycopg.Error as error:
         raise SystemExit(
-            f"连不上 PostgreSQL 或建不了数据库 {name}：{error}\n"
-            "检查 PostgreSQL 服务是否在运行、.env 里的连接设置，以及这个账号能否建库（也可以先在 pgAdmin 里手动建好）。"
+            f"Cannot connect to PostgreSQL or create the database {name}: {error}\n"
+            "Check that the PostgreSQL service is running, the connection settings in .env, and that DB_USER may create "
+            "databases (or create it by hand in pgAdmin first)."
         ) from error
 
     # The pipeline's own scripts, connecting the way the backend does.
@@ -82,31 +83,31 @@ def main() -> None:
     try:
         with closing(connect("public")) as pg:
             ran = run_table_scripts(pg)
-        print(f"建表：运行了 {', '.join(ran)}。" if ran else "建表：表都已存在。")
-        for script, module in (("load_data.py（V1）", load_data), ("sync_v2.py（V2）", sync_v2)):
+        print(f"Tables: ran {', '.join(ran)}." if ran else "Tables: all exist already.")
+        for script, module in (("load_data.py (V1)", load_data), ("sync_v2.py (V2)", sync_v2)):
             print(f"\n== {script} ==")
             module.get_connection = lambda: connect("public", autocommit=False)
             module.main()
         with closing(connect("public")) as pg:
-            print(f"\n通勤：已把 {COMMUTE_DATA.name} 的 {import_commutes(pg)} 行写入数据库。")
+            print(f"\nCommutes: wrote {import_commutes(pg)} rows of {COMMUTE_DATA.name} to the database.")
             # Statistics for the new data, so searches get good query plans right away.
             pg.execute("ANALYZE")
             active = {listing_id for (listing_id,) in pg.execute("SELECT listing_id FROM listings WHERE scrape_status = 'active'")}
     except psycopg.Error as error:
-        raise SystemExit(f"准备数据库时出错：{error}") from error
+        raise SystemExit(f"Preparing the database failed: {error}") from error
     with DATA_FILES[1].open(encoding="utf-8-sig", newline="") as file:
         older = active - {row["listing_id"] for row in csv.DictReader(file)}
     if older:
         print(
-            f"\n注意：数据库里有 {len(older)} 套 active 房源不在 {DATA_FILES[1].name} 里，也不在 {DATA_FILES[2].name} 里，"
-            "是以前的数据留下的，仍会被推荐。要去掉的话，在数据库里把它们的 scrape_status 改成 removed。"
+            f"\nNote: {len(older)} active listings in the database are in neither {DATA_FILES[1].name} nor {DATA_FILES[2].name}. "
+            "They are left from earlier data and are still recommended; to drop them, set their scrape_status to removed in the database."
         )
 
     with closing(open_database()) as database:
         counts = database.query(
             "SELECT count(*) AS listings, count(*) FILTER (WHERE commutes <> '{}'::jsonb) AS with_commutes FROM agent_listings"
         )[0]
-    print(f"\n完成：{counts['listings']} 套可用房源，其中 {counts['with_commutes']} 套有通勤时间。现在可以运行 python server.py。")
+    print(f"\nDone: {counts['listings']} usable listings, {counts['with_commutes']} of them with commute times. You can now run python server.py.")
 
 
 if __name__ == "__main__":

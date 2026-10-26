@@ -46,6 +46,7 @@ UserIntent = Literal[
     "search",
     "compare_shortlist",
     "show_listing_details",
+    "explain_listing",
     "accept_relaxation",
     "reject_relaxation",
     "reject_results",

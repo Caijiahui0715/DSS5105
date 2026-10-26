@@ -96,8 +96,9 @@ body:has(.st-key-chat-thread) [data-testid="stChatInput"] {border-radius:26px;ba
 body:has(.st-key-chat-thread) [data-testid="stChatInput"] textarea {font-size:16px;line-height:1.5;padding:14px 18px;}
 body:has(.st-key-chat-thread) [data-testid="stChatInputSubmitButton"] {border-radius:50%;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-map-panel), .st-key-map-panel {height:350px!important;flex-basis:350px!important;overflow:hidden;}
-/* The Compare bar between the map and the listings: one button, which pulses three times with a "new" mark when a comparison arrives. */
+/* The Compare bar between the map and the listings: Compare, and the table's button, which pulses three times with a "new" mark when a comparison asked for in chat arrives. */
 .st-key-compare-open button {border:1px solid #dce3e9;border-radius:12px;background:#fff;min-height:44px;font-weight:600;color:#122f4d;}
+.st-key-compare-start button {border-radius:12px;min-height:44px;font-weight:600;}
 .st-key-compare-bar-new .st-key-compare-open button {border-color:#107a72;color:#107a72;animation:compare-pulse 1.4s ease-in-out 3;}
 @keyframes compare-pulse {0%,100% {box-shadow:0 0 0 0 #107a7200;} 50% {box-shadow:0 0 0 6px #107a7233;}}
 @media (prefers-reduced-motion: reduce) {.st-key-compare-bar-new .st-key-compare-open button {animation:none;}}
@@ -127,7 +128,7 @@ body:has(.st-key-chat-thread) [data-testid="stMain"] {height:auto;overflow:auto;
 [data-testid="stLayoutWrapper"]:has(> .st-key-chat-thread), .st-key-chat-thread {height:55dvh!important;flex-basis:55dvh!important;}
 [data-testid="stLayoutWrapper"]:has(> .st-key-map-panel), .st-key-map-panel {height:350px!important;flex-basis:350px!important;} [data-testid="stLayoutWrapper"]:has(> .st-key-listing-panel), .st-key-listing-panel {height:420px!important;flex-basis:420px!important;}
 }
-[data-testid="stLayoutWrapper"]:has(> .st-key-cookie-writer), .st-key-cookie-writer {position:absolute;width:0;height:0;overflow:hidden;}
+[data-testid="stLayoutWrapper"]:has(> .st-key-cookie-writer), .st-key-cookie-writer, [data-testid="stLayoutWrapper"]:has(> .st-key-scroll-to-latest), .st-key-scroll-to-latest {position:absolute;width:0;height:0;overflow:hidden;}
 @media (prefers-reduced-motion:reduce) {* {animation:none!important;transition:none!important;}}
 /* Target only the dark navigation rail, not every secondary button. */
 .st-key-global-rail button {background:#151c28!important;color:#fff!important;}
@@ -236,6 +237,15 @@ try:
         st.session_state.notice = None
 
     page = st.session_state.page
+
+    # Home drawn anew (from another page, or in a new browser session) shows its chat from the top:
+    # it then scrolls to the latest message.
+
+    if page == 'Home' and st.session_state.get('shown-page') != 'Home':
+
+        st.session_state['scroll-to-latest'] = True
+
+    st.session_state['shown-page'] = page
 
     if page == 'Home':
 

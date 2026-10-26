@@ -17,6 +17,7 @@ def navigation(compact=False):
 # The history is drawn after the page, so its buttons act before the run that draws it.
 def open_conversation(key):
     st.session_state.active_conversation = key
+    st.session_state['scroll-to-latest'] = True
     recs = st.session_state.conversations[key]['recommendations'] or []
     st.session_state.selected_listing = recs[0].listing_id if recs else None
 

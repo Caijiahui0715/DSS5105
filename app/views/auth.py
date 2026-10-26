@@ -3,8 +3,8 @@ import streamlit as st
 from content.en import PRODUCT, TAGLINE
 from content.i18n import t, language, language_switch, describe, value_label, lease_label
 from domain.models import RentalRequirements, RentalPreferences
-from domain.criteria import criteria_message, empty
-from state.session_store import current, start_session, faculties
+from domain.criteria import criteria_message, empty, form_changes
+from state.session_store import current, start_session, faculties, refresh_new_conversations
 from adapters.backend_client import BackendClient, BackendError
 from adapters.configuration import offline, backend_url, demo_account
 from adapters.http_rental_api import criteria_options
@@ -86,7 +86,8 @@ def sign_in_to_backend(mode, password, confirmation, skip_preferences=False):
         client = BackendClient(backend_url())
         try:
             if mode == 'register':
-                account = client.register(username, password, st.session_state.get('register-faculty') or None)
+                invite_code = st.session_state.get('register-invite', '').strip() or None
+                account = client.register(username, password, st.session_state.get('register-faculty') or None, invite_code)
             else:
                 account = client.sign_in(username, password)
             start_session(client, account)
@@ -98,7 +99,19 @@ def sign_in_to_backend(mode, password, confirmation, skip_preferences=False):
     if error is None:
         remember(client)
         if criteria is not None:
+            keep_as_profile(client, criteria)
             st.session_state.pending_message = criteria_message(empty(), criteria, language(), first=True)
+
+
+def keep_as_profile(client, criteria):
+    """The sign-up criteria become the long-term profile, which switches long-term memory on: this
+    and every later conversation start from them. If that fails, the first message still carries
+    them to this conversation."""
+    try:
+        client.edit_profile(form_changes(empty(), criteria), via='signup')
+        refresh_new_conversations()
+    except BackendError:
+        pass
 
 
 def forget_typed_password(mode, error):
@@ -167,6 +180,8 @@ def render():
                     st.text_input(t('Password', '密码'), type='password', key=f'{mode}-password')
                     if live and mode == 'register':
                         st.text_input(t('Confirm password', '确认密码'), type='password', key='register-password-confirm')
+                        if invite_code_required():
+                            st.text_input(t('Invite code', '邀请码'), key='register-invite')
                     if mode == 'register':
                         if live:
                             faculty_choice()
@@ -188,6 +203,15 @@ def render():
             st.button(t('Continue with demo account', '使用演示账号'), width='stretch', on_click=demo_sign_in)
 
 
+def invite_code_required():
+    """Whether the backend asks for an invite code at sign-up; a backend that cannot be reached
+    shows its error elsewhere on the form."""
+    try:
+        return bool(criteria_options(backend_url()).get('invite_code_required'))
+    except BackendError:
+        return False
+
+
 def faculty_choice():
     try:
         listed = faculties()
@@ -202,6 +226,9 @@ def faculty_choice():
 def criteria_fields(live):
     st.subheader(t('Hard rental requirements · Required', '硬性条件 · 必填'))
     st.caption(t('Complete every field below. Hard requirements cannot be skipped.', '下面每一项都要填写，硬性条件不能跳过。'))
+    if live:
+        st.caption(t('What you fill in here is saved as your long-term profile, and every new conversation starts from it. You can change it, or switch long-term memory off, in Profile.',
+                     '这里填的条件会存为你的长期资料，之后每个新对话都从它开始。可以在个人资料页修改，或关闭长期记忆。'))
     st.number_input(t('Maximum advertised monthly budget (SGD) *', '最高月租预算（新元）*'), min_value=1, value=None, step=100, key='register-budget', placeholder=t('Enter your monthly budget', '输入每月预算'))
     st.selectbox(t('Rental scope *', '租住方式 *'), ['room', 'entire_unit'], index=None, key='register-scope', placeholder=t('Choose a rental scope', '选择租住方式'),
                  format_func=lambda v: {'room':t('Shared accommodation / room', '合租单间'), 'entire_unit':t('Entire unit', '整租')}[v])

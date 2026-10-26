@@ -12,6 +12,7 @@ import json
 import logging
 from datetime import date
 from functools import cache
+import secrets
 import socket
 import sys
 import threading
@@ -19,6 +20,7 @@ from collections import defaultdict
 from pathlib import Path
 from queue import Queue
 from typing import Any, Literal
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -30,6 +32,7 @@ from accounts import TOKEN_LIFETIME, AccountError, Accounts
 from agent import build_agent, memory_switch, opening_state, profile_update, save_to_profile
 from decision import EVIDENCE_PATH
 from faculties import FACULTIES, find_faculty
+from graph import _response_language
 from group_db import UNAVAILABLE
 from models import SearchPreferences
 from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
@@ -40,14 +43,22 @@ from tools import check_listing_url, get_listings_by_ids, load_listings
 COOKIE = "rental_session"
 PAGE = Path(__file__).parent / "static" / "index.html"
 _WAITING = {"zh": "这段对话的上一条消息还在处理，已排队", "en": "Waiting for the previous message in this conversation"}
-_FAILED = "处理这条消息时出错，请稍后重试。"
+_FAILED = "Something went wrong with this message. Try again in a moment."
+_WRONG_INVITE = "That invite code is not right. Check it with whoever invited you."
+# The reply a turn that failed leaves in the conversation.
+_FAILED_REPLY = {
+    "zh": "处理这条消息时出错了，没有回复。请重新发送这条消息。",
+    "en": "Something went wrong with this message, so there is no reply. Please send it again.",
+}
 
 
 class Credentials(BaseModel):
     username: str
     password: str
-    # Optional at sign-up; changeable later under "我的学院".
+    # Optional at sign-up; changeable later under "My faculty".
     faculty: str | None = None
+    # Needed at sign-up when the server has a registration code (REGISTRATION_CODE in .env).
+    invite_code: str | None = None
 
 
 class FacultyIn(BaseModel):
@@ -73,6 +84,8 @@ class NewConversationIn(BaseModel):
 class ProfileIn(BaseModel):
     # Criteria changed on the Profile page: each one's new value, or null to drop it.
     changes: dict[str, Any]
+    # Where they were given: the Profile page, or the sign-up form.
+    via: Literal["profile", "signup"] = "profile"
 
 
 class MemoryIn(BaseModel):
@@ -84,7 +97,16 @@ class SaveProfileIn(BaseModel):
     switch_on: bool = False
 
 
-def create_app(listings, model, storage: Storage, checkpointer, listing_checker=check_listing_url, place_router=None) -> FastAPI:
+def create_app(
+    listings,
+    model,
+    storage: Storage,
+    checkpointer,
+    listing_checker=check_listing_url,
+    place_router=None,
+    registration_code: str | None = None,
+) -> FastAPI:
+    """With registration_code, signing up needs it; anyone can sign up otherwise."""
     accounts = Accounts(storage)
     profiles = UserProfiles(storage)
     agent = build_agent(listings, model, checkpointer, listing_checker=listing_checker, profiles=profiles, place_router=place_router)
@@ -113,21 +135,42 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     def current_user(request: Request) -> str:
         user_id = accounts.user_for(token_of(request))
         if not user_id:
-            raise HTTPException(401, "请先登录。")
+            raise HTTPException(401, "Sign in first.")
         return user_id
 
     def owned(user_id: str, thread_id: str) -> None:
         # The same answer whether the conversation is missing or someone else's.
         if not storage.owns(user_id, thread_id):
-            raise HTTPException(404, "找不到这段对话。")
+            raise HTTPException(404, "Conversation not found.")
 
     def config(thread_id: str) -> dict:
         return {"configurable": {"thread_id": thread_id}}
 
+    def record_failure(thread_id: str, text: str, language: str | None, error: Exception) -> None:
+        """A turn that failed leaves a reply saying so: the conversation shows the turn is over, also
+        after a reload or on another device, instead of seeming to wait for a reply."""
+        try:
+            values = agent.get_state(config(thread_id)).values
+            reply_language = _response_language(text, language or values.get("response_language"))
+            reply = AIMessage(content=_FAILED_REPLY[reply_language], id=f"failed-{uuid4().hex}")
+            messages = values.get("messages") or []
+            # The message itself, unless the turn failed after keeping it.
+            asked = bool(messages) and isinstance(messages[-1], HumanMessage) and messages[-1].content == text
+            agent.update_state(
+                config(thread_id),
+                {
+                    "messages": [*([] if asked else [HumanMessage(content=text)]), reply],
+                    "reply_traces": {**(values.get("reply_traces") or {}), reply.id: [f"[error] {type(error).__name__}"]},
+                },
+                as_node="finalize",
+            )
+        except Exception:
+            logging.exception("could not record the failed turn in %s", thread_id)
+
     def recorded_faculty(name: str | None) -> str | None:
         faculty = find_faculty(name or "")
         if name and not faculty:
-            raise HTTPException(400, "请从列表里选择学院。")
+            raise HTTPException(400, "Choose a faculty from the list.")
         return faculty and faculty["name"]
 
     @app.get("/", include_in_schema=False)
@@ -149,10 +192,15 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         return {
             "districts": [{"code": code, "name": name} for code, name in districts],
             "property_types": sorted({row["property_type"] for row in rows if row.get("property_type")}),
+            # The sign-up form then asks for the code.
+            "invite_code_required": bool(registration_code),
         }
 
     @app.post("/api/register")
     def register(body: Credentials, response: Response):
+        given = (body.invite_code or "").strip().encode("utf-8")
+        if registration_code and not secrets.compare_digest(given, registration_code.encode("utf-8")):
+            raise HTTPException(400, _WRONG_INVITE)
         faculty = recorded_faculty(body.faculty)
         try:
             user_id = accounts.register(body.username, body.password)
@@ -226,20 +274,20 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         """Change criteria on the Profile page. Saving switches memory on for a user who never decided;
         while it is off the profile cannot be changed."""
         if profiles.consent(user_id) is False:
-            raise HTTPException(409, "长期记忆已关闭，打开后才能修改长期资料。")
+            raise HTTPException(409, "Long-term memory is off; switch it on to change the long-term profile.")
         unknown = sorted(set(body.changes) - set(SearchPreferences.model_fields) | set(body.changes) & {"faculty"})
         if unknown:
-            raise HTTPException(400, f"不认识的条件：{', '.join(unknown)}")
+            raise HTTPException(400, f"Unknown criteria: {', '.join(unknown)}")
         kept = profiles.profile(user_id) or {}
         saved = kept.get("preferences", {})
         wanted = {field: value for field, value in {**saved, **body.changes}.items() if value is not None}
         try:
             values = SearchPreferences.model_validate(wanted).model_dump(mode="json", exclude_defaults=True)
         except ValidationError as error:
-            raise HTTPException(400, f"条件不对：{error.errors()[0]['msg']}") from error
+            raise HTTPException(400, f"Invalid criteria: {error.errors()[0]['msg']}") from error
         changes = {field: values.get(field) for field in SearchPreferences.model_fields if values.get(field) != saved.get(field)}
         if changes:
-            source = {"via": "profile", "date": date.today().isoformat()}
+            source = {"via": body.via, "date": date.today().isoformat()}
             # A budget typed on the page is a monthly amount in SGD.
             profiles.save(user_id, merged(kept, changes, {field: source for field in changes}, None))
         return profile_view(user_id)
@@ -282,7 +330,7 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
     def add_to_shortlist(body: ShortlistIn, user_id: str = Depends(current_user)):
         found = [listing["listing_id"] for listing in get_listings_by_ids(listings, [body.listing_id.strip()])]
         if not found:
-            raise HTTPException(404, "找不到这套房源。")
+            raise HTTPException(404, "This listing is no longer in the data.")
         # A shortlisted listing is no longer excluded, as in chat.
         profiles.mark(user_id, found, SHORTLIST)
         return account_listings(user_id)
@@ -313,7 +361,7 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         """One listing with its full source record (page text, photos, field evidence), where recorded."""
         found = get_listings_by_ids(listings, [listing_id])
         if not found:
-            raise HTTPException(404, "找不到这套房源。")
+            raise HTTPException(404, "This listing is no longer in the data.")
         return {"listing": found[0], "source_evidence": _source_records().get(listing_id)}
 
     @app.get("/api/conversations")
@@ -373,7 +421,7 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         with lock_for(thread_id):
             if profiles.consent(user_id) is False:
                 if not body.switch_on:
-                    raise HTTPException(409, "长期记忆已关闭，要打开并保存吗？")
+                    raise HTTPException(409, "Long-term memory is off. Switch it on and save?")
                 profiles.set_consent(user_id, True)
             values = agent.get_state(config(thread_id)).values
             if not values.get("preferences"):
@@ -390,7 +438,7 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         owned(user_id, thread_id)
         with lock_for(thread_id):
             if profiles.consent(user_id) is False:
-                raise HTTPException(409, "长期记忆已关闭，打开后才能自动保存。")
+                raise HTTPException(409, "Long-term memory is off; switch it on to auto-save.")
             profiles.set_auto_save(user_id, True)
             values = agent.get_state(config(thread_id)).values
             rows = []
@@ -419,7 +467,7 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
         owned(user_id, thread_id)
         text = body.message.strip()
         if not text:
-            raise HTTPException(400, "消息不能为空。")
+            raise HTTPException(400, "Type a message first.")
         events: Queue = Queue()
 
         def run():
@@ -458,8 +506,9 @@ def create_app(listings, model, storage: Storage, checkpointer, listing_checker=
             except OperationalError as error:
                 logging.warning("database unavailable in %s (%s): %s", thread_id, type(error).__name__, error)
                 events.put(("error", {"message": UNAVAILABLE}))
-            except Exception:
+            except Exception as error:
                 logging.exception("turn failed in %s", thread_id)
+                record_failure(thread_id, text, body.language, error)
                 events.put(("error", {"message": _FAILED}))
             finally:
                 lock.release()
@@ -558,11 +607,11 @@ def main() -> None:
     storage, checkpointer = open_storage(database)
     # Reasoning models such as gpt-5.x only accept function tools on the Responses API.
     model = ChatOpenAI(model=env("OPENAI_MODEL"), api_key=env("OPENAI_API_KEY"), use_responses_api=True)
-    app = create_app(database, model, storage, checkpointer)
+    app = create_app(database, model, storage, checkpointer, registration_code=(env("REGISTRATION_CODE") or "").strip() or None)
     host = "0.0.0.0" if "--lan" in flags else "127.0.0.1"
-    print(f"打开 http://127.0.0.1:{port}")
+    print(f"Open http://127.0.0.1:{port}")
     if "--lan" in flags:
-        print(f"同一 Wi-Fi 下可访问 http://{_lan_address()}:{port}（明文 HTTP，只在信任的网络里使用）")
+        print(f"On the same Wi-Fi: http://{_lan_address()}:{port} (plain HTTP; use it only on a network you trust)")
     try:
         uvicorn.run(app, host=host, port=port)
     finally:

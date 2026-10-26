@@ -47,7 +47,7 @@ def main() -> None:
             use_responses_api="--workflow" not in flags,
         )
         workflow = "--workflow" in flags
-        # Long-term memory is an agent feature; the workflow baseline stays as it was.
+        # Long-term memory is an agent feature; the workflow only reads the faculty saved in the account.
         profiles = UserProfiles(storage)
         graph = (
             build_graph(connection, model, memory)
@@ -58,17 +58,18 @@ def main() -> None:
         session_user = f"{user}@workflow" if workflow else user
         thread_id = None if "--new" in flags else storage.latest_thread(session_user)
         if thread_id:
-            print(f"继续 {user} 上次的对话（{thread_id}）；加 --new 可以开始新对话。")
+            print(f"Continuing {user}'s latest conversation ({thread_id}); add --new to start a new one.")
         config = {"configurable": {"thread_id": thread_id or storage.new_thread(session_user)}}
         # A new conversation starts from the long-term profile while memory is on, as on the web page.
-        if not thread_id and not workflow and (opening := opening_state(profiles, user, "zh")):
+        if not thread_id and not workflow and (opening := opening_state(profiles, user, "en")):
             graph.update_state(config, opening, as_node="finalize")
-            print(f"Agent：{opening['messages'][0].content}")
+            print(f"Agent: {opening['messages'][0].content}")
         thread_id = config["configurable"]["thread_id"]
-        user_input = {} if workflow else {"user_id": user}
 
         def reply(text: str) -> str:
             storage.touch(thread_id, text)
+            # The faculty is read each turn: it can change on the web page meanwhile.
+            user_input = {"faculty": profiles.faculty(user)} if workflow else {"user_id": user}
             result = graph.invoke({"message": text, **user_input}, config=config)
             if "--trace" in flags:
                 for line in result.get("trace", []):
@@ -76,20 +77,20 @@ def main() -> None:
             return result["response"]
 
         if chat_mode:
-            print("输入租房需求；输入 exit 退出。")
+            print("Type what you are looking for; type exit to quit.")
             while True:
                 try:
-                    message = input("\n你：").strip()
+                    message = input("\nYou: ").strip()
                 except (EOFError, KeyboardInterrupt):
                     break
                 if message.casefold() in {"exit", "quit"}:
                     break
                 if message:
                     try:
-                        print(f"Agent：{reply(message)}")
+                        print(f"Agent: {reply(message)}")
                     except OperationalError:
                         # The next message connects again.
-                        print(f"Agent：{UNAVAILABLE}")
+                        print(f"Agent: {UNAVAILABLE}")
             return
 
         print(reply(message))

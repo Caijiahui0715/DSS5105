@@ -23,6 +23,8 @@ def source_text(source):
     day = (source.get('date') or '')[5:]
     if source.get('via') == 'profile':
         return t(f'Changed on the Profile page on {day}', f'{day} 在个人资料页修改')
+    if source.get('via') == 'signup':
+        return t(f'Given when you signed up on {day}', f'{day} 注册时填写')
     quote = source.get('quote') or ''
     if quote:
         quote = quote if len(quote) <= 40 else quote[:39] + '…'

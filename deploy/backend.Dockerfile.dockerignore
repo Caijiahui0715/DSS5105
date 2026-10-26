@@ -1,0 +1,13 @@
+# Never in an image: secrets, local data and environments (also when building on a laptop).
+**/.env
+**/server.env
+**/.onemap_token.json
+**/.venv
+**/.uv-cache
+**/__pycache__
+**/.pytest_cache
+.git
+output-final-delivery
+tmp
+Claude outputs
+sessions.sqlite*

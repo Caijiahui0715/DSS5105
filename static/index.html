@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>新加坡租房助手</title>
+<title>Singapore Rental Assistant</title>
 <style>
   :root {
     --ground: #F4F7F6;
@@ -258,24 +258,24 @@
 
 <div class="gate" id="gate" hidden>
   <form id="gate-form" novalidate>
-    <h1 class="brand">新加坡租房助手</h1>
-    <p>登录后，你的每段对话都会分开保存，下次回来还能接着聊。</p>
+    <h1 class="brand">Singapore Rental Assistant</h1>
+    <p>Once you sign in, each of your conversations is saved separately, so you can carry on when you come back.</p>
     <div class="tabs" role="tablist">
-      <button type="button" role="tab" id="tab-login" aria-selected="true">登录</button>
-      <button type="button" role="tab" id="tab-register" aria-selected="false">注册</button>
+      <button type="button" role="tab" id="tab-login" aria-selected="true">Sign in</button>
+      <button type="button" role="tab" id="tab-register" aria-selected="false">Register</button>
     </div>
-    <label for="username">用户名</label>
+    <label for="username">Username</label>
     <input class="field" id="username" autocomplete="username" required>
-    <div class="hint" id="username-hint" hidden>3–20 个字母、数字或下划线</div>
-    <label for="password">密码</label>
+    <div class="hint" id="username-hint" hidden>3–20 letters, digits or underscores</div>
+    <label for="password">Password</label>
     <input class="field" id="password" type="password" autocomplete="current-password" required>
-    <div class="hint" id="password-hint" hidden>至少 8 位</div>
+    <div class="hint" id="password-hint" hidden>At least 8 characters</div>
     <div id="faculty-field" hidden>
-      <label for="signup-faculty">我的学院（可选）</label>
+      <label for="signup-faculty">My faculty (optional)</label>
       <select class="field" id="signup-faculty"></select>
-      <div class="hint">用来计算每套房源到学院的通勤时间，之后可以在左侧修改</div>
+      <div class="hint">Used to work out each listing's commute time to your faculty; you can change it later on the left</div>
     </div>
-    <button class="primary" id="gate-submit" type="submit">登录</button>
+    <button class="primary" id="gate-submit" type="submit">Sign in</button>
     <div class="error" id="gate-error" role="alert"></div>
   </form>
 </div>
@@ -283,31 +283,31 @@
 <div class="app" id="app" hidden>
   <aside id="sidebar">
     <div class="top">
-      <div class="brand">新加坡租房助手</div>
-      <button class="new" id="new-thread" type="button">新建对话</button>
+      <div class="brand">Singapore Rental Assistant</div>
+      <button class="new" id="new-thread" type="button">New conversation</button>
     </div>
-    <ul class="threads" id="threads" aria-label="我的对话"></ul>
+    <ul class="threads" id="threads" aria-label="My conversations"></ul>
     <div class="account">
       <div class="who" id="who"></div>
-      <label for="my-faculty">我的学院（用于计算通勤时间）</label>
+      <label for="my-faculty">My faculty (for commute times)</label>
       <select class="field" id="my-faculty"></select>
       <div class="saved" id="faculty-saved" aria-live="polite"></div>
-      <button type="button" id="logout">退出登录</button>
-      <button type="button" class="wipe" id="wipe">删除我的所有数据</button>
+      <button type="button" id="logout">Sign out</button>
+      <button type="button" class="wipe" id="wipe">Delete all my data</button>
     </div>
   </aside>
   <main>
     <div class="bar">
-      <button class="menu" id="menu" type="button" aria-controls="sidebar">对话</button>
-      <h2 id="thread-title">新对话</h2>
+      <button class="menu" id="menu" type="button" aria-controls="sidebar">Conversations</button>
+      <h2 id="thread-title">New conversation</h2>
     </div>
     <div class="log" id="log" aria-live="polite"></div>
     <div class="composer">
       <form id="composer">
-        <textarea id="message" rows="1" placeholder="说说你的租房需求" aria-label="消息"></textarea>
-        <button class="primary" id="send" type="submit">发送</button>
+        <textarea id="message" rows="1" placeholder="Tell me what you are looking for" aria-label="Message"></textarea>
+        <button class="primary" id="send" type="submit">Send</button>
       </form>
-      <div class="note">Enter 发送，Shift + Enter 换行。房源信息来自采集时的数据，是否仍可租需要向发布方确认。</div>
+      <div class="note">Enter sends, Shift + Enter starts a new line. Listing details are as collected; check with the advertiser whether a listing is still available.</div>
     </div>
   </main>
 </div>
@@ -329,11 +329,11 @@ async function api(path, options = {}) {
   });
   if (response.status === 401 && !path.startsWith("/api/login") && !path.startsWith("/api/register")) {
     showGate();
-    throw new Error("请先登录。");
+    throw new Error("Sign in first.");
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `请求失败（${response.status}）`);
+    throw new Error(body.detail || `The request failed (${response.status})`);
   }
   return response;
 }
@@ -350,7 +350,7 @@ function setMode(next) {
   mode = next;
   $("tab-login").setAttribute("aria-selected", String(mode === "login"));
   $("tab-register").setAttribute("aria-selected", String(mode === "register"));
-  $("gate-submit").textContent = mode === "login" ? "登录" : "注册并登录";
+  $("gate-submit").textContent = mode === "login" ? "Sign in" : "Register and sign in";
   $("username-hint").hidden = $("password-hint").hidden = $("faculty-field").hidden = mode === "login";
   $("password").autocomplete = mode === "login" ? "current-password" : "new-password";
   $("gate-error").textContent = "";
@@ -366,14 +366,14 @@ function facultyOptions(select, empty) {
   select.innerHTML = "";
   select.append(new Option(empty, ""));
   for (const faculty of faculties) {
-    select.append(new Option(faculty.zh === faculty.name ? faculty.name : `${faculty.zh} ${faculty.name}`, faculty.name));
+    select.append(new Option(faculty.name, faculty.name));
   }
 }
 
 async function loadFaculties() {
   faculties = await (await fetch("/api/faculties")).json();
-  facultyOptions($("signup-faculty"), "暂不选择");
-  facultyOptions($("my-faculty"), "未设置");
+  facultyOptions($("signup-faculty"), "Choose later");
+  facultyOptions($("my-faculty"), "Not set");
 }
 
 async function refreshAccount() {
@@ -403,15 +403,15 @@ function when(iso) {
   const date = new Date(iso);
   const today = new Date();
   return date.toDateString() === today.toDateString()
-    ? date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
-    : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+    ? date.toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("en-SG", { month: "numeric", day: "numeric" });
 }
 
 function renderThreads() {
   const list = $("threads");
   list.innerHTML = "";
   if (!threads.length) {
-    list.innerHTML = '<li class="empty-list">还没有对话</li>';
+    list.innerHTML = '<li class="empty-list">No conversations yet</li>';
     return;
   }
   for (const thread of threads) {
@@ -420,13 +420,13 @@ function renderThreads() {
     const open = document.createElement("button");
     open.className = "open";
     open.type = "button";
-    open.innerHTML = `<span class="title">${escapeHtml(thread.title || "新对话")}</span><span class="when">${when(thread.updated_at)}</span>`;
+    open.innerHTML = `<span class="title">${escapeHtml(thread.title || "New conversation")}</span><span class="when">${when(thread.updated_at)}</span>`;
     open.onclick = () => openThread(thread.id);
     const remove = document.createElement("button");
     remove.className = "remove";
     remove.type = "button";
-    remove.textContent = "删除";
-    remove.setAttribute("aria-label", `删除对话：${thread.title || "新对话"}`);
+    remove.textContent = "Delete";
+    remove.setAttribute("aria-label", `Delete conversation: ${thread.title || "New conversation"}`);
     remove.onclick = () => deleteThread(thread);
     item.append(open, remove);
     list.append(item);
@@ -436,7 +436,7 @@ function renderThreads() {
 async function openThread(id) {
   active = id;
   const thread = threads.find((t) => t.id === id);
-  $("thread-title").textContent = (thread && thread.title) || "新对话";
+  $("thread-title").textContent = (thread && thread.title) || "New conversation";
   renderThreads();
   $("sidebar").classList.remove("open");
   const log = $("log");
@@ -444,13 +444,13 @@ async function openThread(id) {
   const items = await (await api(`/api/conversations/${encodeURIComponent(id)}/messages`)).json();
   if (active !== id) return;
   if (!items.length) {
-    log.innerHTML = `<div class="welcome"><h3>想租什么样的房子？</h3>可以直接说预算、整租还是合租、想离哪里近。条件越具体，推荐越准；不确定的地方我会标出来让你向发布方确认。</div>`;
+    log.innerHTML = `<div class="welcome"><h3>What kind of home are you looking for?</h3>Just say your budget, whether you want a whole unit or a room, and what you want to be close to. The more specific you are, the better the recommendations; anything uncertain is marked for you to check with the advertiser.</div>`;
   }
   for (const item of items) {
     if (item.role === "user") addUser(item.text);
     else addReply(item.text, item.steps);
   }
-  if (pending.has(id)) addWorking(isChinese(items.at(-1)?.text || "中"));
+  if (pending.has(id)) addWorking(isChinese(items.at(-1)?.text || ""));
   syncComposer();
   log.scrollTop = log.scrollHeight;
   $("message").focus();
@@ -466,7 +466,7 @@ async function newThread() {
 }
 
 async function deleteThread(thread) {
-  if (!confirm(`删除对话「${thread.title || "新对话"}」？删除后无法恢复。`)) return;
+  if (!confirm(`Delete the conversation "${thread.title || "New conversation"}"? This cannot be undone.`)) return;
   await api(`/api/conversations/${encodeURIComponent(thread.id)}`, { method: "DELETE" });
   threads = threads.filter((t) => t.id !== thread.id);
   if (active === thread.id) {
@@ -490,7 +490,7 @@ function addReply(text, steps, failed = false) {
   if (steps && steps.length) {
     const details = document.createElement("details");
     details.className = "steps";
-    details.innerHTML = `<summary>查看处理过程（${steps.length} 步）</summary><ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>`;
+    details.innerHTML = `<summary>How this reply was made (${steps.length} steps)</summary><ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>`;
     turn.append(details);
   }
   $("log").append(turn);
@@ -508,7 +508,7 @@ function addWorking(chinese) {
 function syncComposer() {
   const busy = pending.has(active);
   $("send").disabled = busy;
-  $("send").textContent = busy ? "处理中" : "发送";
+  $("send").textContent = busy ? "Working" : "Send";
 }
 
 async function send(text) {
@@ -528,7 +528,7 @@ async function send(text) {
   try {
     const response = await api(`/api/conversations/${encodeURIComponent(thread)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, language: "en" }),
     });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -554,12 +554,12 @@ async function send(text) {
   if (active === thread) {
     $("working")?.remove();
     if (reply && reply.name === "reply") addReply(reply.data.text, reply.data.steps);
-    else addReply((reply && reply.data.message) || "连接中断了。刷新页面可以看到这条消息是否已处理完。", null, true);
+    else addReply((reply && reply.data.message) || "The connection broke. Refresh the page to see whether this message was handled.", null, true);
     $("log").scrollTop = $("log").scrollHeight;
     syncComposer();
   }
   await loadThreads();
-  if (active === thread) $("thread-title").textContent = threads.find((t) => t.id === thread)?.title || "新对话";
+  if (active === thread) $("thread-title").textContent = threads.find((t) => t.id === thread)?.title || "New conversation";
   await refreshAccount();
 }
 
@@ -614,7 +614,7 @@ $("my-faculty").onchange = async () => {
   const saved = $("faculty-saved");
   try {
     await api("/api/me/faculty", { method: "PUT", body: JSON.stringify({ faculty: $("my-faculty").value || null }) });
-    saved.textContent = $("my-faculty").value ? "已保存，之后的消息按这个学院计算通勤时间" : "已清除";
+    saved.textContent = $("my-faculty").value ? "Saved: from the next message, commute times use this faculty" : "Cleared";
   } catch (error) {
     saved.textContent = error.message;
   }
@@ -624,7 +624,7 @@ $("logout").onclick = async () => {
   showGate();
 };
 $("wipe").onclick = async () => {
-  if (!confirm("删除你的所有对话、为你保存的条件和学院设置？账号会保留，删除后需要重新登录。此操作无法撤销。")) return;
+  if (!confirm("Delete all your conversations, saved criteria and faculty setting? Your account is kept, and you will need to sign in again. This cannot be undone.")) return;
   await api("/api/me/data", { method: "DELETE" });
   showGate();
 };

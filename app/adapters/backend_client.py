@@ -39,8 +39,8 @@ class BackendClient:
         self.token = account['token']
         return account
 
-    def register(self, username, password, faculty=None):
-        self._json('POST', '/api/register', {'username': username, 'password': password, 'faculty': faculty})
+    def register(self, username, password, faculty=None, invite_code=None):
+        self._json('POST', '/api/register', {'username': username, 'password': password, 'faculty': faculty, 'invite_code': invite_code})
         return self.sign_in(username, password)
 
     def sign_out(self):
@@ -107,9 +107,10 @@ class BackendClient:
         """{memory: on/off/undecided, auto_save, auto_save_offer, saved_on, preferences, sources, budget, items, opening}."""
         return self._json('GET', '/api/me/profile')
 
-    def edit_profile(self, changes):
-        """changes: the agent's criteria to change, each to its new value or None to drop it."""
-        return self._json('PUT', '/api/me/profile', {'changes': changes})
+    def edit_profile(self, changes, via='profile'):
+        """changes: the agent's criteria to change, each to its new value or None to drop it; via:
+        where they were given, 'profile' or 'signup'."""
+        return self._json('PUT', '/api/me/profile', {'changes': changes, 'via': via})
 
     def set_memory(self, on):
         return self._json('PUT', '/api/me/memory', {'on': on})

@@ -60,9 +60,9 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.alice.get("/api/me").json(), {"username": "alice", "faculty": None})
 
         taken = self.bob.post("/api/register", json={"username": "alice", "password": PASSWORD})
-        self.assertEqual((taken.status_code, taken.json()["detail"]), (400, "这个用户名已被注册。"))
+        self.assertEqual((taken.status_code, taken.json()["detail"]), (400, "This username is already taken."))
         wrong = self.bob.post("/api/login", json={"username": "alice", "password": "not-the-password"})
-        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "用户名或密码不正确。"))
+        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "Wrong username or password."))
         # Signing in on a second device is a separate session.
         self.assertEqual(self.bob.post("/api/login", json={"username": "ALICE", "password": PASSWORD}).status_code, 200)
 
@@ -222,6 +222,40 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((deleted["memory"], deleted["preferences"]), ("on", {}))
         self.assertEqual(self.bob.get("/api/me/profile").status_code, 401)
 
+    def test_a_failed_turn_leaves_a_reply_saying_so(self):
+        self.sign_up(self.alice, "alice")
+        thread_id = self.alice.post("/api/conversations").json()["id"]
+
+        def broken(messages):
+            raise RuntimeError("the model is unavailable")
+
+        with self.assertLogs(level="ERROR"):
+            name, data = self.send(self.alice, thread_id, "预算1300", broken)[-1]
+        self.assertEqual((name, data["message"]), ("error", "Something went wrong with this message. Try again in a moment."))
+        # Read again later, the conversation shows the turn is over instead of waiting for a reply.
+        history = self.alice.get(f"/api/conversations/{thread_id}/messages").json()
+        self.assertEqual(
+            history,
+            [
+                {"role": "user", "text": "预算1300"},
+                {"role": "assistant", "text": "处理这条消息时出错了，没有回复。请重新发送这条消息。", "steps": ["这一轮出错了（RuntimeError），没有回复"]},
+            ],
+        )
+        # The message sent again is answered as usual.
+        name, data = self.send(self.alice, thread_id, "预算1300", AIMessage(content="好的，还有别的条件吗？"))[-1]
+        self.assertEqual((name, data["text"]), ("reply", "好的，还有别的条件吗？"))
+        self.assertEqual(len(self.alice.get(f"/api/conversations/{thread_id}/messages").json()), 4)
+
+    def test_the_sign_up_criteria_become_the_long_term_profile(self):
+        self.sign_up(self.alice, "alice")
+        criteria = {"max_price_sgd": 3000, "rental_scope": "entire_unit", "min_bedrooms": 2}
+        saved = self.alice.put("/api/me/profile", json={"changes": criteria, "via": "signup"}).json()
+        self.assertEqual((saved["memory"], saved["preferences"]), ("on", criteria))
+        self.assertEqual({source["via"] for source in saved["sources"].values()}, {"signup"})
+        # The first conversation starts from them.
+        started = self.alice.post("/api/conversations").json()["id"]
+        self.assertEqual(self.alice.get(f"/api/conversations/{started}").json()["preferences"], criteria)
+
     def test_a_conversation_saves_only_what_it_changed(self):
         self.sign_up(self.alice, "alice")
         self.alice.put("/api/me/profile", json={"changes": {"max_price_sgd": 1300, "rental_scope": "room"}})
@@ -299,6 +333,27 @@ class ServerTest(unittest.TestCase):
         self.assertEqual((closed["memory"], closed["auto_save"], closed["auto_save_offer"]), ("undecided", False, False))
         self.assertEqual(self.bob.post(f"/api/conversations/{thread_id}/auto-save").status_code, 404)
 
+    def test_a_registration_code_is_needed_to_sign_up_when_the_server_has_one(self):
+        from fastapi.testclient import TestClient
+
+        from server import create_app
+
+        self.assertFalse(self.alice.get("/api/options").json()["invite_code_required"])
+        app = create_app(self.listings, self.model, self.storage, self.checkpointer, listing_checker=active_links, registration_code="nus-5105")
+        alice, bob = TestClient(app), TestClient(app)
+        self.assertTrue(alice.get("/api/options").json()["invite_code_required"])
+
+        for code in (None, "", "nus-5106"):
+            refused = alice.post("/api/register", json={"username": "alice", "password": PASSWORD, "invite_code": code})
+            self.assertEqual((refused.status_code, refused.json()["detail"]), (400, "That invite code is not right. Check it with whoever invited you."))
+        # Nothing was created.
+        self.assertEqual(alice.post("/api/login", json={"username": "alice", "password": PASSWORD}).status_code, 400)
+
+        signed_up = alice.post("/api/register", json={"username": "alice", "password": PASSWORD, "invite_code": " nus-5105 "})
+        self.assertEqual(signed_up.status_code, 200, signed_up.text)
+        # Signing in never needs it.
+        self.assertEqual(bob.post("/api/login", json={"username": "alice", "password": PASSWORD}).status_code, 200)
+
     def test_shortlists_kept_per_conversation_become_the_accounts_once(self):
         from agent import build_agent
         from server import create_app
@@ -351,7 +406,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.bob.get("/api/conversations").json(), [])
         self.assertEqual(self.bob.get(f"/api/conversations/{thread_id}/messages").status_code, 404)
         sent = self.bob.post(f"/api/conversations/{thread_id}/messages", json={"message": "你好"})
-        self.assertEqual((sent.status_code, sent.json()["detail"]), (404, "找不到这段对话。"))
+        self.assertEqual((sent.status_code, sent.json()["detail"]), (404, "Conversation not found."))
         self.assertEqual(self.bob.delete(f"/api/conversations/{thread_id}").status_code, 404)
         self.assertEqual(self.client().get(f"/api/conversations/{thread_id}/messages").status_code, 401)
         self.assertEqual(self.alice.get(f"/api/conversations/{thread_id}/messages").json(), [])
@@ -398,7 +453,7 @@ class ServerTest(unittest.TestCase):
         changed = self.alice.put("/api/me/faculty", json={"faculty": "Faculty of Law"})
         self.assertEqual(changed.json()["faculty"], "Faculty of Law")
         wrong = self.alice.put("/api/me/faculty", json={"faculty": "Yale-NUS College"})
-        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "请从列表里选择学院。"))
+        self.assertEqual((wrong.status_code, wrong.json()["detail"]), (400, "Choose a faculty from the list."))
         self.assertIsNone(self.alice.put("/api/me/faculty", json={"faculty": None}).json()["faculty"])
         # A sign-up with an unknown faculty creates no account.
         refused = self.bob.post("/api/register", json={"username": "bob", "password": PASSWORD, "faculty": "Yale-NUS College"})

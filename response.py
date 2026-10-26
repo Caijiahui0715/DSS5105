@@ -968,6 +968,8 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
         elif kind == "[resume]":
             day = rest.removeprefix("last active ").split(";", 1)[0]
             steps.append(_text(language, f"隔天继续对话（上次 {day}）：清除了过期的放宽建议和搜索统计", f"Resumed on a later day (last {day}): cleared stale suggestions and counts"))
+        elif kind == "[error]":
+            steps.append(_text(language, f"这一轮出错了（{rest}），没有回复", f"This turn failed ({rest}), so there was no reply"))
         elif kind == "[memory]" and rest.startswith("started from"):
             steps.append(_text(language, f"长期资料：按 {rest.rsplit(' ', 1)[1]} 保存的条件开始这段对话", f"Long-term profile: started from the criteria saved on {rest.rsplit(' ', 1)[1]}"))
         else:
@@ -1505,7 +1507,7 @@ def render_lease_minimum(months: int | None, language: ResponseLanguage = "zh") 
 
 
 def render_occupants(note: dict, language: ResponseLanguage = "zh") -> str:
-    """Shown verbatim when the number of people changed the rental type or bedrooms (agent.occupant_rules)."""
+    """Shown verbatim when the number of people changed the rental type or bedrooms (decision.occupant_rules)."""
     if note["kind"] == "shared_room":
         return _text(
             language,

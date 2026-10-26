@@ -124,8 +124,15 @@ class ConnectionTest(unittest.TestCase):
         with patch("group_db.postgres_settings", return_value=settings), self.assertRaises(SystemExit) as stopped:
             group_db.open_database()
 
-        self.assertIn("连不上 PostgreSQL", str(stopped.exception))
+        self.assertIn("Cannot connect to PostgreSQL", str(stopped.exception))
         self.assertIn("DB_HOST", str(stopped.exception))
+
+    def test_a_missing_db_setting_stops_the_start_and_names_it(self):
+        # Without DB_USER, PostgreSQL's client would quietly try the computer's user name.
+        with patch.dict("os.environ", {"DB_USER": ""}), patch("config._dotenv", return_value={}), self.assertRaises(SystemExit) as stopped:
+            group_db.open_database()
+
+        self.assertEqual(str(stopped.exception), ".env is missing DB_USER. Add it and run again (see .env.example).")
 
     def test_a_database_without_listing_tables_says_to_run_the_setup(self):
         # The test database's public schema has no tables: tests keep theirs in schemas of their own.
@@ -152,7 +159,7 @@ class CommuteTablesTest(unittest.TestCase):
                 destinations = pg.execute("SELECT destination_id, faculty_code FROM nus_destinations").fetchall()
                 google = pg.execute(
                     "SELECT travel_mode, route_provider, benchmark_time FROM listing_commutes "
-                    "WHERE listing_id = '24611200' AND destination_id = 'law_default'"
+                    "WHERE listing_id = '24666342' AND destination_id = 'law_default'"
                 ).fetchone()
             with path.open(encoding="utf-8", newline="") as file:
                 again = {(row["listing_id"], row["faculty"]): row for row in csv.DictReader(file)}

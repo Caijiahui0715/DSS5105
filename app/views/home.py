@@ -2,16 +2,17 @@ import time
 from datetime import datetime
 from html import escape
 import streamlit as st
+import streamlit.components.v1 as components
 from components.navigation import conversation_sidebar
 from components.map_view import map_view, big_map
 from components.listing_details import compact_details
-from components.listing_card import heading, mrt_text, commute_text, link_note, image
+from components.listing_card import heading, mrt_text, commute_text, link_note, image, box_label, box_help
 from components.criteria_panel import criteria_form, drop_message, label, other_criteria
 from content.en import PROMPTS, PROMPTS_ZH
-from content.i18n import t, language, describe
+from content.i18n import t, language, describe, follow_message
 from domain.criteria import criteria_message
-from state.session_store import (current, live, busy, waiting_for_reply, wait_for_reply, stop_waiting, replied, read_profile, refresh_new_conversations, compare_message, NEW_TITLE,
-                                 favorite_ids, toggle_favorite, toggle_compare, compare_ids)
+from state.session_store import (current, live, busy, waiting_for_reply, wait_for_reply, stop_waiting, replied, read_profile, refresh_new_conversations, NEW_TITLE,
+                                 favorite_ids, toggle_favorite, toggle_compare, compare_ids, start_compare)
 from adapters.backend_client import SessionExpired, BackendError, TURN_TIMEOUT_SECONDS
 from domain.models import ApiError
 
@@ -25,6 +26,11 @@ def as_markdown(text):
 def send(message, agent, thread):
     """One message to the agent. The message shows at once in the thread, with the agent's progress under it."""
     conv = current()
+    # The page then shows the cards, the map and the rest in the language of the reply.
+    follow_message(message)
+    # An earlier message whose reply this page stopped waiting for (the user sent this one meanwhile):
+    # the backend answers it first, so the conversation is read again instead of adding this reply.
+    behind = live() and waiting_for_reply(conv)
     with thread:
         with st.container(key=f"chat-user-{len(conv['messages'])}"):
             with st.chat_message('user'):
@@ -56,13 +62,15 @@ def send(message, agent, thread):
         st.session_state.shortlist = response.shortlist
     if response.criteria is not None:
         conv['criteria'] = response.criteria
-    # A comparison: the Compare bar shows it, and the listings chosen are those compared.
+    # A comparison: the compare box holds the listings compared. Asked for with Compare, its table
+    # opens by itself, once; asked for in chat, the Compare bar marks it new.
+    asked = conv.pop('compare_asked', None)
     if response.comparison is not None:
         conv['comparison'] = response.comparison
         conv['compare'] = list(response.comparison['listing_ids'])
-        conv['compare_new'] = len(conv['compare']) >= 2
+        conv['compare_show' if asked else 'compare_new'] = len(conv['compare']) >= 2
     conv['updated'] = datetime.now().isoformat(timespec='seconds')
-    conv['loaded'] = True
+    conv['loaded'] = not behind
     if live():
         # The reply may have saved to the long-term profile or switched memory or auto-save.
         refresh_new_conversations()
@@ -176,19 +184,20 @@ def auto_save_confirmation(saved, memory_on):
 
 def map_dialog(api, conv):
     """The enlarged map in a wide window. A click on a listing shows a card under the map, with
-    Save, Compare and Details, and the window stays open."""
+    Save, Add to compare and Details, and the window stays open; closed, the page is drawn again,
+    with the compare box and the favorites as they now are."""
     recommended = [rec.listing_id for rec in conv['recommendations'] or []]
     # Orange: the listing selected on Home. A pick does not redraw the map, which keeps its zoom.
     highlight = st.session_state.selected_listing
 
     def body():
-        picked = big_map(api, recommended, favorite_ids(), compared_on_map(conv), highlight)
+        picked = big_map(api, recommended, favorite_ids(), table_order(conv), highlight)
         if picked:
             st.session_state['map-picked'] = picked
         if picked := st.session_state.get('map-picked'):
             map_card(api, conv, picked, recommended)
 
-    st.dialog(t('Map', '地图'), width='large')(body)()
+    st.dialog(t('Map', '地图'), width='large', on_dismiss='rerun')(body)()
 
 
 def map_card(api, conv, listing_id, recommended):
@@ -220,10 +229,9 @@ def map_card(api, conv, listing_id, recommended):
         if save.button(t('Unsave', '取消收藏') if saved else t('Save', '收藏'), key='map-card-save', width='stretch'):
             toggle_favorite(listing_id)
             st.rerun(scope='fragment')
-        if compare.button(t('Remove compare', '移出比较') if comparing else t('Compare', '比较'), key='map-card-compare', width='stretch', disabled=busy(conv)):
+        if compare.button(box_label(comparing), key='map-card-compare', help=box_help(comparing), width='stretch', disabled=busy(conv)):
             toggle_compare(listing_id)
-            # A second or third listing asks the agent, from Home; otherwise the window stays.
-            st.rerun(scope='app' if st.session_state.get('pending_message') else 'fragment')
+            st.rerun(scope='fragment')
         if details.button(t('Details', '查看详情'), key='map-card-details', type='primary', width='stretch'):
             st.session_state.selected_listing = listing_id
             if listing_id not in recommended:
@@ -256,58 +264,64 @@ def await_reply(conv):
     check()
 
 
-def compared_on_map(conv):
-    """The listings of the conversation's comparison still chosen, in the table's order, while there
-    are at least two: the map numbers them and frames them with the faculty."""
-    comparison = conv['comparison'] or {'listing_ids': []}
-    shown = [listing_id for listing_id in comparison['listing_ids'] if listing_id in conv['compare']]
-    return shown if len(shown) >= 2 else []
+def table_order(conv):
+    """The listings of the conversation's last comparison, while it has at least two: in the compare
+    box's order while the box holds the same ones, else the table's. The map numbers them so."""
+    compared = (conv['comparison'] or {}).get('listing_ids') or []
+    if len(compared) < 2:
+        return []
+    return list(conv['compare']) if set(conv['compare']) == set(compared) else list(compared)
 
 
 def compare_bar(conv):
-    """Between the map and the listings while listings are chosen to compare: one button that opens
-    the comparison. It pulses with a "new" mark when a comparison arrives, until opened."""
-    chosen = conv['compare']
-    if not chosen:
+    """Between the map and the listings, while the compare box holds listings or the conversation has
+    a comparison. A table asked for with Compare opens by itself once its reply is in; one asked for
+    in chat makes the bar pulse with a "new" mark until opened."""
+    show = conv.pop('compare_show', False) and bool(table_order(conv))
+    if not conv['compare'] and not table_order(conv):
         return
-    new = conv['compare_new']
-    with st.container(key='compare-bar-new' if new else 'compare-bar'):
-        label = t(f'Compare ({len(chosen)})', f'比较（{len(chosen)} 套）') + (f" · **{t('New', '新')}**" if new else '')
-        # Grey while the agent replies: a click then would restart the page mid-reply.
-        working = busy(conv)
-        if st.button(label, icon=':material/compare_arrows:', key='compare-open', width='stretch', disabled=working,
-                     help=t('Opens once the agent has replied', '等 agent 回复后才能打开') if working else t('Open the comparison', '打开比较')):
-            conv['compare_new'] = False
-            comparison_dialog(conv)
+    with st.container(key='compare-bar-new' if conv['compare_new'] else 'compare-bar'):
+        compare_buttons(conv, open_now=show)
+
+
+def compare_buttons(conv, prefix='', clear=False, open_now=False):
+    """Compare the listings in the compare box, or open the table when the box holds the listings last
+    compared (in the box's order); and the last comparison's table. With clear, empty the box too.
+    They wait while the agent replies: a click then would restart the page mid-reply."""
+    chosen, compared = conv['compare'], table_order(conv)
+    count, working = len(chosen), busy(conv)
+    same = count >= 2 and set(chosen) == set(compared)
+    waiting = t('Waits for the agent’s reply', '等 agent 回复后才能用') if working else None
+    new = f" · **{t('New', '新')}**" if conv['compare_new'] else ''
+    opened = False
+    with st.container(horizontal=True, key=f'{prefix}compare-buttons'):
+        if not same:
+            label = (t(f'Compare {count} listings', f'开始比较（{count} 套）') if count >= 2 else t('Add 1 more to compare', '再放 1 套') if count == 1
+                     else t('Add 2 to compare', '放 2 套进比较框'))
+            if st.button(label, icon=':material/compare_arrows:', key=f'{prefix}compare-start', type='primary', width='stretch', disabled=working or count < 2,
+                         help=waiting or t('Ask the agent to compare the listings in the compare box', '让 agent 比较比较框里的房源')):
+                start_compare(conv)
+                st.rerun()
+        if compared:
+            view = t(f'View comparison ({count})', f'查看比较（{count} 套）') if same else t('Last comparison', '查看上次比较')
+            opened = st.button(view + new, icon=':material/table_view:', key=f'{prefix}compare-open', width='stretch', disabled=working,
+                               help=waiting or t('Open the comparison table', '打开比较表'))
+        if clear and chosen and st.button(t('Clear', '清空'), key=f'{prefix}compare-clear', disabled=working, help=waiting or t('Empty the compare box', '清空比较框')):
+            conv['compare'] = []
+            st.rerun()
+    if opened or open_now:
+        conv['compare_new'] = False
+        comparison_dialog(conv)
 
 
 def comparison_dialog(conv):
-    """The comparison in a wide window: the table, one column per listing compared, with the key
-    differences; or, before two are compared, what is still needed."""
+    """The last comparison in a wide window: the key differences and the table, one column per
+    listing, in the compare box's order while it holds the same listings."""
     lang = language()
-    chosen = conv['compare']
-    comparison = conv['comparison'] or {'listing_ids': [], 'left_out': []}
-    shown = [listing_id for listing_id in comparison['listing_ids'] if listing_id in chosen]
-    removed = [listing_id for listing_id in comparison['listing_ids'] if listing_id not in chosen]
-    separator = '、' if lang == 'zh' else ', '
+    comparison = conv['comparison']
+    shown = table_order(conv)
 
     def body():
-        if len(chosen) == 1:
-            # Why the last comparison was not made, when it left only this one.
-            notes = ' '.join(item['note'][lang] for item in comparison['left_out']) if comparison['listing_ids'] == chosen else ''
-            st.info(f"{notes} {t('Choose one more listing to compare.', '再选一套就开始比较。')}".strip())
-            return
-        if busy(conv) and len(shown) < len(chosen):
-            st.info(t('The agent is comparing them; the table appears here once it replies.', 'agent 正在比较，回复后表格会出现在这里。'))
-            return
-        # Listings removed since, or chosen but not compared (a reply that failed): compare them now.
-        if removed or set(shown) != set(chosen):
-            note = t(f'This comparison also covers {separator.join(removed)}, which you removed.', f'这次比较还包括已移出的 {separator.join(removed)}。') if removed else t('These listings are not compared yet.', '这几套还没有比较。')
-            st.caption(note)
-            if st.button(t('Compare again', '重新比较'), key='compare-again', icon=':material/refresh:'):
-                ask(compare_message(chosen))
-        if len(shown) < 2:
-            return
         st.markdown(f"**{t('Key differences', '关键差异')}**{'：' if lang == 'zh' else ': '}{as_markdown(comparison['summary'][lang]) or t('none stand out', '没有明显差异')}")
         for item in comparison['left_out']:
             st.caption(item['note'][lang])
@@ -322,6 +336,8 @@ def comparison_dialog(conv):
         st.markdown(f"<table class='comparison-table'><thead><tr><th></th>{head}</tr></thead><tbody>{body_rows}</tbody></table>", unsafe_allow_html=True)
         st.caption(t(f"Compared on {comparison['date']}; whether each meets your criteria is as of then. Availability is not checked in real time.",
                      f"{comparison['date']} 比较；是否符合条件按当时的条件判断。房源是否还能租没有实时核实。"))
+        if set(conv['compare']) != set(shown):
+            st.caption(t('The compare box now holds other listings; press Compare to compare them.', '比较框里现在是别的房源，按“开始比较”就会比较它们。'))
 
     st.dialog(t('Compare listings', '比较房源'), width='large')(body)()
 
@@ -357,6 +373,8 @@ def render(api, agent):
                 await_reply(conv)
             else:
                 stop_waiting(conv)
+        if st.session_state.pop('scroll-to-latest', False):
+            scroll_to_latest()
         if live():
             auto_save_offer(conv)
         # A typed message, or one from another control or page (criteria, Compare, sign-up). It is
@@ -369,7 +387,7 @@ def render(api, agent):
             criteria_panel(api)
         # The map fills its panel: 350px high with a 1px border (see streamlit_app.py).
         with st.container(height=350, border=True, key='map-panel'):
-            map_view(api, key='home-map', height=348, listing_ids=eligible_ids, compact=True, compared_ids=compared_on_map(conv) if live() else ())
+            map_view(api, key='home-map', height=348, listing_ids=eligible_ids, compact=True, compared_ids=table_order(conv) if live() else ())
             # Laid over the map's top-right corner (see streamlit_app.py).
             if live() and st.button(t('Enlarge map', '放大地图'), icon=':material/open_in_full:', key='map-expand', help=t('Enlarge map', '放大地图')):
                 st.session_state.pop('map-picked', None)
@@ -415,6 +433,23 @@ def render(api, agent):
         send_once_shown()
     if outgoing:
         send(outgoing, agent, thread)
+
+
+def scroll_to_latest():
+    """The chat thread scrolled to its latest message: a thread drawn anew starts at the top. It keeps
+    to the bottom for 3 seconds while the page finishes drawing, unless the user scrolls."""
+    script = """
+const thread = window.parent.document.querySelector('.st-key-chat-thread');
+if (thread) {
+  let ticks = 0;
+  const timer = setInterval(() => { thread.scrollTop = thread.scrollHeight; if (++ticks >= 20) clearInterval(timer); }, 150);
+  const stop = () => clearInterval(timer);
+  thread.addEventListener('wheel', stop, {once: true});
+  thread.addEventListener('touchstart', stop, {once: true});
+}"""
+    # The time makes each one a new frame, so its script runs again.
+    with st.container(key='scroll-to-latest'):
+        components.html(f'<script>{script}</script><span hidden>{time.time()}</span>', height=0)
 
 
 def send_once_shown():

@@ -25,7 +25,7 @@ def main() -> int:
     try:
         token = load_token()
     except OneMapError as error:
-        print(f"拿不到 OneMap token：{error}")
+        print(f"Could not get a OneMap token: {error}")
         return 1
     # A short walk on campus: from the School of Computing to the Business School.
     start, end = (find_faculty(name) for name in ("School of Computing", "NUS Business School"))
@@ -50,16 +50,16 @@ def main() -> int:
         list(pool.map(call, range(_CALLS)))
     elapsed = time.monotonic() - began
     if other_errors:
-        print(f"有 {len(other_errors)} 次调用出错（不是限流）：{other_errors[0][1]}")
+        print(f"{len(other_errors)} calls failed for reasons other than the rate limit: {other_errors[0][1]}")
     if limited:
         at = limited[0][0]
-        print(f"开始后 {at:.1f} 秒被 OneMap 限流（HTTP 429），之前成功 {len(done)} 次。")
+        print(f"OneMap started limiting (HTTP 429) {at:.1f} seconds in, after {len(done)} successful calls.")
         per_minute = len(done) if at <= 60 else round(len(done) * 60 / at)
-        print(f"上限大约是每分钟 {per_minute} 次。建议在 .env 里写 ONEMAP_CALLS_PER_MINUTE={max(int(per_minute * 0.9), 1)}")
+        print(f"The limit is about {per_minute} calls a minute. Suggested setting in .env: ONEMAP_CALLS_PER_MINUTE={max(int(per_minute * 0.9), 1)}")
     else:
         rate = round(len(done) * 60 / elapsed) if elapsed else len(done)
-        print(f"{elapsed:.1f} 秒内成功 {len(done)} 次，没有被限流，相当于每分钟约 {rate} 次。")
-        print("上限至少是这么多；保持默认的 240，或者按这个结果写 ONEMAP_CALLS_PER_MINUTE。")
+        print(f"{len(done)} successful calls in {elapsed:.1f} seconds without being limited, about {rate} a minute.")
+        print("The limit is at least that; keep the default of 240, or set ONEMAP_CALLS_PER_MINUTE from this result.")
     return 0
 
 

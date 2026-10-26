@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "NUS rental decision agent: data pipeline, recommendation backend and web demo"
 readme = "README.md"
 authors = [
-    { name = "pizza379", email = "linyushan613@outlook.com" }
+    { name = "DSS5105 project team" }
 ]
 requires-python = ">=3.12"
 dependencies = [

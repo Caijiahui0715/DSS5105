@@ -1,10 +1,7 @@
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from math import asin, cos, isfinite, radians, sin, sqrt
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
 from models import (
     AMENITY_FIELDS,
@@ -256,13 +253,9 @@ def search_listings(
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
 ) -> list[Listing]:
-    """Return non-inactive listings satisfying every supported hard constraint."""
+    """Return listings satisfying every supported hard constraint."""
     preferences = resolve_search_location(preferences)
-    clauses = [
-        "(live_status <> 'inactive' OR live_checked_at IS NULL "
-        "OR live_checked_at::timestamptz < now() - interval '24 hours')",
-        "NOT 'negative_numeric' = ANY(review_flags)",
-    ]
+    clauses = ["NOT 'negative_numeric' = ANY(review_flags)"]
     params: list[object] = []
     filters = (
         ("rent_monthly_sgd <= %s", preferences.max_price_sgd),
@@ -397,8 +390,7 @@ def refresh_mrt_walk_data(
         """
         SELECT listing_id, address, mrt_station
         FROM agent_listings
-        WHERE live_status <> 'inactive'
-          AND address IS NOT NULL AND trim(address) <> ''
+        WHERE address IS NOT NULL AND trim(address) <> ''
           AND mrt_station <> 'unknown' AND trim(mrt_station) <> ''
           AND mrt_walk_minutes IS NULL
         ORDER BY listing_id
@@ -450,10 +442,6 @@ def analyze_relaxations(
     connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
-    checker=None,
-    *,
-    candidate_limit: int = 30,
-    result_limit: int = 3,
 ) -> list[RelaxationSuggestion]:
     # ponytail: fixed steps suit the prototype; product policy can replace them later.
     candidates = (
@@ -487,15 +475,7 @@ def analyze_relaxations(
         if suggested is None:
             continue
         relaxed = preferences.model_copy(update={field: suggested})
-        listings = search_listings(connection, relaxed, excluded_listing_ids)
-        validation = validate_ranked_listings(
-            connection,
-            rank_listings(listings, relaxed),
-            checker or check_listing_url,
-            candidate_limit=candidate_limit,
-            result_limit=result_limit,
-        )
-        match_count = len(validation["ranked_listings"])
+        match_count = len(search_listings(connection, relaxed, excluded_listing_ids))
         if match_count:
             suggestions.append(
                 {
@@ -503,7 +483,6 @@ def analyze_relaxations(
                     "current": getattr(preferences, field),
                     "suggested": suggested,
                     "match_count": match_count,
-                    "check_summary": validation["summary"],
                 }
             )
     return suggestions
@@ -592,172 +571,40 @@ def mrt_minutes(listing: Listing) -> int | float | None:
     return walked if walked is not None else listing.get("mrt_minutes_reported")
 
 
-def check_listing_url(
-    listing_id: str,
-    url: str,
-    timeout: float = 6,
-) -> dict[str, object]:
-    """Classify one listing URL by HTTP result and final redirect target."""
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 SingaporeRentalAgent/0.1",
-            "Accept": "text/html,application/xhtml+xml",
-        },
-    )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            final_url = response.geturl()
-            http_status = getattr(response, "status", 200)
-    except HTTPError as error:
-        return {
-            "status": "inactive" if error.code in {404, 410} else "unknown",
-            "final_url": error.geturl(),
-            "http_status": error.code,
-            "error_reason": f"http_{error.code}",
-        }
-    except URLError as error:
-        reason = "timeout" if isinstance(error.reason, TimeoutError) else "network_error"
-        return {"status": "unknown", "final_url": None, "http_status": None, "error_reason": reason}
-    except TimeoutError:
-        return {"status": "unknown", "final_url": None, "http_status": None, "error_reason": "timeout"}
-    except OSError:
-        return {"status": "unknown", "final_url": None, "http_status": None, "error_reason": "network_error"}
+# A link check older than this many days is too old to lean on: the reply says so.
+LINK_CHECK_STALE_DAYS = 14
 
-    final_id = _listing_id_from_url(final_url)
-    if final_id == listing_id:
-        status = "active"
-        error_reason = None
-    elif final_id is not None or final_url != url:
-        status = "inactive"
-        error_reason = "redirected_to_another_listing"
-    else:
-        status = "unknown"
-        error_reason = "listing_id_not_found"
-    return {
-        "status": status,
-        "final_url": final_url,
-        "http_status": http_status,
-        "error_reason": error_reason,
-    }
+
+def link_check_age_days(listing: Listing, today: date | None = None) -> int | None:
+    """Days since the data refresh last opened the listing's page; None when it never did."""
+    checked_at = listing.get("live_checked_at")
+    if not checked_at:
+        return None
+    return ((today or date.today()) - date.fromisoformat(str(checked_at)[:10])).days
 
 
 def validate_ranked_listings(
-    connection: Database,
     ranked: list[RankingResult],
-    checker=check_listing_url,
     *,
-    candidate_limit: int = 30,
     result_limit: int | None = None,
-    freshness_hours: int = 24,
 ) -> ListingValidationResult:
-    """Scan in rank order until enough displayable listings or the check cap."""
-    if candidate_limit < 0 or (result_limit is not None and result_limit < 1):
-        raise ValueError("candidate_limit must be nonnegative and result_limit positive")
+    """The listings to show, in rank order, each flagged when its link needs the user's own check.
+
+    The site sends no requests (PropertyGuru refuses automated ones). All that is known of a link
+    is when the data refresh last opened its page, so a listing it never opened, or not for
+    LINK_CHECK_STALE_DAYS, is flagged.
+    """
+    if result_limit is not None and result_limit < 1:
+        raise ValueError("result_limit must be positive")
     validated = []
-    summary: ListingCheckSummary = {
-        "database_match_count": len(ranked),
-        "checked_count": 0,
-        "active_count": 0,
-        "unknown_count": 0,
-        "inactive_count": 0,
-        "unchecked_count": len(ranked),
-    }
-    # ponytail: sequential checks capped per search; parallelize if URL latency matters.
-    for item in ranked[:candidate_limit]:
-        listing = item["listing"]
-        health = _get_listing_health(
-            connection,
-            listing,
-            checker,
-            freshness_hours,
-        )
-        summary["checked_count"] += 1
-        summary[f"{health['status']}_count"] += 1
-        if health["status"] == "inactive":
-            continue
+    for item in ranked[:result_limit]:
+        age = link_check_age_days(item["listing"])
         warnings = list(item.get("warnings", []))
-        if health["status"] == "unknown" and "live_status_unknown" not in warnings:
-            warnings.append("live_status_unknown")
-        validated.append(
-            {
-                **item,
-                "listing": {
-                    **listing,
-                    "live_status": health["status"],
-                    "live_checked_at": health["checked_at"],
-                    "final_url": health.get("final_url"),
-                    "http_status": health.get("http_status"),
-                    "live_error_reason": health.get("error_reason"),
-                },
-                "warnings": warnings,
-            }
-        )
-        if result_limit is not None and len(validated) >= result_limit:
-            break
-    summary["unchecked_count"] -= summary["checked_count"]
+        if (age is None or age > LINK_CHECK_STALE_DAYS) and "link_check_needed" not in warnings:
+            warnings.append("link_check_needed")
+        validated.append({**item, "warnings": warnings})
+    summary: ListingCheckSummary = {"database_match_count": len(ranked)}
     return {"ranked_listings": validated, "summary": summary}
-
-
-def _get_listing_health(
-    connection: Database,
-    listing: Listing,
-    checker,
-    freshness_hours: int,
-) -> dict[str, object]:
-    rows = connection.query(
-        """
-        SELECT status, checked_at, final_url, http_status, error_reason
-        FROM listing_health WHERE listing_id = %s
-        """,
-        (listing["listing_id"],),
-    )
-    if rows and _is_fresh(rows[0]["checked_at"], freshness_hours):
-        return rows[0]
-
-    checked_at = datetime.now(timezone.utc).isoformat()
-    try:
-        result = checker(listing["listing_id"], listing["listing_url"])
-    except Exception:
-        result = {
-            "status": "unknown",
-            "final_url": None,
-            "http_status": None,
-            "error_reason": "checker_error",
-        }
-    status = result.get("status")
-    if status not in {"active", "inactive", "unknown"}:
-        status = "unknown"
-    health = {
-        "status": status,
-        "checked_at": checked_at,
-        "final_url": result.get("final_url"),
-        "http_status": result.get("http_status"),
-        "error_reason": result.get("error_reason"),
-    }
-    # Kept in the database, so later turns and restarts reuse it for 24 hours.
-    connection.run(
-        """
-        INSERT INTO listing_health
-            (listing_id, status, checked_at, final_url, http_status, error_reason)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (listing_id) DO UPDATE SET
-            status = EXCLUDED.status,
-            checked_at = EXCLUDED.checked_at,
-            final_url = EXCLUDED.final_url,
-            http_status = EXCLUDED.http_status,
-            error_reason = EXCLUDED.error_reason
-        """,
-        (
-            listing["listing_id"],
-            health["status"],
-            health["checked_at"],
-            health["final_url"],
-            health["http_status"],
-            health["error_reason"],
-        ),
-    )
-    return health
 
 
 def _query(
@@ -784,23 +631,6 @@ def _keep_review_flag(listing: Listing, flag: str) -> bool:
         and isinstance(listing.get("area_sqm"), (int, float))
         and listing["area_sqm"] > _LARGE_AREA_REVIEW_THRESHOLD_SQM
     )
-
-
-def _is_fresh(value: str, freshness_hours: int) -> bool:
-    try:
-        checked_at = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (AttributeError, ValueError):
-        return False
-    if checked_at.tzinfo is None:
-        checked_at = checked_at.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) - checked_at <= timedelta(hours=freshness_hours)
-
-
-def _listing_id_from_url(url: str | None) -> str | None:
-    if not url:
-        return None
-    matches = re.findall(r"(?<!\d)(\d{8,9})(?!\d)", urlparse(url).path)
-    return matches[-1] if matches else None
 
 
 def _clean(value: str | None) -> str | None:

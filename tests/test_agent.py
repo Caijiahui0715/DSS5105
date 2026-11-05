@@ -2,6 +2,7 @@ import json
 import unittest
 from contextlib import closing
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from unittest.mock import patch
 
 import httpx
@@ -51,17 +52,12 @@ def tool_calls(*calls):
     )
 
 
-def active_links(listing_id, url):
-    return {"status": "active", "final_url": url, "http_status": 200}
-
-
 def memory_agent(connection, model, profiles):
     """An agent with long-term memory; threads share one checkpointer like separate conversations."""
     return build_agent(
         connection,
         model,
         MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])),
-        listing_checker=active_links,
         profiles=profiles,
     )
 
@@ -79,7 +75,6 @@ def run_agent(connection, model, *messages):
                 allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")]
             )
         ),
-        listing_checker=active_links,
     )
     config = {"configurable": {"thread_id": "test"}}
     return [graph.invoke({"message": message}, config=config) for message in messages]
@@ -102,6 +97,7 @@ class AgentTest(unittest.TestCase):
                 "shortlist",
                 "exclude_listings",
                 "estimate_costs",
+                "currency",
             ],
         )
         self.assertEqual(result["response"], "你好，请告诉我你的租房要求。")
@@ -118,7 +114,7 @@ class AgentTest(unittest.TestCase):
 
         observation = json.loads(result["observations"][0])
         self.assertEqual(result["trace"][0], '[tool] compare_listings({"listing_ids": ["S010", "S009"]})')
-        self.assertTrue(result["trace"][1].startswith("[links] "))
+        self.assertTrue(result["trace"][1].startswith("[link-dates] "))
         self.assertEqual(sorted(result["shown_listing_ids"]), ["S009", "S010"])
         self.assertEqual(min(observation["rent_above_cheapest_sgd"].values()), 0)
         self.assertIn("综合排名更靠前", result["response"])
@@ -150,7 +146,7 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(rows["月租"]["S009"], {"zh": "S$1,250（最便宜）", "en": "S$1,250 (cheapest)"})
         self.assertEqual(rows["月租"]["S003"]["zh"], "S$1,700（比最便宜的贵 S$450）")
         self.assertEqual(rows["是否符合条件（按比较时的条件）"]["S003"]["zh"], "不符合：预算")
-        self.assertEqual(rows["链接"]["S010"]["zh"], "有效")
+        self.assertEqual(rows["原链接最后检查"]["S010"]["zh"], f"{date.today().isoformat()} 检查时仍在挂牌")
         self.assertEqual(view["summary"]["zh"], "S009 最便宜（S$1,250）；S010 离 MRT 最近（约 4 分钟）；S003 不符合当前条件")
         # The system points to the table the first time only, before the model's analysis.
         self.assertTrue(first["response"].startswith("对比表在右侧“比较”栏，点开就能看到。\n\nS010 离 MRT 更近"))
@@ -162,11 +158,6 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(many["last_comparison"]["listing_ids"], ["S010", "S009"])
 
     def test_listings_left_out_of_a_comparison_are_named(self):
-        def links(listing_id, url):
-            if listing_id == "S009":
-                return {"status": "inactive", "final_url": url, "http_status": 404, "error_reason": "http_404"}
-            return active_links(listing_id, url)
-
         model = ScriptedModel(
             tool_calls(("compare_listings", {"listing_ids": ["S010", "S009", "S003"]})),
             AIMessage(content="S010 更便宜。"),
@@ -174,19 +165,19 @@ class AgentTest(unittest.TestCase):
             AIMessage(content="请再选一套。"),
         )
         with closing(create_mock_database()) as connection:
-            # No cached link checks, so the checker decides.
-            connection.run("DELETE FROM listing_health")
-            graph = build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])), listing_checker=links)
+            # The data refresh found S009 taken down.
+            set_listing(connection, "S009", scrape_status="removed")
+            graph = build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=[("models", "SearchPreferences"), ("models", "NearbyLocation"), ("models", "Destination")])))
             config = {"configurable": {"thread_id": "left-out"}}
             two = graph.invoke({"message": "比较 S010、S009 和 S003"}, config=config)
             one = graph.invoke({"message": "比较 S010、S009 和 NOPE"}, config=config)
 
         self.assertEqual(two["comparison"]["listing_ids"], ["S010", "S003"])
-        self.assertTrue(two["response"].startswith("S009 的原链接已失效，没有加入比较。"))
+        self.assertTrue(two["response"].startswith("S009 不在当前房源数据中，没有加入比较。"))
         # One listing left: not compared; the table keeps it so the page can ask for another.
         self.assertEqual(one["comparison"]["listing_ids"], ["S010"])
-        self.assertEqual(json.loads(one["observations"][0])["left_out"], {"S009": "inactive", "NOPE": "missing"})
-        self.assertTrue(one["response"].startswith("S009 的原链接已失效，没有加入比较。 NOPE 不在当前房源数据中，没有加入比较。"))
+        self.assertEqual(json.loads(one["observations"][0])["left_out"], {"S009": "missing", "NOPE": "missing"})
+        self.assertTrue(one["response"].startswith("S009 不在当前房源数据中，没有加入比较。 NOPE 不在当前房源数据中，没有加入比较。"))
 
     def test_one_turn_can_shortlist_and_show_another_listing(self):
         model = ScriptedModel(
@@ -657,9 +648,9 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(
             json.loads(high["observations"][0])["budget_check"],
-            {"monthly_limit_sgd": 30000, "rent_90th_percentile_sgd": 3800},
+            {"monthly_limit_sgd": 30000, "rent_90th_percentile_sgd": 1700},
         )
-        self.assertIn("提醒：每月 S$30,000 的上限高于数据中 90% 房源的月租（S$3,800）", high["response"])
+        self.assertIn("提醒：每月 S$30,000 的上限高于数据中 90% 房源的月租（S$1,700）", high["response"])
         self.assertNotIn("提醒：每月", low["response"])
 
     def test_a_budget_far_below_every_rent_is_not_used(self):
@@ -817,10 +808,10 @@ class AgentTest(unittest.TestCase):
         first = ScriptedModel(tool_calls(("shortlist", {"add": ["S001", "S010"]})), AIMessage(content="已收藏。"))
         later = ScriptedModel(AIMessage(content="候选清单里还有 S001。"))
         with closing(create_mock_database()) as before, closing(create_mock_database()) as after:
-            build_agent(before, first, memory, listing_checker=active_links).invoke({"message": "收藏 S001 和 S010"}, config=config)
+            build_agent(before, first, memory).invoke({"message": "收藏 S001 和 S010"}, config=config)
             # A data refresh delisted S010 before the user came back.
             after.run("DELETE FROM listings WHERE listing_id = 'S010'")
-            result = build_agent(after, later, memory, listing_checker=active_links).invoke({"message": "我的候选清单还在吗"}, config=config)
+            result = build_agent(after, later, memory).invoke({"message": "我的候选清单还在吗"}, config=config)
 
         self.assertEqual(result["shortlisted_listing_ids"], ["S001"])
         self.assertTrue(result["response"].startswith("候选清单里的 S010 已不在当前房源数据中（可能已下架），已从候选清单移除。"))
@@ -838,7 +829,7 @@ class AgentTest(unittest.TestCase):
         )
         config = {"configurable": {"thread_id": "later-day"}}
         with closing(create_mock_database()) as connection:
-            graph = build_agent(connection, model, memory, listing_checker=active_links)
+            graph = build_agent(connection, model, memory)
             first = graph.invoke({"message": request}, config=config)
             with patch("agent.date") as clock:
                 clock.today.return_value = date(2026, 11, 2)
@@ -1188,7 +1179,7 @@ class AgentTest(unittest.TestCase):
     def test_tool_rounds_are_capped(self):
         model = ScriptedModel(*[tool_calls(("shortlist", {})) for _ in range(10)])
         with closing(create_mock_database()) as connection:
-            graph = build_agent(connection, model, listing_checker=active_links, max_tool_rounds=2)
+            graph = build_agent(connection, model, max_tool_rounds=2)
             result = graph.invoke({"message": "看看候选清单"})
 
         self.assertEqual(len(model.calls), 3)
@@ -1343,35 +1334,29 @@ class AgentTest(unittest.TestCase):
         self.assertTrue({item["property_type"] for item in shown} <= set(apartments))
         self.assertIn("物业类型 不限 → condominium、executive_condominium、apartment、walk_up_apartment", result["response"])
 
-    def test_unverified_links_keep_their_rank_and_are_explained(self):
-        def checker(listing_id, url):
-            if listing_id == "S010":
-                return {"status": "inactive", "final_url": url, "http_status": 404, "error_reason": "http_404"}
-            if listing_id == "S001":
-                return {"status": "unknown", "final_url": None, "http_status": 403, "error_reason": "http_403"}
-            return {"status": "active", "final_url": url, "http_status": 200}
-
-        note = "网站返回 HTTP 403，因此暂时无法确认链接是否仍然有效；这不表示房源已下架"
+    def test_links_checked_long_ago_keep_their_rank_and_are_pointed_out(self):
+        today = date.today().isoformat()
+        old = date.fromordinal(date.today().toordinal() - 20).isoformat()
+        note = f"{old} 检查时仍在挂牌，但已超过 14 天（20 天前）没有再检查，可能已下架，请点原链接确认"
         search = {"set": {"max_price_sgd": 1300, "district_code": "D05"}, "user_quote": "预算1300 D05"}
-        for reply in ("S004 更便宜，S001 链接暂时无法确认。", ""):
+        for reply in ("S004 更便宜，S001 离 MRT 更近。", ""):
             model = ScriptedModel(tool_calls(("search_listings", search)), AIMessage(content=reply))
             with self.subTest(reply=reply), closing(create_mock_database()) as connection:
-                connection.run("DELETE FROM listing_health")
-                graph = build_agent(connection, model, listing_checker=checker)
-                result = graph.invoke({"message": "预算1300 D05"})
-                (health,) = connection.query(
-                    "SELECT status, error_reason FROM listing_health WHERE listing_id = 'S001'"
-                )
+                # The data refresh last opened S001 twenty days ago and found S010 taken down.
+                set_listing(connection, "S001", enriched_at=old)
+                set_listing(connection, "S010", scrape_status="removed")
+                result = build_agent(connection, model).invoke({"message": "预算1300 D05"})
 
                 facts = json.loads(result["observations"][0])["strict_matches"]["listings"]
-                # S001 is nearer MRT than S004, so it keeps first place with an unverified link.
+                # S001 is nearer MRT than S004, so it keeps first place with an old check.
                 self.assertEqual(result["shown_listing_ids"], ["S001", "S004"])
-                self.assertEqual(health, {"status": "unknown", "error_reason": "http_403"})
-                self.assertEqual(facts[0]["link_note"], note)
-                self.assertIn("[links] S001 unknown (http_403); S004 active; 1 inactive skipped", result["trace"])
+                self.assertEqual((facts[0]["link_last_checked"], facts[0]["link_note"]), (old, note))
+                self.assertEqual(facts[1]["link_last_checked"], today)
+                self.assertIn(f"[link-dates] S001 {old} stale; S004 {today}", result["trace"])
                 self.assertEqual(result["response"].count(note), 1)
+                self.assertNotIn("有效", result["response"])
                 if reply:
-                    self.assertTrue(result["response"].endswith(f"链接检查：\n- Synthetic Clementi Common Room（S001）：{note}。"))
+                    self.assertTrue(result["response"].endswith(f"这些房源的原链接需要你点开确认：\n- Synthetic Clementi Common Room（S001）：{note}。"))
 
     def test_model_failure_after_a_tool_returns_the_draft(self):
         def unavailable(_):
@@ -1555,7 +1540,7 @@ class OtherDestinationTest(unittest.TestCase):
 
     def agent(self, connection, model, profiles, routes=None):
         return build_agent(connection, model, MemorySaver(serde=JsonPlusSerializer(allowed_msgpack_modules=STATE_MODULES)),
-                           listing_checker=active_links, profiles=profiles, place_router=routes or FakeRoutes({}))
+                           profiles=profiles, place_router=routes or FakeRoutes({}))
 
     def test_a_roommates_faculty_has_its_own_limit_shows_everywhere_and_can_be_kept(self):
         profiles = UserProfiles(empty_storage())
@@ -1683,6 +1668,246 @@ class OtherDestinationTest(unittest.TestCase):
 
         self.assertIn("将到学院的通勤上限从 20 分钟放宽到 30 分钟", result["response"])
         self.assertEqual([item["suggested"] for item in result["relaxations"] if item["field"] == "max_commute_minutes"], [30])
+
+
+def no_rate_lookup(*_):
+    raise AssertionError("the display rate should come from the budget conversion")
+
+
+class CurrencyTest(unittest.TestCase):
+    """Amounts in the user's own currency, per-person shares and gaps, all worked out by tools."""
+
+    # 1 CNY = 0.26 SGD, so 1 SGD = 3.84615 CNY.
+    cny = {"original_amount": 5000, "original_currency": "CNY", "rate_to_sgd": "0.26", "rate_date": "2026-10-27", "amount_sgd": 1300}
+
+    @staticmethod
+    def in_cny(sgd):
+        return int((Decimal(str(sgd)) * Decimal("3.84615") / 10).to_integral_value(ROUND_HALF_UP)) * 10
+
+    def test_a_budget_in_another_currency_shows_rents_in_it_with_the_rate_once(self):
+        request = "预算5000人民币"
+
+        def reply(messages):
+            first = json.loads(messages[-1].content)["strict_matches"]["listings"][0]
+            amount = first["rent_monthly_in_your_currency"]["amount"]
+            return AIMessage(content=f"第一套 {first['listing_id']} 月租 S${first['rent_monthly_sgd']:,}（约 {amount:,} 人民币）。")
+
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 5000, "currency": "CNY"}, "user_quote": request})),
+            reply,
+        )
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=self.cny), patch("agent.exchange_rate", no_rate_lookup):
+            (result,) = run_agent(connection, model, request)
+
+        observation = json.loads(result["observations"][0])
+        first = observation["strict_matches"]["listings"][0]
+        self.assertEqual(result["display_currency"], "CNY")
+        self.assertEqual(observation["your_currency"], {"currency": "CNY", "per_sgd": "3.84615", "rate_date": "2026-10-27"})
+        self.assertEqual(first["rent_monthly_in_your_currency"], {"amount": self.in_cny(first["rent_monthly_sgd"]), "currency": "CNY"})
+        self.assertEqual(first["rent_vs_budget_sgd"], first["rent_monthly_sgd"] - 1300)
+        self.assertFalse(any(line.startswith("[guard]") for line in result["trace"]))
+        note = "汇率：按 1 新币 ≈ 3.84615 人民币换算（2026-10-27 的汇率），换算金额取整到十位，仅供参考。"
+        self.assertTrue(result["response"].endswith(note))
+        self.assertEqual(result["response"].count("汇率："), 1)
+
+    def test_a_made_up_amount_in_another_currency_is_caught(self):
+        request = "预算5000人民币"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 5000, "currency": "CNY"}, "user_quote": request})),
+            AIMessage(content="这些房源每月大约 9,999 人民币。"),
+            AIMessage(content="找到了几套符合预算的房源。"),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=self.cny), patch("agent.exchange_rate", no_rate_lookup):
+            (result,) = run_agent(connection, model, request)
+
+        self.assertIn("[guard] reply rejected (it states figures that no tool returned: 9999) -> retry", result["trace"])
+        self.assertIn("找到了几套符合预算的房源。", result["response"])
+
+    def test_the_listing_template_shows_the_rent_in_the_users_currency(self):
+        request = "预算5000人民币"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 5000, "currency": "CNY"}, "user_quote": request})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=self.cny), patch("agent.exchange_rate", no_rate_lookup):
+            (result,) = run_agent(connection, model, request)
+
+        first = json.loads(result["observations"][0])["strict_matches"]["listings"][0]
+        self.assertIn(f"月租：S${first['rent_monthly_sgd']:,}（约 {self.in_cny(first['rent_monthly_sgd']):,} 人民币）", result["response"])
+
+    def test_the_user_can_choose_the_display_currency_and_go_back_to_sgd(self):
+        model = ScriptedModel(
+            tool_calls(("currency", {"action": "display", "to_currency": "USD", "user_quote": "用美元显示"})),
+            AIMessage(content=""),
+            tool_calls(("get_listing_details", {"listing_id": "S001"})),
+            AIMessage(content=""),
+            tool_calls(("currency", {"action": "display", "to_currency": "SGD", "user_quote": "只看新币"})),
+            AIMessage(content=""),
+            tool_calls(("get_listing_details", {"listing_id": "S001"})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.exchange_rate", return_value=(Decimal("0.74"), "2026-10-27")) as rate:
+            chosen, usd, sgd_only, plain = run_agent(connection, model, "用美元显示", "看看 S001", "只看新币", "再看看 S001")
+
+        rate.assert_called_once_with("SGD", "USD")
+        self.assertEqual(chosen["display_currency"], "USD")
+        self.assertTrue(chosen["response"].startswith("之后的租金和费用会同时显示约合多少美元"))
+        # S$1,200 × 0.74 = 888, rounded to tens.
+        self.assertIn("- 月租：S$1,200（约 890 美元）", usd["response"])
+        self.assertTrue(usd["response"].endswith("汇率：按 1 新币 ≈ 0.74 美元换算（2026-10-27 的汇率），换算金额取整到十位，仅供参考。"))
+        self.assertIsNone(sgd_only["display_currency"])
+        self.assertTrue(sgd_only["response"].startswith("之后金额只显示新币。"))
+        self.assertIn("- 月租：S$1,200\n", plain["response"])
+        self.assertNotIn("汇率：", plain["response"])
+
+    def test_without_a_rate_amounts_are_in_sgd_and_the_user_is_told(self):
+        model = ScriptedModel(
+            tool_calls(("currency", {"action": "display", "to_currency": "USD", "user_quote": "用美元显示"})),
+            AIMessage(content="好的。"),
+            tool_calls(("get_listing_details", {"listing_id": "S001"})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.exchange_rate", side_effect=CurrencyConversionError("Exchange-rate service is unavailable")):
+            chosen, details = run_agent(connection, model, "用美元显示", "看看 S001")
+
+        self.assertEqual(chosen["display_currency"], "USD")
+        self.assertTrue(details["response"].startswith("汇率暂时取不到，这次只显示新币。"))
+        self.assertIn("- 月租：S$1,200\n", details["response"])
+        self.assertNotIn("汇率：按", details["response"])
+
+    def test_exchange_rate_questions_and_national_currencies_only(self):
+        model = ScriptedModel(
+            tool_calls(
+                ("currency", {"action": "convert", "amount": 5000, "from_currency": "SGD", "to_currency": "RMB"}),
+                ("currency", {"action": "convert", "amount": 1, "from_currency": "SGD", "to_currency": "BTC"}),
+            ),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"budget": {"amount": 1, "currency": "BTC"}, "user_quote": "预算 1 BTC"})),
+            AIMessage(content="预算只能用法定货币，比如新币。"),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.exchange_rate", return_value=(Decimal("5.3215"), "2026-10-27")):
+            converted, crypto = run_agent(connection, model, "5000 新币合多少人民币", "预算 1 BTC")
+
+        result, refused = map(json.loads, converted["observations"])
+        self.assertEqual(result, {"from_currency": "SGD", "to_currency": "CNY", "rate": "5.3215", "rate_date": "2026-10-27", "amount": 5000, "converted": 26607.5})
+        self.assertIn("BTC is not a national currency", refused["error"])
+        self.assertIn("5,000 新币 ≈ 26,607.5 人民币，按 1 新币 = 5.3215 人民币（2026-10-27 的汇率）。", converted["response"])
+        self.assertIn("only national currencies can be used for a budget", json.loads(crypto["observations"][0])["error"])
+        self.assertIsNone(crypto["preferences"].max_price_sgd)
+
+    def test_two_people_sharing_a_room_see_each_persons_share(self):
+        request = "想合租，预算2000，我和女朋友两个人住一间"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"rental_scope": "room", "max_price_sgd": 2000, "occupant_count": 2}, "user_quote": request})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        card = result["recommendations"]["listings"][0]
+        share = round(card["rent_monthly_sgd"] / 2)
+        self.assertEqual(card["per_person_monthly"], {"people": 2, "sgd": share})
+        self.assertIn(f"每人约 S${share:,}/月（2 人平均分摊）", result["response"])
+
+    def test_a_yearly_budget_gap_is_given_for_the_year_too(self):
+        request = "我一年的预算是6万人民币"
+        yearly = {**self.cny, "original_amount": 60000, "amount_sgd": 15600}
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"budget": {"amount": 60000, "currency": "CNY", "months": 12}, "user_quote": request})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.convert_to_sgd", return_value=yearly), patch("agent.exchange_rate", no_rate_lookup):
+            (result,) = run_agent(connection, model, request)
+
+        first = json.loads(result["observations"][0])["strict_matches"]["listings"][0]
+        gap = first["rent_monthly_sgd"] - 1300
+        self.assertEqual(result["preferences"].max_price_sgd, 1300)
+        self.assertEqual(first["rent_vs_budget_sgd"], gap)
+        self.assertEqual(
+            first["rent_vs_budget_over_budget_period"],
+            {"months": 12, "sgd": gap * 12, "in_your_currency": {"amount": self.in_cny(gap * 12), "currency": "CNY"}},
+        )
+
+    def test_costs_are_split_among_the_people_the_user_names(self):
+        model = ScriptedModel(
+            tool_calls(("estimate_costs", {"listing_ids": ["S001"], "people": 3})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            set_listing(connection, "S001", lease_term="2 years")
+            (result,) = run_agent(connection, model, "如果三个人分呢")
+
+        estimate = json.loads(result["observations"][0])["estimates"][0]
+        # S$1,200 a month; S$3,715 at signing; S$28,800 rent and S$115 stamp duty over 24 months.
+        self.assertEqual(estimate["per_person"], {"people": 3, "rent_monthly_sgd": 400, "upfront_sgd": 1238, "total_cost_sgd": 9638})
+        self.assertIn("- 按 3 人平均分摊：每人每月约 S$400，签约时每人约 S$1,238，整个租期每人约 S$9,638", result["response"])
+        self.assertIsNone(result["preferences"].occupant_count)
+
+    def test_a_comparison_gives_the_rent_difference_over_the_lease(self):
+        model = ScriptedModel(
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009"]})),
+            AIMessage(content=""),
+            tool_calls(("estimate_costs", {"listing_ids": ["S010"], "lease_months": 6, "user_quote": "只租 6 个月"})),
+            AIMessage(content=""),
+            tool_calls(("compare_listings", {"listing_ids": ["S010", "S009"]})),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection:
+            year, _, half = run_agent(connection, model, "比较 S010 和 S009", "只租 6 个月", "再比较一次")
+
+        monthly = json.loads(year["observations"][0])["rent_above_cheapest_sgd"]
+        over_year = json.loads(year["observations"][0])["rent_above_cheapest_over_lease"]
+        over_half = json.loads(half["observations"][0])["rent_above_cheapest_over_lease"]
+        self.assertEqual(over_year["months"], 12)
+        self.assertEqual(over_year["sgd"], {key: value * 12 for key, value in monthly.items()})
+        self.assertEqual((over_half["months"], over_half["months_from"]), (6, "your lease"))
+        dearer = max(monthly, key=monthly.get)
+        self.assertIn(f"按 12 个月算，比最便宜的一套多付的租金：{dearer} S${monthly[dearer] * 12:,}。", year["response"])
+
+    def test_two_renting_together_keep_a_whole_unit_and_see_each_share_in_their_currency(self):
+        first = "我们三个人住，整租，预算4500"
+        second = "我们是两人合租，平均每人每月要付多少，帮我换算成港币"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"occupant_count": 3, "rental_scope": "entire_unit", "max_price_sgd": 4500}, "user_quote": first})),
+            AIMessage(content=""),
+            # What the prompt now asks for: the display currency first, "two renting together" as a
+            # whole unit, and the per-person question as a cost question.
+            tool_calls(
+                ("currency", {"action": "display", "to_currency": "HKD", "user_quote": "帮我换算成港币"}),
+                ("search_listings", {"set": {"occupant_count": 2, "rental_scope": "entire_unit"}, "user_quote": "我们是两人合租"}),
+                ("estimate_costs", {"rent": {"amount": 4500}}),
+            ),
+            AIMessage(content=""),
+        )
+        with closing(create_mock_database()) as connection, patch("agent.exchange_rate", return_value=(Decimal("5.75"), "2026-10-27")):
+            three, two = run_agent(connection, model, first, second)
+
+        self.assertEqual(three["preferences"].min_bedrooms, 3)
+        self.assertEqual((two["preferences"].occupant_count, two["preferences"].rental_scope, two["preferences"].min_bedrooms), (2, "entire_unit", 2))
+        self.assertIn("按整套、一人一间找了至少 2 个卧室", two["response"])
+        self.assertNotIn("按两人合住一个单间找", two["response"])
+        # S$2,250 × 5.75 = 12,937.5, rounded to tens.
+        self.assertIn("按 2 人平均分摊：每人每月约 S$2,250（约 12,940 港币）", two["response"])
+
+    def test_the_prompt_tells_renting_together_from_sharing_a_room(self):
+        import agent
+        import parser
+
+        rules = " ".join(parser.FIELD_RULES.split())
+        prompt = " ".join(agent._SYSTEM_PROMPT.split())
+        self.assertIn("Several people renting together (我们两人合租, 我和朋友一起租, 三个人合租) rent one home together: occupant_count with rental_scope=entire_unit.", rules)
+        self.assertIn("Only people sharing one room (两个人住一间, 合住一个房间, share a room) is rental_scope=room.", rules)
+        self.assertIn("call currency with action=display first, in the same turn and before the other tools", prompt)
+        self.assertIn("Asking what each person pays (平均每人每月多少) is a cost question for estimate_costs", prompt)
+
+    def test_a_kept_budget_in_another_currency_brings_its_display_currency(self):
+        from agent import _display_from_profile
+
+        yearly = {"amount": 300000, "currency": "RMB", "months": 12}
+        self.assertEqual(_display_from_profile({"budget": yearly}, None), {"display_currency": "CNY", "display_rate": None})
+        shown = _display_from_profile({"budget": yearly}, self.cny)
+        self.assertEqual((shown["display_currency"], shown["display_rate"]["per_sgd"]), ("CNY", "3.84615"))
+        self.assertEqual(_display_from_profile({"budget": {"amount": 1500, "currency": "SGD"}}, None), {})
 
 
 if __name__ == "__main__":

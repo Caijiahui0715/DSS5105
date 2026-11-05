@@ -20,6 +20,7 @@ from models import (
 )
 from parser import parse_turn
 from response import (
+    CURRENCY_NAMES,
     _check_summary_text,
     render_budget_conversion,
     render_comparison,
@@ -35,7 +36,6 @@ from response import (
 )
 from tools import (
     analyze_relaxations,
-    check_listing_url,
     extract_restrictions,
     get_listings_by_ids,
     own_commute_needed,
@@ -113,8 +113,8 @@ draft before presenting the facts in an easy-to-scan form. Preserve every listin
 price, MRT value, ranking order, restriction, warning, and whether a relaxation is
 only a preview. Preserve any currency-conversion amount, rate, and rate date. Do not
 invent or change listings, facts, availability, amenities, currencies, or user choices.
-Distinguish database matches, checked/displayable listings, and unchecked candidates.
-An active URL does not confirm rental availability; unknown does not mean inactive.
+Never say a link is valid or active: the draft says when each link was last checked, and
+the listing may have been taken down since. A check date does not confirm availability.
 When information is missing or uncertain, say so plainly. This agent
 cannot contact landlords, confirm future availability, reserve listings, or arrange
 viewings, so never claim or offer to do those things. Only suggest actions the agent
@@ -136,8 +136,17 @@ _UNSUPPORTED_OFFER_EN = re.compile(
     re.IGNORECASE,
 )
 _NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
+# Amounts in other currencies count as figures too: by symbol, ISO code (upper case only, so words
+# are not mistaken for codes) or Chinese name, colloquial ones included.
+_CURRENCY_CODES = "|".join(sorted({"SGD", "RM", *CURRENCY_NAMES}))
+_CURRENCY_WORDS = "|".join(sorted(
+    {*CURRENCY_NAMES.values(), "美金", "港元", "台币", "令吉", "林吉特", "卢比", "比索", "日币", "韩币", "澳币", "加币"},
+    key=len,
+    reverse=True,
+))
 _CLAIMED_NUMBER = re.compile(
-    rf"(?:S\$|SGD|\$)\s*({_NUMBER})|({_NUMBER})\s*(?:新币|新加坡元|SGD|元|分钟|mins?\b|minutes?\b|套|listings?\b)",
+    rf"(?:S\$|SGD|\$|€|£|¥|₹|₩|₱|฿|(?-i:(?<![A-Za-z])(?:{_CURRENCY_CODES})(?![A-Za-z])))\s*({_NUMBER})"
+    rf"|({_NUMBER})\s*(?:新币|新加坡元|SGD|{_CURRENCY_WORDS}|元|分钟|mins?\b|minutes?\b|套|listings?\b|(?-i:(?:{_CURRENCY_CODES})(?![A-Za-z])))",
     re.IGNORECASE,
 )
 
@@ -161,15 +170,9 @@ def build_graph(
     connection: Database,
     model: Any,
     checkpointer=None,
-    listing_checker=check_listing_url,
 ):
     def validated(ranked: list[RankingResult]) -> list[RankingResult]:
-        return validate_ranked_listings(
-            connection,
-            ranked,
-            listing_checker,
-            candidate_limit=len(ranked),
-        )["ranked_listings"]
+        return validate_ranked_listings(ranked)["ranked_listings"]
 
     def begin_turn_node(state: AgentState):
         faculty = _faculty(state.get("faculty"))
@@ -628,14 +631,6 @@ def build_graph(
         if not listings:
             return not_found(state, listing_id)
         ranked = validated(rank_listings(listings, _preferences(state)))
-        if not ranked:
-            return {
-                "response_draft": _text(
-                    state,
-                    f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。",
-                    f"Listing {listing_id} is no longer available at its original link and will not be recommended.",
-                )
-            }
         listing = ranked[0]["listing"]
         return {
             "response_draft": render_listing_details(
@@ -759,12 +754,7 @@ def build_graph(
             listing["listing_id"]: extract_restrictions(listing)
             for listing in listings
         }
-        validation = validate_ranked_listings(
-            connection,
-            rank_listings(listings, preferences),
-            listing_checker,
-            result_limit=3,
-        )
+        validation = validate_ranked_listings(rank_listings(listings, preferences), result_limit=3)
         ranked = validation["ranked_listings"]
         response = render_relaxation_preview(
             suggestion,
@@ -773,18 +763,15 @@ def build_graph(
             _language(state),
             check_summary=validation["summary"],
         )
-        if suggestion["match_count"] != len(ranked):
+        count = validation["summary"]["database_match_count"]
+        if suggestion["match_count"] != count:
             response = _text(
                 state,
-                "本次检查结果已更新，可展示数量与之前的建议不同。\n\n",
-                "The check results have changed, so the displayable count differs from the earlier suggestion.\n\n",
+                "房源数据已更新，匹配数量与之前的建议不同。\n\n",
+                "The listing data has changed, so the count differs from the earlier suggestion.\n\n",
             ) + response
         suggestions = list(state["relaxations"])
-        suggestions[index] = {
-            **suggestion,
-            "match_count": len(ranked),
-            "check_summary": validation["summary"],
-        }
+        suggestions[index] = {**suggestion, "match_count": count}
         return {
             "response_draft": response,
             "relaxations": suggestions,
@@ -815,12 +802,7 @@ def build_graph(
 
     def validate_listing_status_node(state: AgentState):
         validation = (
-            validate_ranked_listings(
-                connection,
-                state["ranked_listings"],
-                listing_checker,
-                result_limit=3,
-            )
+            validate_ranked_listings(state["ranked_listings"], result_limit=3)
             if state["ranked_listings"]
             else None
         )
@@ -831,12 +813,10 @@ def build_graph(
         pending = state.get("pending_listings", [])
         confirm = (
             validate_ranked_listings(
-                connection,
                 sorted(
                     rank_listings(pending, state["preferences"]),
                     key=lambda item: len(item["listing"]["unknown_conditions"]),
                 ),
-                listing_checker,
                 result_limit=3 - len(ranked),
             )
             if pending and len(ranked) < 3
@@ -874,7 +854,6 @@ def build_graph(
                 connection,
                 state["preferences"],
                 _search_exclusions(state),
-                listing_checker,
             )
         }
 
@@ -1249,7 +1228,20 @@ def _response_language(
         return previous or ("en" if words else "zh")
     if all(len(word) == 1 for word in words):
         return previous or "zh"
+    # Only names, such as an address or a building ("8 Grange Rd, #02-01"), say nothing about the
+    # language: an English message has some of these words.
+    if not _ENGLISH_WORDS.intersection(words):
+        return previous or "en"
     return "en"
+
+
+_ENGLISH_WORDS = frozenset(
+    "i im i'm me my we us our you your it its this that these those the a an to for in on at by near "
+    "with without and or but of from than about around under below over within is are am was be "
+    "can could would will should do does did not please want need like looking look find show see "
+    "help how what which where when why who budget rent room rooms unit flat home listing listings "
+    "cheaper cheapest more less any only also too go going live living move".split()
+)
 
 
 def _language(state: AgentState) -> ResponseLanguage:

@@ -95,8 +95,8 @@ then one `event: reply` (or `event: error` with `{"message"}`):
       "commute_mode": "transit",
       "other_commute": {"faculty": null, "query": "Tiong Bahru Plaza", "name": "健身房", "minutes": 18, "mode": "transit"},
       "lease_term": "1 year",
-      "link_status": "active",
-      "link_note": "active",
+      "link_last_checked": "2026-11-02",
+      "link_note": "still listed when checked on 2026-11-02 (3 days ago); it may have been taken down since, so open the original link to check",
       "unknown_conditions": [],
       "unknown_condition_labels": []
     }]
@@ -126,9 +126,9 @@ duty, deposit, what is paid at signing) arrive as part of `text`.
 three at a time). It is the table Home shows from its Compare bar: `listing_ids` in
 the order the user chose, then one row per fact (rent and how much more than the
 cheapest, commute, the commute to the other destination when there is one, MRT, rental type and room, area, bathroom, furnishing, lease,
-availability, whether each meets the criteria as of `date`, link check), every
+availability, whether each meets the criteria as of `date`, when each link was last checked), every
 label and value in both languages. `summary` is the key differences in a line,
-worked out from the data. `left_out` names listings not compared (an inactive link,
-or no longer in the data); with fewer than two left, `listing_ids` holds the one
+worked out from the data. `left_out` names listings not compared (no longer in the
+data); with fewer than two left, `listing_ids` holds the one
 left and nothing was compared. The reply's text carries the agent's analysis and,
 the first time an account compares, a line saying where the table is.

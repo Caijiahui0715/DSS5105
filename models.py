@@ -12,12 +12,8 @@ RelaxationSuggestion = dict[str, Any]
 
 
 class ListingCheckSummary(TypedDict):
+    # How many listings the database matched, of which the first few are shown.
     database_match_count: int
-    checked_count: int
-    active_count: int
-    unknown_count: int
-    inactive_count: int
-    unchecked_count: int
 
 
 class ListingValidationResult(TypedDict):
@@ -130,7 +126,7 @@ class SearchPreferences(BaseModel):
     )
     rental_scope: Literal["entire_unit", "room"] | None = Field(
         default=None,
-        description="entire_unit for a whole-unit rental (整租); room for a room in a shared home (合租/单间); null when not stated.",
+        description="entire_unit for a whole-unit rental (整租), also when several people rent a home together (我们两人合租); room for a room in a shared home (单间, or 合租 said of the user alone) or a room two people share; null when not stated.",
     )
     property_types: tuple[PropertyType, ...] | None = Field(
         default=None,

@@ -9,10 +9,6 @@ from response import lease_text, render_costs, render_lease_minimum, render_resp
 from tools import analyze_relaxations, lease_term
 
 
-def active(listing_id, url):
-    return {"status": "active", "final_url": url, "http_status": 200}
-
-
 class LeaseCostTest(unittest.TestCase):
     def test_a_two_year_lease(self):
         costs = lease_costs(3000, 24)
@@ -100,7 +96,7 @@ class LeaseConditionTest(unittest.TestCase):
     def test_signing_for_longer_is_suggested_with_counts(self):
         preferences = SearchPreferences(lease_months=6, rental_scope="entire_unit", max_price_sgd=2500)
         with closing(create_database()) as connection:
-            suggestions = analyze_relaxations(connection, preferences, checker=active)
+            suggestions = analyze_relaxations(connection, preferences)
 
         lease = [(item["suggested"], item["match_count"]) for item in suggestions if item["field"] == "lease_months"]
         self.assertEqual([months for months, _ in lease], [12, 24])

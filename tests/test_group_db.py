@@ -9,9 +9,9 @@ from unittest.mock import patch
 import group_db
 from build_commutes import COMMUTE_DATA, _check_database_is_current, export_commutes, import_commutes
 from faculties import FACULTIES
-from mock_db import create_database, create_mock_database, database_name, plain_connection, reopened
+from mock_db import create_database, create_mock_database, database_name, plain_connection
 from models import AMENITY_FIELDS
-from tools import get_listings_by_ids, load_listings, validate_ranked_listings
+from tools import get_listings_by_ids, load_listings
 
 _HEADER = "listing_id,faculty,minutes,mode,departure\n"
 
@@ -91,33 +91,18 @@ class AgentListingsViewTest(unittest.TestCase):
             "Faculty of Science": {"minutes": 12, "mode": "walk"},
         })
 
-    def test_link_checks_are_kept_for_the_next_start(self):
-        with closing(create_mock_database()) as database:
-            database.run("DELETE FROM listing_health")
-            listing = load_listings(database)[0]
-            checked = validate_ranked_listings(
-                database, [{"listing": listing}], lambda listing_id, url: {"status": "active", "final_url": url, "http_status": 200}
-            )
-            # A restarted server reuses the check instead of opening the link again.
-            with closing(reopened("mock")) as again:
-                never = lambda *_: self.fail("the link was checked again")
-                reused = validate_ranked_listings(again, [{"listing": listing}], never)
-
-        self.assertEqual(checked["summary"]["active_count"], 1)
-        self.assertEqual(reused["summary"]["active_count"], 1)
-
 
 class ConnectionTest(unittest.TestCase):
     def test_connections_the_server_dropped_are_replaced(self):
         with closing(create_mock_database()) as database:
-            self.assertEqual(len(load_listings(database)), 12)
+            self.assertEqual(len(load_listings(database)), 11)
             # As when PostgreSQL restarts: every connection to the test database is closed.
             with closing(plain_connection("mock")) as admin:
                 admin.execute(
                     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()",
                     (database_name(),),
                 )
-            self.assertEqual(len(load_listings(database)), 12)
+            self.assertEqual(len(load_listings(database)), 11)
 
     def test_a_server_that_cannot_be_reached_stops_the_start_with_what_to_fix(self):
         settings = {**group_db.postgres_settings(), "host": "127.0.0.1", "port": "1", "connect_timeout": "2"}

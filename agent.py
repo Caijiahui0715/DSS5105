@@ -6,6 +6,7 @@ graph.py stays as the fixed-workflow baseline (python demo.py --workflow).
 import json
 import re
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal, TypedDict
 from uuid import uuid4
@@ -41,7 +42,14 @@ from decision import (
 )
 import place_routes
 from costs import lease_costs
-from exchange import CurrencyConversionError, UnknownCurrencyError, convert_to_sgd
+from exchange import (
+    CurrencyConversionError,
+    NotNationalCurrencyError,
+    UnknownCurrencyError,
+    convert_to_sgd,
+    currency_code,
+    rate as exchange_rate,
+)
 from faculties import FACULTIES, find_faculty
 from graph import (
     _REFINEMENT_LABELS,
@@ -54,12 +62,11 @@ from graph import (
 )
 from group_db import Database
 from models import Destination, ResponseLanguage, SearchPreferences
-from onemap import OneMapError
+from onemap import OneMapAmbiguous, OneMapError
 from parser import FIELD_RULES, PREFERENCE_GUIDANCE
 from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
 from response import (
     _availability_text,
-    _check_summary_text,
     _link_status_text,
     _render_relaxations,
     comparison_view,
@@ -74,7 +81,9 @@ from response import (
     render_comparison_summary,
     render_left_out,
     render_costs,
+    render_currency_conversion,
     render_decision_context,
+    render_display_currency,
     render_faculty_change,
     render_kept_profile,
     render_listing_details,
@@ -89,6 +98,7 @@ from response import (
     render_profile_deleted,
     render_profile_opening,
     render_profile_saved,
+    render_rate_note,
     render_rental_scope_mix,
     render_response,
     render_saved_preferences,
@@ -99,7 +109,6 @@ from response import (
 )
 from tools import (
     analyze_relaxations,
-    check_listing_url,
     commute,
     commute_minutes,
     destination_view,
@@ -128,18 +137,27 @@ Facts
 - Every listing fact, price, MRT time, count and link status must come from a tool result in
   this turn or from the conversation state below. Never invent or estimate facts and do not
   calculate new numbers; quote the differences that tools provide.
+- Amounts are in SGD, and tools work out what replies need without arithmetic. When the user's
+  display_currency is set, rent_monthly_in_your_currency and the other in_your_currency amounts
+  are rounded to tens: write 约 6,520 人民币 in Chinese or ≈ CNY 6,520 in English, never ¥. The
+  system appends the exchange rate and its date. per_person_monthly is each person's share when
+  several people share a rent. rent_vs_budget_sgd is the rent minus the budget limit (negative:
+  under it); after a yearly or whole-lease budget, rent_vs_budget_over_budget_period gives it in
+  the same terms the user used. Never convert, divide or subtract amounts yourself; for any other
+  conversion call currency.
 - "unknown" means the data does not say. Listings under needs_confirmation meet every known
   condition but lack data for some requirements: name those requirements and never call them
   matches.
-- decision_context and explore_budgets counts are database counts before link checks.
-- A link check and availability are different facts. For every listing you present, give its
-  link result from link_note: 链接有效 for an active link; for an unverified link a short
-  链接暂时无法确认 is enough because the system appends the full reason at the end. Take
-  availability from availability_note. No link result proves a room is still available, and an
-  unverified link does not mean the listing is gone.
+- Nobody checks links live. link_last_checked is when the data refresh last opened the listing's
+  page, when it was still listed; it may have been taken down since. Never say a link is valid,
+  active or working (链接有效). The listing cards and comparison table show each check date and
+  the system lists the links the user should open themselves, so mention links only when the
+  user asks, quoting link_note. Take availability from availability_note; neither proves a room
+  is still available.
 - You cannot contact landlords or agents, confirm availability, reserve rooms or arrange
   viewings, so never offer to. Only offer what the tools do: search, preview a change, show
-  details, explain a ranking, compare, estimate costs, shortlist, exclude or restore listings.
+  details, explain a ranking, compare, estimate costs, convert currencies, shortlist, exclude or
+  restore listings.
 
 Using tools
 - When a tool returns an error that says how to fix the call, fix the arguments and call it
@@ -154,9 +172,11 @@ Using tools
   details of another in the same turn.
 - compare_listings compares two or three listings; with more, ask which three. The page shows
   its table (rent, commute, MRT, room, area, bathroom, furnishing, lease, availability, whether
-  each meets the criteria, link check) beside the chat, so never list each listing's facts again:
+  each meets the criteria, when each link was last checked) beside the chat, so never list each listing's facts again:
   in a few sentences say the key differences, the trade-offs and which suits the user's criteria
   better. The system already notes listings left out and where the table is.
+  rent_above_cheapest_over_lease is the rent difference over the user's lease (12 months when no
+  lease is saved); say how many months it covers.
 - When there are no or few strict matches, use decision_context to explain which condition
   blocks results and whether that is only because the data does not state it.
 - For a listing under needs_confirmation, name each requirement in its unknown_conditions and
@@ -195,7 +215,19 @@ Using tools
   recalculate. Its breakdown is shown to the user word for word, so answer in one or two
   sentences without repeating it. Pass lease_months, deposit_months, uses_agent or agent_fee_sgd
   only when the user states them, with user_quote; a stated lease length is saved as the lease
-  criterion, the rest are kept for this conversation.
+  criterion, the rest are kept for this conversation. Put how many people split the costs in
+  people only when the user says it now (如果三个人分呢); otherwise the saved number of people is
+  used. Asking what each person pays (平均每人每月多少) is a cost question for estimate_costs; it
+  changes criteria only when the user also says who will live there.
+- When the tools give an amount in the user's currency or a per-person share for a listing you
+  present, include it after the SGD rent.
+- For exchange rates (汇率多少, 5000 新币合多少人民币) call currency with action=convert. 用人民币显示
+  or show prices in USD is action=display with that currency and user_quote; 只看新币 or SGD only is
+  action=display with SGD. A budget stated in another currency sets the display currency by
+  itself. Only national currencies work, not crypto-currencies or gold.
+- When the user wants amounts in another currency (换算成港币, 用港币算, in HKD), call currency with
+  action=display first, in the same turn and before the other tools: tools run in the order you
+  call them, and only amounts worked out after it include that currency.
 - Besides the user's faculty, other_destination holds one more place the commute must suit: a
   roommate's NUS faculty (its English name from the list in query), or a Singapore place such as a
   gym or office (an English address, building name or postcode in query; ask when a Chinese place
@@ -327,6 +359,12 @@ class AgentState(TypedDict, total=False):
     last_comparison: dict | None
     # The frontend's interface language ("zh" or "en"), which the reply then uses; None detects it per message.
     reply_language: ResponseLanguage | None
+    # A display setting, not a search criterion: the currency amounts are also shown in (None for
+    # SGD only), and the day's rate for it, {currency, per_sgd, rate_date, on}.
+    display_currency: str | None
+    display_rate: dict | None
+    # The rate behind the amounts shown this turn, for the note under the reply; reset every turn.
+    rate_used: dict | None
 
 
 class Budget(BaseModel):
@@ -359,7 +397,7 @@ class SearchArgs(BaseModel):
 
 
 class BudgetArgs(BaseModel):
-    """Compare what different budgets would change while every other saved condition stays: database counts before link checks of strict matches and needs-confirmation listings, how many are within 10 minutes of MRT, and explicit whole units. The last level has no budget limit. Nothing is saved."""
+    """Compare what different budgets would change while every other saved condition stays: database counts of strict matches and needs-confirmation listings, how many are within 10 minutes of MRT, and explicit whole units. The last level has no budget limit. Nothing is saved."""
 
     budgets: list[int] = Field(
         default_factory=list,
@@ -429,7 +467,19 @@ class CostArgs(BaseModel):
     deposit_months: int | None = Field(None, ge=0, le=6, description="Only when the user states how many months of deposit.")
     uses_agent: bool | None = Field(None, description="true when the user says they use an agent, false when they say they do not; otherwise leave empty.")
     agent_fee_sgd: float | None = Field(None, ge=0, description="The agent fee in SGD when the user states an amount.")
+    people: int | None = Field(None, ge=2, le=12, description="How many people split the costs, only when the user says it now (如果三个人分呢); not saved. Leave empty to use the saved number of people.")
     user_quote: str = Field("", description="The user's words in the latest message behind lease_months, deposit_months, uses_agent or agent_fee_sgd.")
+
+
+class CurrencyArgs(BaseModel):
+    """Exchange rates between national currencies: convert an amount or give the rate (convert), or
+    choose the currency that amounts are also shown in besides SGD (display)."""
+
+    action: Literal["convert", "display"]
+    amount: float | None = Field(None, gt=0, description="For convert: the amount; leave empty for the rate alone.")
+    from_currency: str = Field("SGD", description="For convert: ISO 4217 code of the amount, such as SGD, or CNY for 人民币 and RMB.")
+    to_currency: str = Field("", description="ISO 4217 code: for convert, the currency to convert to; for display, the currency to also show amounts in, or SGD to show SGD only.")
+    user_quote: str = Field("", description="For display: the user's words in the latest message that ask for it.")
 
 
 class ToolError(ValueError):
@@ -440,7 +490,6 @@ def build_agent(
     connection: Database,
     model: Any,
     checkpointer=None,
-    listing_checker=check_listing_url,
     max_tool_rounds: int = MAX_TOOL_ROUNDS,
     profiles: UserProfiles | None = None,
     place_router=None,
@@ -487,37 +536,35 @@ def build_agent(
             ))
         return result["worked_out"] > 0
 
-    def validate(ranked, **limits):
-        checked_links = 0
-
-        def checker(listing_id, url):
-            nonlocal checked_links
-            checked_links += 1
-            _progress(f"正在检查房源链接（第 {checked_links} 套）", f"Checking listing links ({checked_links})")
-            return listing_checker(listing_id, url)
-
-        return validate_ranked_listings(connection, ranked, checker, **limits)
-
     def checked(work, check):
-        """Record the link result of each listing about to be shown, then return those listings."""
+        """Record when each listing about to be shown was last checked, then return those listings."""
         entries = []
         for item in check["ranked_listings"]:
             listing = item["listing"]
-            reason = listing.get("live_error_reason")
+            needs_check = "link_check_needed" in item["warnings"]
             work["link_checks"].append(
                 {
                     "listing_id": listing["listing_id"],
                     "title": listing.get("title"),
-                    "status": listing.get("live_status"),
+                    "needs_check": needs_check,
                     "note": _link_status_text(listing, work["response_language"]),
                 }
             )
-            entries.append(f"{listing['listing_id']} {listing.get('live_status')}" + (f" ({reason})" if reason else ""))
-        if check["summary"]["inactive_count"]:
-            entries.append(f"{check['summary']['inactive_count']} inactive skipped")
+            day = (listing.get("live_checked_at") or "")[:10]
+            entries.append(f"{listing['listing_id']} {day or 'unchecked'}" + (" stale" if day and needs_check else ""))
         if entries:
-            work["trace"].append(f"[links] {'; '.join(entries)}")
+            work["trace"].append(f"[link-dates] {'; '.join(entries)}")
         return check["ranked_listings"]
+
+    def with_money(work, items, preferences: SearchPreferences | None = None, budget_months: int | None = None) -> dict | None:
+        """Add to each listing about to be shown the amounts replies may quote (_listing_money), by
+        the search's preferences (a preview's too) and the months its budget was stated for;
+        returns the display rate used, if any."""
+        rate = _display_rate(work) if items else None
+        months = budget_months or (work.get("budget_statement") or {}).get("months", 1)
+        for item in items:
+            item["money"] = _listing_money(item["listing"], preferences or work["preferences"], rate, months)
+        return rate
 
     def restrictions_of(ranked):
         return {
@@ -593,6 +640,11 @@ def build_agent(
                 try:
                     _progress("正在换算汇率", "Converting the currency")
                     conversion = convert_to_sgd(amount, args.budget.currency)
+                except NotNationalCurrencyError as error:
+                    raise ToolError(
+                        f"{error}: only national currencies can be used for a budget. Tell the user and ask "
+                        "for the budget in a national currency such as SGD. Do not search with this amount."
+                    ) from error
                 except UnknownCurrencyError as error:
                     raise ToolError(
                         f"{error}: it is not a currency code the service knows. If the user named a "
@@ -654,8 +706,20 @@ def build_agent(
         preferences = SearchPreferences.model_validate({**current.model_dump(), **changes, "faculty": current.faculty})
         try:
             preferences = resolve_search_location(preferences)
+        except OneMapAmbiguous as error:
+            places = "; ".join(
+                f"{number}. {(place['name'] or place['address'] or '')[:60]}" + (f" ({place['postcode']})" if place["postcode"] else "")
+                for number, place in enumerate(error.candidates, 1)
+            )
+            raise ToolError(
+                f"{error} Nothing was saved. Ask the user which of these they mean, listing them: {places}. "
+                "Then call again with the chosen one's postcode (or name) in query."
+            ) from error
         except OneMapError as error:
-            raise ToolError(f"Cannot resolve the requested place: {error}. Ask for a more precise address/postcode or user-supplied coordinates; do not invent them.") from error
+            raise ToolError(
+                f"Cannot resolve the requested place: {error}. Nothing was saved. Ask for the building or mall "
+                "name, or the postcode; a shop such as a gym is found by the building it is in. Do not invent coordinates."
+            ) from error
         changes = {field: getattr(preferences, field) for field in changes}
         if preferences.max_other_commute_minutes is not None and preferences.other_destination is None:
             raise ToolError("max_other_commute_minutes needs other_destination: set the place the user named.")
@@ -666,6 +730,10 @@ def build_agent(
                 if budget_check
                 else "There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time."
             )
+        if conversion and conversion.get("rate_to_sgd"):
+            # A budget in another currency: amounts are also shown in it from now on, at this rate.
+            work["display_currency"] = conversion["original_currency"]
+            work["display_rate"] = _rate_from(conversion)
 
         excluded = _search_exclusions(work)
         routes_to(work, preferences.other_destination, route_candidates(connection, preferences, excluded), ask=not args.wait_for_routes)
@@ -676,7 +744,7 @@ def build_agent(
         matching = {listing["listing_id"] for listing in strict}
         shortlisted_matches = [listing_id for listing_id in shortlisted if listing_id in matching]
         strict, pending = ([listing for listing in found if listing["listing_id"] not in shortlisted] for found in (strict, pending))
-        strict_check = validate(rank_listings(strict, preferences), result_limit=3)
+        strict_check = validate_ranked_listings(rank_listings(strict, preferences), result_limit=3)
         shown = checked(work, strict_check)
         # Fewer unstated conditions first; rank order is kept within each group.
         pending_ranked = sorted(
@@ -684,11 +752,14 @@ def build_agent(
             key=lambda item: len(item["listing"]["unknown_conditions"]),
         )
         pending_check = (
-            validate(pending_ranked, result_limit=3 - len(shown))
+            validate_ranked_listings(pending_ranked, result_limit=3 - len(shown))
             if pending and len(shown) < 3
             else None
         )
         pending_shown = checked(work, pending_check) if pending_check else []
+        # The budget as stated this time, or as kept unless a monthly SGD limit replaced it.
+        statement = args.budget.model_dump() if args.budget else None if "max_price_sgd" in changes else work.get("budget_statement")
+        rate = with_money(work, [*shown, *pending_shown], preferences, (statement or {}).get("months", 1))
         context = diagnose_conditions(connection, preferences, excluded)
         language = work["response_language"]
         scope_mix = rental_scope_mix(preferences, strict, [item["listing"] for item in shown])
@@ -713,9 +784,9 @@ def build_agent(
                 work["notes"].append(render_preference_changes(current, changes, language, saved_automatically(work)))
                 if "lease_months" in changes and (note := render_lease_minimum(preferences.lease_months, language)):
                     work["notes"].append(note)
-            # Same single-condition policy and URL checks as the workflow's relaxation node.
+            # Same single-condition policy as the workflow's relaxation node.
             if not shown:
-                relaxations = analyze_relaxations(connection, preferences, excluded, listing_checker)
+                relaxations = analyze_relaxations(connection, preferences, excluded)
             work["relaxations"] = relaxations
             # Without matches to show, say what to relax, but not that nothing helps when listings to
             # confirm are shown; with matches, whether they are rooms or whole units.
@@ -753,8 +824,6 @@ def build_agent(
             parts.append(render_response(shown, restrictions_of(shown), language=language, check_summary=strict_check["summary"]))
         else:
             parts.append(_text(work, "当前没有可展示的完全符合条件的房源。", "There are no listings meeting every condition to display."))
-            if strict:
-                parts.append(_check_summary_text(strict_check["summary"], language))
         parts.append(
             render_needs_confirmation(
                 pending_shown,
@@ -781,14 +850,13 @@ def build_agent(
             "saved_changes": {} if preview else {field: preferences.model_dump(mode="json")[field] for field in changes},
             "budget_conversion": conversion,
             "budget_check": budget_check,
+            "your_currency": _rate_fact(rate),
             "strict_matches": {
                 "database_count": len(strict),
-                "check_summary": strict_check["summary"],
                 "listings": [_facts(item, language, position, preferences) for position, item in enumerate(shown, 1)],
             },
             "needs_confirmation": {
                 "database_count": len(pending),
-                "check_summary": pending_check and pending_check["summary"],
                 "listings": [
                     _facts(item, language, position, preferences)
                     for position, item in enumerate(pending_shown, len(shown) + 1)
@@ -830,7 +898,6 @@ def build_agent(
         work["drafts"].append(render_budget_ladder(rows, saved, grows, work["response_language"]))
         return {
             "saved_budget_sgd": saved,
-            "counts_are_database_counts_before_link_checks": True,
             "strict_matches_grow_with_budget": grows,
             "levels": rows,
         }
@@ -841,21 +908,20 @@ def build_agent(
             listing = one_listing(args.listing_id)
         listing_id = listing["listing_id"]
         work["viewed_listing_id"] = listing_id
-        ranked = checked(work, validate(rank_listings([listing], work["preferences"]), candidate_limit=1))
-        if not ranked:
-            work["drafts"].append(_text(work, f"房源 {listing_id} 的原链接已经失效，暂不继续推荐。", f"Listing {listing_id} is no longer available at its original link and will not be recommended."))
-            return {"listing_id": listing_id, "link_status": "inactive"}
+        ranked = checked(work, validate_ranked_listings(rank_listings([listing], work["preferences"])))
         listing = ranked[0]["listing"]
-        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"], ranked[0]["commute"], ranked[0]["other_commute"]))
+        rate = with_money(work, ranked)
+        work["drafts"].append(render_listing_details(listing, extract_restrictions(listing), work["response_language"], ranked[0]["commute"], ranked[0]["other_commute"], ranked[0]["money"]))
         preferences = work["preferences"]
         return {
             **_facts(ranked[0], work["response_language"]),
+            "your_currency": _rate_fact(rate),
             "bedrooms": listing.get("bedrooms"),
             "bathrooms": listing.get("bathrooms"),
             "area_sqm": listing.get("area_sqm"),
             "max_occupants": listing.get("tenant_count_reported"),
             "address": listing.get("address"),
-            "listing_url": listing.get("final_url") or listing.get("listing_url"),
+            "listing_url": listing.get("listing_url"),
             "conditions": {
                 field: condition_status(field, listing, preferences)
                 for field in active_conditions(preferences)
@@ -879,12 +945,11 @@ def build_agent(
         listings = get_listings_by_ids(connection, wanted)
         if routes_to(work, work["preferences"].other_destination, listings, ask=False):
             listings = get_listings_by_ids(connection, wanted)
-        ranked = checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings))) if listings else []
+        ranked = checked(work, validate_ranked_listings(rank_listings(listings, work["preferences"]))) if listings else []
         by_id = {item["listing"]["listing_id"]: item for item in ranked}
-        found = {listing["listing_id"] for listing in listings}
-        # In the order the user chose; a delisted listing or one whose link is dead is left out.
+        # In the order the user chose; a listing no longer in the data is left out.
         items = [by_id[listing_id] for listing_id in wanted if listing_id in by_id]
-        left_out = {listing_id: "inactive" if listing_id in found else "missing" for listing_id in wanted if listing_id not in by_id}
+        left_out = {listing_id: "missing" for listing_id in wanted if listing_id not in by_id}
         if len(items) < 2 and not left_out:
             raise ToolError(
                 "At least two listings are needed; the shortlist may have fewer. Pass two or three "
@@ -908,8 +973,18 @@ def build_agent(
             for item in items
             if mrt_minutes(item["listing"]) is not None
         }
+        rate = with_money(work, ranked)
+        # The rent difference over the user's lease, or a year without one.
+        months = work["preferences"].lease_months or 12
+        over_lease = {
+            "months": months,
+            "months_from": "your lease" if work["preferences"].lease_months else "12 months, as no lease is saved",
+            "sgd": {key: whole(round((rent - min(rents.values())) * months, 2)) for key, rent in rents.items()},
+        }
+        if rate:
+            over_lease["in_your_currency"] = {key: _in_currency(value, rate) for key, value in over_lease["sgd"].items()}
         work["shown_listing_ids"] = view["listing_ids"]
-        work["drafts"].append(render_comparison_summary(view, language))
+        work["drafts"].append(render_comparison_summary(view, language, over_lease))
         # Once per account, where the table is, before the model's analysis.
         user_id = work.get("user_id")
         if profiles and user_id and not profiles.compare_hint_shown(user_id):
@@ -919,7 +994,9 @@ def build_agent(
             "listings": [_facts(item, work["response_language"], position) for position, item in enumerate(ranked, 1)],
             "left_out": left_out,
             "rent_above_cheapest_sgd": {key: rent - min(rents.values()) for key, rent in rents.items()},
+            "rent_above_cheapest_over_lease": over_lease,
             "mrt_minutes_above_closest": {key: value - min(minutes.values()) for key, value in minutes.items()},
+            "your_currency": _rate_fact(rate),
         }
 
     def shortlist(work, args: ShortlistArgs):
@@ -953,7 +1030,7 @@ def build_agent(
         listings = get_listings_by_ids(connection, saved)
         by_id = {
             item["listing"]["listing_id"]: item
-            for item in checked(work, validate(rank_listings(listings, work["preferences"]), candidate_limit=len(listings)))
+            for item in checked(work, validate_ranked_listings(rank_listings(listings, work["preferences"])))
         }
         ranked = [by_id[listing_id] for listing_id in saved if listing_id in by_id]
         work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in ranked]
@@ -1055,6 +1132,7 @@ def build_agent(
         work["preferences"] = restored
         work["preference_sources"] = kept.get("sources", {})
         work["budget_statement"] = kept.get("budget")
+        work.update(_display_from_profile(kept, conversion))
         work["profile_base"] = restored.model_dump(mode="json", exclude_defaults=True)
         work["relaxations"], work["last_search"] = [], None
         if changes:
@@ -1148,6 +1226,8 @@ def build_agent(
                 try:
                     _progress("正在换算汇率", "Converting the currency")
                     conversion = convert_to_sgd(amount, args.rent.currency)
+                except NotNationalCurrencyError as error:
+                    raise ToolError(f"{error}: only national currencies can be used; ask the user for the rent in SGD.") from error
                 except UnknownCurrencyError as error:
                     raise ToolError(f"{error}: call again with the ISO 4217 code of the currency the user named, or ask them.") from error
                 except (CurrencyConversionError, ValueError) as error:
@@ -1196,6 +1276,7 @@ def build_agent(
             work["relaxations"], work["last_search"] = [], None
         rows = []
         wanted = preferences.lease_months
+        rate = _display_rate(work)
         for listing, rent, source in targets:
             term = lease_term(listing) if listing else None
             minimum = term if isinstance(term, int) else None
@@ -1208,6 +1289,19 @@ def build_agent(
                 months, reason = minimum, "listing"
             else:
                 months, reason = 12, "default" if listing else "default_no_listing"
+            costs = lease_costs(
+                rent,
+                months,
+                deposit_months=assumptions.get("deposit_months"),
+                agent=bool(assumptions.get("uses_agent")),
+                agent_fee=assumptions.get("agent_fee_sgd"),
+            )
+            # Split evenly, in whole dollars; and the three totals in the user's currency.
+            totals = ("rent_monthly_sgd", "upfront_sgd", "total_cost_sgd")
+            people = _sharers(listing, preferences, args.people)
+            share = people and {"people": people, **{key: _dollars(costs[key] / people) for key in totals}}
+            if share and rate:
+                share["in_your_currency"] = {key: _in_currency(share[key], rate) for key in totals}
             rows.append({
                 "listing_id": listing and listing["listing_id"],
                 "title": listing and listing.get("title"),
@@ -1215,13 +1309,9 @@ def build_agent(
                 "lease_reason": reason,
                 "listing_minimum_months": minimum,
                 "your_lease_months": wanted,
-                "costs": lease_costs(
-                    rent,
-                    months,
-                    deposit_months=assumptions.get("deposit_months"),
-                    agent=bool(assumptions.get("uses_agent")),
-                    agent_fee=assumptions.get("agent_fee_sgd"),
-                ),
+                "costs": costs,
+                "per_person": share,
+                "in_your_currency": rate and {key: _in_currency(costs[key], rate) for key in totals},
             })
         work["notes"].append(render_costs(rows, language, conversion))
         work["drafts"].append(_text(work, "费用明细见上。", "The cost breakdown is above."))
@@ -1231,14 +1321,62 @@ def build_agent(
             "shown_to_user": "The breakdown is already shown to the user word for word; answer in one or two sentences without repeating it.",
             "rent_conversion": conversion,
             "estimates": [
-                {**{key: row[key] for key in ("listing_id", "title", "rent_source", "lease_reason", "listing_minimum_months") if row[key] is not None}, **row["costs"]}
+                {
+                    **{key: row[key] for key in ("listing_id", "title", "rent_source", "lease_reason", "listing_minimum_months") if row[key] is not None},
+                    **row["costs"],
+                    **{key: row[key] for key in ("per_person", "in_your_currency") if row[key]},
+                }
                 for row in rows
             ],
+            "your_currency": _rate_fact(rate),
             "not_costed": left_out or None,
             "saved_lease_months": stated.get("lease_months") if "lease_months" in stated else None,
             "shown_listings_found_before_this_lease": bool("lease_months" in stated and work["shown_listing_ids"]) or None,
             "not_found": [listing_id for listing_id in ids if listing_id not in {row["listing_id"] for row in rows}] if listings else None,
         }
+
+    def currency(work, args: CurrencyArgs):
+        language = work["response_language"]
+        try:
+            target = currency_code(args.to_currency) if args.to_currency.strip() else None
+            source = currency_code(args.from_currency or "SGD")
+        except NotNationalCurrencyError as error:
+            raise ToolError(f"{error}: only national currencies are supported; tell the user.") from error
+        except ValueError as error:
+            raise ToolError(f"{error}: use ISO 4217 codes such as SGD, CNY or USD.") from error
+        if not target:
+            raise ToolError("Name the currency in to_currency (for display, SGD shows SGD only).")
+        unknown = "the rate service does not know this currency; ask the user which currency they mean."
+        if args.action == "display":
+            if not _quotes(args.user_quote, work["message"]):
+                raise ToolError("Changing the display currency needs user_quote copied from the latest user message.")
+            work["display_currency"] = work["display_rate"] = None
+            if target != "SGD":
+                try:
+                    _progress("正在换算汇率", "Converting the currency")
+                    per_sgd, rate_date = exchange_rate("SGD", target)
+                    work["display_rate"] = {"currency": target, "per_sgd": _plain(per_sgd), "rate_date": rate_date, "on": date.today().isoformat()}
+                except UnknownCurrencyError as error:
+                    raise ToolError(f"{error}: {unknown}") from error
+                except CurrencyConversionError:
+                    pass  # Kept: amounts are shown in it once the service answers again.
+                work["display_currency"] = target
+            work["notes"].append(render_display_currency(work["display_currency"], language))
+            work["drafts"].append(_text(work, "显示币种已经设好。", "The display currency is set."))
+            return {"display_currency": work["display_currency"] or "SGD only"}
+        try:
+            _progress("正在换算汇率", "Converting the currency")
+            value, rate_date = exchange_rate(source, target)
+        except UnknownCurrencyError as error:
+            raise ToolError(f"{error}: {unknown}") from error
+        except CurrencyConversionError as error:
+            raise ToolError(f"{error}. Exchange rates are unavailable right now: tell the user.") from error
+        result = {"from_currency": source, "to_currency": target, "rate": _plain(value), "rate_date": rate_date}
+        if args.amount:
+            converted = (Decimal(str(args.amount)) * value).quantize(Decimal("0.01"), ROUND_HALF_UP)
+            result.update({"amount": whole(args.amount), "converted": whole(float(converted))})
+        work["drafts"].append(render_currency_conversion(result, language))
+        return result
 
     tools = {
         "search_listings": (SearchArgs, search),
@@ -1249,6 +1387,7 @@ def build_agent(
         "shortlist": (ShortlistArgs, shortlist),
         "exclude_listings": (ExcludeArgs, exclude),
         "estimate_costs": (CostArgs, costs),
+        "currency": (CurrencyArgs, currency),
     }
     if profiles:
         tools["user_memory"] = (MemoryArgs, user_memory)
@@ -1296,12 +1435,13 @@ def build_agent(
                 for suggestion in state["relaxations"]
             ],
             "cost_assumptions_from_user": state.get("cost_assumptions") or None,
+            "display_currency": state.get("display_currency"),
         }
 
     def begin_turn(state: AgentState):
-        # The message's own language; the interface language (from a frontend) only when the message
-        # does not show one, such as "1000" or "D05".
-        language = _response_language(state["message"], state.get("reply_language") or state.get("response_language"))
+        # The message's own language; when it shows none, such as "1000", "D05" or an address, the
+        # language this conversation was replied in, or else the interface language (from a frontend).
+        language = _response_language(state["message"], state.get("response_language") or state.get("reply_language"))
         turn = {"response_language": language}
         preferences = state.get("preferences") or SearchPreferences()
         # The faculty is an account setting that can change between turns, on the web page too.
@@ -1327,7 +1467,7 @@ def build_agent(
                 f"{', '.join(gone)} from your shortlist no longer appear in the listing data (possibly delisted) and were removed.",
             ))
             trace.append(f"[resume] dropped delisted shortlist entries: {', '.join(gone)}")
-        # On a later day, earlier suggestions and counts rest on old data and link checks.
+        # On a later day, earlier suggestions and counts rest on old data.
         last_active = state.get("last_active_date")
         new_day = last_active is not None and last_active != today.isoformat()
         if new_day:
@@ -1352,6 +1492,9 @@ def build_agent(
             "budget_statement": state.get("budget_statement"),
             "profile_base": state.get("profile_base", {}),
             "cost_assumptions": state.get("cost_assumptions", {}),
+            "display_currency": state.get("display_currency"),
+            "display_rate": state.get("display_rate"),
+            "rate_used": None,
             "tool_rounds": 0,
             "drafts": [],
             "notes": notes,
@@ -1411,6 +1554,9 @@ def build_agent(
                 "budget_statement",
                 "profile_base",
                 "cost_assumptions",
+                "display_currency",
+                "display_rate",
+                "rate_used",
                 "drafts",
                 "notes",
                 "footers",
@@ -1478,13 +1624,16 @@ def build_agent(
             trace.append(f"[guard] reply rejected ({'; '.join(problems)}) -> fallback")
         footers = list(state["footers"])
         if problems or not reply.strip():
-            # Drafts already carry each unverified link's reason in their data notes.
+            # Drafts already note each link to check in their data notes.
             reply = "\n\n".join(state["drafts"]) or fallback(state)
         else:
             latest = {check["listing_id"]: check for check in state["link_checks"]}
-            unverified = [check for check in latest.values() if check["status"] == "unknown"]
-            if unverified:
-                footers.append(render_link_checks(unverified, language))
+            to_check = [check for check in latest.values() if check["needs_check"]]
+            if to_check:
+                footers.append(render_link_checks(to_check, language))
+        if state.get("rate_used"):
+            # Once, under amounts shown in the user's currency.
+            footers.append(render_rate_note(state["rate_used"], language))
         response = tidy_bold("\n\n".join([*state["notes"], reply.strip(), *footers]))
         return {
             "response": response,
@@ -1660,10 +1809,25 @@ def opening_state(profiles: UserProfiles, user_id: str, language: ResponseLangua
         "preferences": preferences,
         "preference_sources": kept.get("sources", {}),
         "budget_statement": kept.get("budget"),
+        **_display_from_profile(kept, conversion),
         "profile_base": preferences.model_dump(mode="json", exclude_defaults=True),
         # Shown like a reply's steps under the opening message.
         "reply_traces": {message.id: [f"[memory] started from the long-term profile saved on {kept.get('saved_on')}"]},
     }
+
+
+def _display_from_profile(kept: dict, conversion: dict | None) -> dict:
+    """The display currency a kept budget in another currency brings, at the rate it was just
+    converted at; nothing for a budget in SGD."""
+    budget = kept.get("budget") or {}
+    if budget.get("currency", "SGD") == "SGD":
+        return {}
+    if conversion and conversion.get("rate_to_sgd"):
+        return {"display_currency": conversion["original_currency"], "display_rate": _rate_from(conversion)}
+    try:
+        return {"display_currency": currency_code(budget["currency"]), "display_rate": None}
+    except (CurrencyConversionError, ValueError):
+        return {}
 
 
 def _rate_unavailable(preferences: SearchPreferences, language: ResponseLanguage) -> str:
@@ -1672,6 +1836,98 @@ def _rate_unavailable(preferences: SearchPreferences, language: ResponseLanguage
         f"汇率服务暂时不可用，先沿用上次换算的月租上限 S${preferences.max_price_sgd:,}。",
         f"The exchange-rate service is unavailable, so the monthly limit from last time, S${preferences.max_price_sgd:,}, is used.",
     )
+
+
+def _display_rate(work) -> dict | None:
+    """Today's rate from SGD to the user's display currency, kept in the conversation for the day,
+    and marked as used for this reply; None without a display currency, or when the rate service
+    fails (the user is told once)."""
+    currency = work.get("display_currency")
+    if not currency:
+        return None
+    today = date.today().isoformat()
+    kept = work.get("display_rate")
+    if not (kept and kept["currency"] == currency and kept["on"] == today):
+        try:
+            _progress("正在换算汇率", "Converting the currency")
+            per_sgd, rate_date = exchange_rate("SGD", currency)
+        except (CurrencyConversionError, ValueError):
+            note = _text(work, "汇率暂时取不到，这次只显示新币。", "The exchange rate is unavailable right now, so amounts are in SGD only.")
+            if note not in work["notes"]:
+                work["notes"].append(note)
+            return None
+        kept = work["display_rate"] = {"currency": currency, "per_sgd": _plain(per_sgd), "rate_date": rate_date, "on": today}
+    work["rate_used"] = kept
+    return kept
+
+
+def _rate_from(conversion: dict) -> dict:
+    """The display rate a budget conversion implies, so shown amounts match the conversion."""
+    per_sgd = Decimal(1) / Decimal(conversion["rate_to_sgd"])
+    return {
+        "currency": conversion["original_currency"],
+        "per_sgd": _plain(Decimal(f"{per_sgd:.6g}")),
+        "rate_date": conversion["rate_date"],
+        "on": date.today().isoformat(),
+    }
+
+
+def _plain(value: Decimal) -> str:
+    return format(value.normalize(), "f")
+
+
+def _in_currency(amount_sgd, rate: dict | None) -> dict | None:
+    """An SGD amount in the display currency, rounded to tens: {amount, currency}."""
+    if rate is None or not isinstance(amount_sgd, (int, float)):
+        return None
+    tens = (Decimal(str(amount_sgd)) * Decimal(rate["per_sgd"]) / 10).to_integral_value(ROUND_HALF_UP)
+    return {"amount": int(tens) * 10, "currency": rate["currency"]}
+
+
+def _dollars(amount) -> int:
+    return int(Decimal(str(amount)).to_integral_value(ROUND_HALF_UP))
+
+
+def _sharers(listing: dict | None, preferences: SearchPreferences, people: int | None = None) -> int | None:
+    """How many people split a rent: the number the user names now, else the saved number of
+    people, for a whole unit or for a room two people share (a rent without a listing is split
+    like a whole unit)."""
+    if people:
+        return people
+    count = preferences.occupant_count
+    if not count or count < 2:
+        return None
+    scope = (listing or {}).get("rental_scope", "entire_unit")
+    return count if scope == "entire_unit" or (scope == "room" and count == 2) else None
+
+
+def _listing_money(listing: dict, preferences: SearchPreferences, rate: dict | None, budget_months: int) -> dict:
+    """The amounts replies may quote about one listing, so they never need arithmetic: its rent in
+    the user's currency, each person's share and the difference from the budget."""
+    rent = listing.get("rent_monthly_sgd")
+    if not isinstance(rent, (int, float)):
+        return {}
+    money = {"rent_monthly_in_your_currency": _in_currency(rent, rate)}
+    if people := _sharers(listing, preferences):
+        share = _dollars(rent / people)
+        money["per_person_monthly"] = _present({"people": people, "sgd": share, "in_your_currency": _in_currency(share, rate)})
+    if budget := preferences.max_price_sgd:
+        gap = whole(round(rent - budget, 2))
+        money["rent_vs_budget_sgd"] = gap
+        money["rent_vs_budget_in_your_currency"] = _in_currency(gap, rate)
+        if budget_months > 1:
+            over = whole(round(gap * budget_months, 2))
+            money["rent_vs_budget_over_budget_period"] = _present({"months": budget_months, "sgd": over, "in_your_currency": _in_currency(over, rate)})
+    return _present(money)
+
+
+def _present(values: dict) -> dict:
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def _rate_fact(rate: dict | None) -> dict | None:
+    """The rate behind the in_your_currency amounts, for tool results."""
+    return rate and {key: rate[key] for key in ("currency", "per_sgd", "rate_date")}
 
 
 def _tool_spec(name: str, schema: type[BaseModel]) -> dict:
@@ -1708,8 +1964,7 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
             for key, field in (("fnb", "poi_fnb_1km"), ("hawker_centres", "poi_hawker_1km"), ("healthcare", "poi_healthcare_1km"))
             if listing.get(field) is not None
         },
-        "link_status": listing.get("live_status"),
-        "link_error": listing.get("live_error_reason"),
+        "link_last_checked": (listing.get("live_checked_at") or "")[:10] or None,
         "link_note": _link_status_text(listing, language),
         "known_conditions": {
             key: value for key, value in extract_restrictions(listing).items() if value != "unknown"
@@ -1718,6 +1973,8 @@ def _facts(item: dict, language: ResponseLanguage, position: int | None = None, 
         "unknown_condition_labels": unknown_condition_labels(listing, language),
         "warnings": item.get("warnings"),
         "rank_value": item.get("rank_value"),
+        # The rent in the user's currency, each person's share and the gap to the budget (_listing_money).
+        **item.get("money", {}),
     }
     facts.update({field: listing.get(field) for field in (
         "bathrooms", "private_bathroom", "pets_policy", "rent_price_type", "lease_term", "address", "street_name", "postcode",

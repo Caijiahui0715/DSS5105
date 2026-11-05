@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import re
+from datetime import date
 from components.listing_card import image, actions, heading, commute_text, mrt_text, link_note, lease_text
 from content.i18n import lease_term_label
 from state.session_store import live
@@ -126,14 +127,14 @@ def full_details(listing, recommendation, key):
             (t('Gender preference', '性别偏好'), _value(f.get('genderPreference'))),
         ])
         _table(t('Availability and data', '可租和数据'), [
-            (t('Original link', '原链接'), _link(f)),
+            (t('Original link last checked', '原链接最后检查'), _link(f)),
             (t('Move-in', '可入住说明'), _value(listing.evidence.get('availabilityText'))),
             (t('Listed', '发布日期'), _value(f.get('listedDate'))),
             (t('Collected', '采集时间'), _value((f.get('collectedAt') or '')[:16].replace('T', ' '))),
             (t('Data to check', '数据需核实'), ', '.join(listing.metadata['reviewFlags']) or t('Nothing flagged', '没有标记')),
         ])
-        st.caption(t('"(estimated)" is worked out by the system, such as from map routes, not stated in the advert. "Not stated" means the data does not say. An active link does not mean the home is still for rent.',
-                     '“（推算）”是系统算出来的（比如按地图路线），不是广告写的；“未注明”表示数据里没有。链接有效不代表房子还在出租。'))
+        st.caption(t('"(estimated)" is worked out by the system, such as from map routes, not stated in the advert. "Not stated" means the data does not say. A listing still up when its link was checked may have been taken down since, and is not proof the home is still for rent.',
+                     '“（推算）”是系统算出来的（比如按地图路线），不是广告写的；“未注明”表示数据里没有。检查时仍在挂牌的房源之后可能已下架，也不代表房子还在出租。'))
         text = listing.evidence.get('cardText')
         if text and st.toggle(t('Show the PropertyGuru card text', '显示 PropertyGuru 卡片原文'), key=f'card-text-{key}'):
             if re.search('[㐀-鿿]', text):
@@ -181,17 +182,18 @@ def _mrt(f):
     return ' · '.join(parts)
 
 
+# As the backend's tools.LINK_CHECK_STALE_DAYS: older checks are too old to lean on.
+_LINK_CHECK_STALE_DAYS = 14
+
+
 def _link(f):
+    """When the data refresh last opened the listing's page; never that the link works now."""
     day = (f.get('liveCheckedAt') or '')[:10]
     if not day:
         return t('Not checked yet', '还没检查过')
-    status = f.get('liveStatus')
-    if status == 'active':
-        return t(f'Active when checked on {day}', f'{day} 检查时有效')
-    if status == 'inactive':
-        return t(f'Inactive when checked on {day}', f'{day} 检查时已失效')
-    reason = f.get('liveErrorReason')
-    return t(f'Could not be confirmed on {day}', f'{day} 检查时无法确认') + (f' ({reason})' if reason else '')
+    if (date.today() - date.fromisoformat(day)).days > _LINK_CHECK_STALE_DAYS:
+        return t(f'{day}, over {_LINK_CHECK_STALE_DAYS} days ago: may be gone', f'{day}，已超过 {_LINK_CHECK_STALE_DAYS} 天，可能已下架')
+    return t(f'{day}, still listed then', f'{day}，当时仍在挂牌')
 
 
 def _table(title, rows):

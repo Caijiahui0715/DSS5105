@@ -9,10 +9,10 @@ Uses DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD from .env, in this order
 3. load_data.py: V1 listings, districts, availability and review flags (rental_data_v1.json);
 4. sync_v2.py: V2 listings and enrichment (rental_data_v2.csv), and marks removed_listings.csv;
 5. build_commutes.py --import: the faculties and commute_faculty.csv;
-6. the backend's link-check tables and the agent_listings view, as server.py does at start.
+6. the backend's own tables and the agent_listings view, as server.py does at start.
 
 Steps 3-5 insert or update the listings in the files, and nothing else: accounts, conversations and
-link checks in the agent schema are kept. A listing that a newer V2 file leaves out stays active
+OneMap routes in the agent schema are kept. A listing that a newer V2 file leaves out stays active
 unless removed_listings.csv names it; the script reports such listings. The data files in
 output-final-delivery are shared in the group, not in Git.
 """

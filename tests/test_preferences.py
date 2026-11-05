@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from decision import condition_status, diagnose_conditions, explain_listing, search_with_unknowns
 from models import AMENITY_FIELDS, ParsedTurn, SearchPreferences
 from mock_db import create_database, create_mock_database, set_listing
-from onemap import OneMapError, OneMapNotFound, geocode_location
+from onemap import OneMapAmbiguous, OneMapError, OneMapNotFound, geocode_location, search_variants
 from parser import parse_turn
 from response import render_listing_explanation
 from tests.test_agent import ScriptedModel, run_agent, tool_calls
@@ -163,6 +163,26 @@ class PreferenceIntegrationTest(unittest.TestCase):
         self.assertIsNone(result["preferences"].nearby_location)
         self.assertIn("Cannot resolve", result["observations"][0])
 
+    def test_places_far_apart_are_offered_to_the_user_to_choose_from(self):
+        _location_coordinates.cache_clear()
+        message = "Orchard Road 1 公里以内"
+        candidates = [
+            {"name": "ION ORCHARD", "address": "2 ORCHARD TURN ION ORCHARD SINGAPORE 238801", "postcode": "238801"},
+            {"name": "PLAZA SINGAPURA", "address": "68 ORCHARD ROAD PLAZA SINGAPURA SINGAPORE 238839", "postcode": "238839"},
+        ]
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"nearby_location": {"query": "Orchard Road", "radius_m": 1000}}, "user_quote": message})),
+            AIMessage(content="乌节路上有好几个地方，你指的是哪一个？"),
+        )
+        ambiguous = OneMapAmbiguous("More than one place matches 'Orchard Road'; use a precise address/postcode or coordinates.", candidates)
+        with closing(create_mock_database()) as db, patch("tools.geocode_location", side_effect=ambiguous):
+            result, = run_agent(db, model, message)
+        self.assertIsNone(result["preferences"].nearby_location)
+        error = json.loads(result["observations"][0])["error"]
+        self.assertIn("1. ION ORCHARD (238801); 2. PLAZA SINGAPURA (238839)", error)
+        self.assertIn("call again with the chosen one's postcode", error)
+        _location_coordinates.cache_clear()
+
     def test_named_location_ambiguity_requires_a_more_precise_anchor(self):
         candidates = [{"LATITUDE": "1.3", "LONGITUDE": "103.77"}, {"LATITUDE": "1.4", "LONGITUDE": "103.78"}]
         with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", return_value={"results": candidates}):
@@ -171,6 +191,54 @@ class PreferenceIntegrationTest(unittest.TestCase):
         # Multiple aliases at the same coordinates do establish one anchor.
         with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", return_value={"results": [candidates[0], candidates[0]]}):
             self.assertEqual(geocode_location("exact place"), (1.3, 103.77))
+        # So do entrances of one building or mall, about 100 m apart.
+        nearby = [candidates[0], {"LATITUDE": "1.3009", "LONGITUDE": "103.77"}]
+        with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", return_value={"results": nearby}):
+            self.assertEqual(geocode_location("one mall"), (1.3, 103.77))
+
+    def test_an_address_as_typed_is_also_searched_by_postcode_and_street(self):
+        self.assertEqual(
+            search_variants("8 Grange Rd, #02-01, Singapore 239695"),
+            ["8 Grange Rd, #02-01, Singapore 239695", "239695", "8 Grange Road"],
+        )
+        self.assertEqual(search_variants("Blk 123 Ang Mo Kio Ave 3 #05-12"), ["Blk 123 Ang Mo Kio Ave 3 #05-12", "123 Ang Mo Kio Avenue 3"])
+        self.assertEqual(search_variants("Upp Thomson Rd"), ["Upp Thomson Rd", "Upper Thomson Road"])
+        # A name with nothing to clean is searched once; "St" before a name is not a street type.
+        self.assertEqual(search_variants("St Andrew's Road"), ["St Andrew's Road"])
+
+        searched = []
+
+        def onemap(path, params, token, opener):
+            searched.append(params["searchVal"])
+            found = {"8 Grange Road": [{"SEARCHVAL": "8 GRANGE ROAD", "LATITUDE": "1.2988", "LONGITUDE": "103.8305"}]}
+            return {"results": found.get(params["searchVal"], [])}
+
+        with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", side_effect=onemap):
+            self.assertEqual(geocode_location("8 Grange Rd, #02-01, Singapore"), (1.2988, 103.8305))
+        self.assertEqual(searched, ["8 Grange Rd, #02-01, Singapore", "8 Grange Road"])
+
+        # Nothing matches any way it is searched: not found, so the user is asked for the building.
+        with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", return_value={"results": []}):
+            with self.assertRaisesRegex(OneMapNotFound, "no match"):
+                geocode_location("Anytime Fitness Somerset")
+
+    def test_matches_far_apart_come_with_candidates_unless_another_search_finds_one_place(self):
+        far = [
+            {"SEARCHVAL": "ION ORCHARD", "ADDRESS": "2 ORCHARD TURN ION ORCHARD SINGAPORE 238801", "POSTAL": "238801", "LATITUDE": "1.3040", "LONGITUDE": "103.8318"},
+            {"SEARCHVAL": "ION ORCHARD", "ADDRESS": "2 ORCHARD TURN ION ORCHARD SINGAPORE 238801", "POSTAL": "238801", "LATITUDE": "1.3040", "LONGITUDE": "103.8318"},
+            {"SEARCHVAL": "PLAZA SINGAPURA", "ADDRESS": "68 ORCHARD ROAD PLAZA SINGAPURA SINGAPORE 238839", "POSTAL": "238839", "LATITUDE": "1.3007", "LONGITUDE": "103.8452"},
+        ]
+        with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", return_value={"results": far}):
+            with self.assertRaises(OneMapAmbiguous) as caught:
+                geocode_location("Orchard Road")
+        self.assertEqual([place["name"] for place in caught.exception.candidates], ["ION ORCHARD", "PLAZA SINGAPURA"])
+        self.assertEqual(caught.exception.candidates[0]["postcode"], "238801")
+
+        def onemap(path, params, token, opener):
+            return {"results": far if params["searchVal"] != "238801" else far[:1]}
+
+        with patch("onemap.load_token", return_value="test-token"), patch("onemap._get_json", side_effect=onemap):
+            self.assertEqual(geocode_location("Orchard 238801"), (1.304, 103.8318))
 
     def test_workflow_parser_resolves_location_and_preserves_other_new_preferences(self):
         _location_coordinates.cache_clear()

@@ -12,7 +12,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from mock_db import create_mock_database, empty_storage
 from sessions import serializer
-from tests.test_agent import ScriptedModel, active_links, tool_calls
+from tests.test_agent import ScriptedModel, tool_calls
 
 APP = Path(__file__).resolve().parents[1] / "app"
 BASE = "http://backend.test"
@@ -32,7 +32,7 @@ class FrontendClientTest(unittest.TestCase):
 
         self.listings, self.storage = create_mock_database(), empty_storage()
         self.model = ScriptedModel()
-        app = create_app(self.listings, self.model, self.storage, MemorySaver(serde=serializer()), listing_checker=active_links)
+        app = create_app(self.listings, self.model, self.storage, MemorySaver(serde=serializer()))
         self.http = TestClient(app)
         self.client = BackendClient(BASE, opener=self.open)
 
@@ -60,7 +60,7 @@ class FrontendClientTest(unittest.TestCase):
         self.assertEqual((account["username"], account["faculty"]), ("alice", faculty["name"]))
         self.assertEqual(self.client.me()["username"], "alice")
         self.assertIn("D05", [district["code"] for district in options["districts"]])
-        self.assertEqual(len(self.client.listings()), 12)
+        self.assertEqual(len(self.client.listings()), 11)
         self.assertEqual(self.client.listing("S001")["listing"]["listing_id"], "S001")
         self.assertIsNone(self.client.listing("NOPE"))
 

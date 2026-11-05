@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage
 from agent import build_agent
 from mock_db import create_mock_database, empty_storage, reopened
 from sessions import open_storage
-from tests.test_agent import ScriptedModel, active_links, tool_calls
+from tests.test_agent import ScriptedModel, tool_calls
 
 
 class SessionTest(unittest.TestCase):
@@ -26,13 +26,13 @@ class SessionTest(unittest.TestCase):
             thread_id = storage.new_thread("alice")
             storage.touch(thread_id, request)
             config = {"configurable": {"thread_id": thread_id}}
-            build_agent(listings, first, memory, listing_checker=active_links).invoke({"message": request}, config=config)
+            build_agent(listings, first, memory).invoke({"message": request}, config=config)
 
         # Next day, new process: new connections to the same database.
         with closing(reopened("storage")) as database, closing(create_mock_database()) as listings:
             storage, memory = open_storage(database)
             again = storage.latest_thread("alice")
-            result = build_agent(listings, later, memory, listing_checker=active_links).invoke(
+            result = build_agent(listings, later, memory).invoke(
                 {"message": "我回来了"}, config={"configurable": {"thread_id": again}}
             )
 

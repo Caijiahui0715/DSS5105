@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 from datetime import date
 
 from models import (
@@ -12,7 +13,7 @@ from models import (
     UserIntent,
 )
 from faculties import faculty_label
-from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, lease_term, mrt_minutes
+from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, LINK_CHECK_STALE_DAYS, lease_term, link_check_age_days, mrt_minutes
 
 
 _FACTOR_LABELS = {
@@ -68,13 +69,13 @@ _WARNING_TEXT = {
         "area_outside_review_range": "广告面积小于 80 sqft，请核实面积和单位",
         "headline_tenant_count_conflict": "广告标题与平台最大入住人数不一致",
         "rent_outside_review_range": "该房源属于高价房源，请核实报价",
-        "live_status_unknown": "目前无法确认该链接是否仍然有效",
+        "link_check_needed": f"原链接还没检查过，或已超过 {LINK_CHECK_STALE_DAYS} 天没有检查，请点原链接确认",
     },
     "en": {
         "area_outside_review_range": "the advertised area is below 80 sqft; verify the area and unit",
         "headline_tenant_count_conflict": "the headline conflicts with the platform occupancy limit",
         "rent_outside_review_range": "this is a high-rent listing; verify the asking rent",
-        "live_status_unknown": "the listing link could not currently be verified",
+        "link_check_needed": f"the original link has not been checked, or not for over {LINK_CHECK_STALE_DAYS} days; open it to check",
     },
 }
 
@@ -304,22 +305,23 @@ def render_response(
         listing = item["listing"]
         listing_id = listing["listing_id"]
         price = listing.get("rent_monthly_sgd")
+        # Amounts worked out by the agent (agent._listing_money): in the user's currency, per person.
+        money = item.get("money") or {}
+        rent = _with_money_in(_sgd(price), money.get("rent_monthly_in_your_currency"), language) if isinstance(price, (int, float)) else None
         lines.extend(
             [
                 "",
                 f"{index}. {listing.get('title') or _text(language, '未命名房源', 'Untitled listing')} ({listing_id})",
                 _text(
                     language,
-                    f"   月租：{_sgd(price) if isinstance(price, (int, float)) else '未知'}",
-                    f"   Monthly rent: {_sgd(price) if isinstance(price, (int, float)) else 'unknown'}",
-                ),
-                _text(
-                    language,
-                    f"   MRT：{_mrt_text(listing, language)}",
-                    f"   MRT: {_mrt_text(listing, language)}",
+                    f"   月租：{rent or '未知'}",
+                    f"   Monthly rent: {rent or 'unknown'}",
                 ),
             ]
         )
+        if share := _per_person_text(money.get("per_person_monthly"), language):
+            lines.append(f"   {share}")
+        lines.append(_text(language, f"   MRT：{_mrt_text(listing, language)}", f"   MRT: {_mrt_text(listing, language)}"))
         for trip in (item.get("commute"), item.get("other_commute")):
             if commute := _commute_text(trip, language):
                 lines.append(f"   {commute}")
@@ -482,8 +484,8 @@ def comparison_view(
 ) -> dict:
     """The comparison table a page shows next to the agent's reply. items are the compared listings
     in the order the user chose; criteria gives each one's (match, confirm, fail or none, the
-    conditions to confirm or failed); left_out maps a listing not compared to why (inactive or
-    missing). Every text is in both languages: rows of {label, values by listing}, summary (the
+    conditions to confirm or failed); left_out maps a listing not compared to why (missing: no
+    longer in the data). Every text is in both languages: rows of {label, values by listing}, summary (the
     key differences in a line) and a note per listing left out."""
     both = ("zh", "en")
     ids = [item["listing"]["listing_id"] for item in items]
@@ -554,11 +556,13 @@ def _comparison_rows(items, criteria, has_faculty):
         return f"{station}{'，' if language == 'zh' else ', '}{_mrt_text(listing, language)}"
 
     def link(listing, language):
-        if (listing.get("live_status") or "unknown") == "active":
-            return _text(language, "有效", "active")
-        reason = str(listing.get("live_error_reason") or "")
-        code = reason[5:] if reason.startswith("http_") else None
-        return _text(language, f"暂时无法确认（HTTP {code}）", f"could not be checked (HTTP {code})") if code else _text(language, "暂时无法确认", "could not be checked")
+        age = link_check_age_days(listing)
+        if age is None:
+            return _text(language, "还没检查过", "not checked yet")
+        day = str(listing["live_checked_at"])[:10]
+        if age > LINK_CHECK_STALE_DAYS:
+            return _text(language, f"{day} 检查，已超过 {LINK_CHECK_STALE_DAYS} 天", f"checked {day}, over {LINK_CHECK_STALE_DAYS} days ago")
+        return _text(language, f"{day} 检查时仍在挂牌", f"listed when checked {day}")
 
     columns = [
         (("月租", "Monthly rent"), lambda item, language: rent(item["listing"], language)),
@@ -571,7 +575,7 @@ def _comparison_rows(items, criteria, has_faculty):
         (("租期", "Lease"), lambda item, language: lease_text(item["listing"], language)),
         (("可入住", "Availability"), lambda item, language: _availability_text(item["listing"], language)),
         (("是否符合条件（按比较时的条件）", "Your criteria (as when compared)"), lambda item, language: fits(item["listing"], language)),
-        (("链接", "Link"), lambda item, language: link(item["listing"], language)),
+        (("原链接最后检查", "Link last checked"), lambda item, language: link(item["listing"], language)),
     ]
     # The other destination, when there is one, under the trip to the faculty.
     other = next((item["other_commute"] for item in items if item.get("other_commute")), None)
@@ -612,16 +616,26 @@ def _comparison_summary(items, criteria, language: ResponseLanguage) -> str:
 
 
 def _left_out_text(listing_id: str, reason: str, language: ResponseLanguage) -> str:
-    if reason == "inactive":
-        return _text(language, f"{listing_id} 的原链接已失效，没有加入比较。", f"{listing_id}'s original link is inactive, so it was not compared.")
     return _text(language, f"{listing_id} 不在当前房源数据中，没有加入比较。", f"{listing_id} is not in the current listing data, so it was not compared.")
 
 
-def render_comparison_summary(view: dict, language: ResponseLanguage = "zh") -> str:
-    """The reply when the model's own fails: the key differences, the table being on the page."""
+def render_comparison_summary(view: dict, language: ResponseLanguage = "zh", over_lease: dict | None = None) -> str:
+    """The reply when the model's own fails: the key differences, the table being on the page, and
+    how much more rent each listing costs than the cheapest over the user's lease."""
     ids = ("、" if language == "zh" else ", ").join(view["listing_ids"])
     summary = view["summary"][language]
-    return _text(language, f"已比较 {ids}。关键差异：{summary or '没有明显差异'}。", f"Compared {ids}. Key differences: {summary or 'none stand out'}.")
+    text = _text(language, f"已比较 {ids}。关键差异：{summary or '没有明显差异'}。", f"Compared {ids}. Key differences: {summary or 'none stand out'}.")
+    extra = {key: value for key, value in ((over_lease or {}).get("sgd") or {}).items() if value}
+    if not extra:
+        return text
+    converted = over_lease.get("in_your_currency") or {}
+    months = over_lease["months"]
+    parts = [_with_money_in(f"{key} {_sgd(value)}", converted.get(key), language) for key, value in extra.items()]
+    return text + _text(
+        language,
+        f"按 {months} 个月算，比最便宜的一套多付的租金：{'；'.join(parts)}。",
+        f" Over {months} months, extra rent compared with the cheapest: {'; '.join(parts)}.",
+    )
 
 
 def render_left_out(view: dict, language: ResponseLanguage = "zh") -> str:
@@ -639,14 +653,18 @@ def render_listing_details(
     language: ResponseLanguage = "zh",
     commute: dict | None = None,
     other_commute: dict | None = None,
+    money: dict | None = None,
 ) -> str:
     price = listing.get("rent_monthly_sgd")
     bedrooms = listing.get("bedrooms")
     bathrooms = listing.get("bathrooms")
     occupants = listing.get("tenant_count_reported")
+    money = money or {}
+    rent = _with_money_in(_sgd(price), money.get("rent_monthly_in_your_currency"), language) if isinstance(price, (int, float)) else None
     lines = [
         _text(language, f"房源详情：{listing.get('title') or '未命名房源'}（{listing['listing_id']}）", f"Listing details: {listing.get('title') or 'Untitled listing'} ({listing['listing_id']})"),
-        _text(language, f"- 月租：{_sgd(price) if isinstance(price, (int, float)) else '未知'}", f"- Monthly rent: {_sgd(price) if isinstance(price, (int, float)) else 'unknown'}"),
+        _text(language, f"- 月租：{rent or '未知'}", f"- Monthly rent: {rent or 'unknown'}"),
+        f"- {share}" if (share := _per_person_text(money.get("per_person_monthly"), language)) else "",
         _text(language, f"- 房型：{_display(listing.get('room_type'), '未知')}", f"- Room type: {_display(listing.get('room_type'), 'unknown')}"),
         _text(language, f"- 出租范围：{_display(listing.get('rental_scope'), '未知')}", f"- Rental scope: {_display(listing.get('rental_scope'), 'unknown')}"),
         _text(language, f"- 物业类型：{_display(listing.get('property_type'), '未知')}", f"- Property type: {_display(listing.get('property_type'), 'unknown')}"),
@@ -661,8 +679,8 @@ def render_listing_details(
         f"- {line}" if (line := _commute_text(other_commute, language)) else "",
         _text(language, f"- 入住状态：{_availability_text(listing, language)}", f"- Availability: {_availability_text(listing, language)}"),
         _nearby_text(listing, language),
-        _text(language, f"- 链接状态：{_link_status_text(listing, language)}", f"- Link status: {_link_status_text(listing, language)}"),
-        _text(language, f"- 房源链接：{listing.get('final_url') or listing.get('listing_url')}", f"- Listing URL: {listing.get('final_url') or listing.get('listing_url')}"),
+        _text(language, f"- 原链接：{_link_status_text(listing, language)}", f"- Original link: {_link_status_text(listing, language)}"),
+        _text(language, f"- 房源链接：{listing.get('listing_url')}", f"- Listing URL: {listing.get('listing_url')}"),
     ]
     rules = [
         text
@@ -923,6 +941,7 @@ TOOL_LABELS = {
     "user_memory": ("处理长期记忆", "Handling long-term memory"),
     "faculty": ("查看学院和通勤时间", "Checking your faculty and commute times"),
     "estimate_costs": ("计算租房费用", "Working out rental costs"),
+    "currency": ("换算汇率", "Converting currencies"),
 }
 
 
@@ -935,17 +954,29 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
             label = _text(language, *TOOL_LABELS.get(rest.split("(", 1)[0], (rest, rest)))
             failed = " -> error: " in rest
             steps.append(label + (_text(language, "：参数有误，已把原因告诉模型", " - failed; the reason went back to the model") if failed else ""))
-        elif kind == "[links]":
-            entries = rest.split("; ")
-            statuses = [entry.split()[1] for entry in entries if "inactive skipped" not in entry and len(entry.split()) > 1]
-            skipped = sum(int(entry.split()[0]) for entry in entries if entry.endswith("inactive skipped"))
+        elif kind == "[link-dates]":
+            # "S001 2026-11-02; S004 2026-10-20 stale; S007 unchecked"
+            entries = [entry.split() for entry in rest.split("; ")]
+            days = Counter(entry[1] for entry in entries if entry[1] != "unchecked")
+            stale = sum(entry[-1] == "stale" for entry in entries)
+            unchecked = sum(entry[1] == "unchecked" for entry in entries)
+            dated = [_text(language, f"{day} {count} 套", f"{count} on {day}") for day, count in sorted(days.items(), reverse=True)]
             steps.append(_text(
                 language,
-                f"检查房源链接：有效 {statuses.count('active')} 套，暂时无法确认 {statuses.count('unknown')} 套"
-                + (f"，跳过已失效 {skipped} 套" if skipped else ""),
-                f"Checked listing links: {statuses.count('active')} active, {statuses.count('unknown')} unverified"
-                + (f", {skipped} inactive skipped" if skipped else ""),
+                "原链接最后检查：" + "；".join([
+                    *(["、".join(dated)] if dated else []),
+                    *([f"超过 {LINK_CHECK_STALE_DAYS} 天的 {stale} 套"] if stale else []),
+                    *([f"还没检查过 {unchecked} 套"] if unchecked else []),
+                ]),
+                "Original links last checked: " + "; ".join([
+                    *([", ".join(dated)] if dated else []),
+                    *([f"{stale} over {LINK_CHECK_STALE_DAYS} days ago"] if stale else []),
+                    *([f"{unchecked} not checked yet"] if unchecked else []),
+                ]),
             ))
+        elif kind == "[links]":
+            # Replies from before the backend stopped checking links itself.
+            steps.append(_text(language, "检查房源链接", "Checked listing links"))
         elif kind == "[fx]":
             steps.append(_text(language, f"换算汇率：{rest}", f"Converted the currency: {rest}"))
         elif kind == "[budget]":
@@ -1149,7 +1180,7 @@ def render_preference_changes(
 
 
 def render_link_checks(checks: list[dict], language: ResponseLanguage = "zh") -> str:
-    lines = [_text(language, "链接检查：", "Link checks:")]
+    lines = [_text(language, "这些房源的原链接需要你点开确认：", "Open these listings' original links to check them:")]
     lines.extend(
         _text(
             language,
@@ -1357,31 +1388,12 @@ def _render_relaxations(relaxations: list[RelaxationSuggestion], language: Respo
 
 def _relaxation_count_text(suggestion: RelaxationSuggestion, language: ResponseLanguage) -> str:
     count = suggestion["match_count"]
-    summary = suggestion.get("check_summary")
-    if not summary:
-        return _text(language, f"数据库匹配 {count} 套，尚未进行 URL 检查。", f"The database matched {count} listings; their URLs have not been checked.")
-    return _text(
-        language,
-        f"本次校验后可展示 {count} 套。{_check_summary_text(summary, language)}",
-        f"{count} listings can be displayed from this check. {_check_summary_text(summary, language)}",
-    )
+    return _text(language, f"数据库匹配 {count} 套。", f"{count} listings match in the database.")
 
 
 def _check_summary_text(summary: ListingCheckSummary, language: ResponseLanguage) -> str:
-    text = _text(
-        language,
-        f"本次数据库筛选 {summary['database_match_count']} 套；已检查 {summary['checked_count']} 套（含有效期内缓存）：原链接有效 {summary['active_count']} 套、状态无法确认 {summary['unknown_count']} 套、原链接失效 {summary['inactive_count']} 套。",
-        f"The database matched {summary['database_match_count']} candidates; {summary['checked_count']} were checked, including fresh cached checks: {summary['active_count']} active original links, {summary['unknown_count']} unverified links, and {summary['inactive_count']} inactive original links.",
-    )
-    if summary["unchecked_count"]:
-        text += _text(
-            language,
-            f"另有 {summary['unchecked_count']} 套尚未检查，本次可展示数不代表全部匹配数。",
-            f"Another {summary['unchecked_count']} candidates remain unchecked; the displayable count is not the total matching count.",
-        )
-    if summary["active_count"] or summary["unknown_count"]:
-        text += _text(language, "链接检查不代表已确认房源仍可租。", "Link checks do not confirm that a listing is still available to rent.")
-    return text
+    count = summary["database_match_count"]
+    return _text(language, f"本次数据库筛选出 {count} 套。", f"The database matched {count} listings.")
 
 
 def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLanguage) -> str:
@@ -1431,32 +1443,28 @@ def _warning_text(
     language: ResponseLanguage,
     listing: Listing | None = None,
 ) -> str:
-    if flag == "live_status_unknown" and listing:
+    if flag == "link_check_needed" and listing:
         return _link_status_text(listing, language)
     return _WARNING_TEXT[language].get(flag, flag)
 
 
 def _link_status_text(listing: Listing, language: ResponseLanguage) -> str:
-    status = listing.get("live_status") or "unknown"
-    if status == "active":
-        return _text(language, "有效", "active")
-    if status == "inactive":
-        return _text(language, "原链接已失效", "the original link is inactive")
-
-    reason = str(listing.get("live_error_reason") or "")
-    if reason.startswith("http_"):
-        cause = _text(language, f"网站返回 HTTP {reason[5:]}", f"the website returned HTTP {reason[5:]}")
-    else:
-        cause = {
-            "network_error": _text(language, "检查时发生网络错误", "a network error interrupted the check"),
-            "timeout": _text(language, "链接检查超时", "the link check timed out"),
-            "checker_error": _text(language, "链接检查程序出错", "the link checker failed"),
-            "listing_id_not_found": _text(language, "页面响应中无法确认房源编号", "the listing ID could not be confirmed from the response"),
-        }.get(reason, _text(language, "自动检查没有得到确定结果", "the automated check was inconclusive"))
+    """When the data refresh last opened the listing's page; never that the link works now."""
+    age = link_check_age_days(listing)
+    if age is None:
+        return _text(language, "还没检查过，请点原链接确认是否还在挂牌", "not checked yet; open the original link to see whether it is still listed")
+    day = str(listing["live_checked_at"])[:10]
+    ago = _text(language, "今天", "today") if age <= 0 else _text(language, f"{age} 天前", f"{age} day{'s' if age > 1 else ''} ago")
+    if age > LINK_CHECK_STALE_DAYS:
+        return _text(
+            language,
+            f"{day} 检查时仍在挂牌，但已超过 {LINK_CHECK_STALE_DAYS} 天（{ago}）没有再检查，可能已下架，请点原链接确认",
+            f"still listed when checked on {day}, but not checked for over {LINK_CHECK_STALE_DAYS} days ({ago}), so it may be gone; open the original link to check",
+        )
     return _text(
         language,
-        f"{cause}，因此暂时无法确认链接是否仍然有效；这不表示房源已下架",
-        f"{cause}, so the link cannot currently be verified; this does not mean the listing is inactive",
+        f"{day} 检查时仍在挂牌（{ago}），之后可能已下架，请点原链接确认",
+        f"still listed when checked on {day} ({ago}); it may have been taken down since, so open the original link to check",
     )
 
 
@@ -1473,6 +1481,84 @@ def _sgd(amount) -> str:
 
 def _text(language: ResponseLanguage, zh: str, en: str) -> str:
     return en if language == "en" else zh
+
+
+# What Chinese replies call common currencies; others go by their ISO code, as English replies do.
+CURRENCY_NAMES = {
+    "SGD": "新币", "CNY": "人民币", "USD": "美元", "EUR": "欧元", "GBP": "英镑", "JPY": "日元", "KRW": "韩元",
+    "HKD": "港币", "TWD": "新台币", "MOP": "澳门元", "MYR": "马币", "IDR": "印尼盾", "THB": "泰铢",
+    "VND": "越南盾", "PHP": "菲律宾比索", "INR": "印度卢比", "PKR": "巴基斯坦卢比", "BDT": "孟加拉塔卡",
+    "LKR": "斯里兰卡卢比", "NPR": "尼泊尔卢比", "MMK": "缅元", "KHR": "柬埔寨瑞尔", "LAK": "老挝基普",
+    "BND": "文莱元", "AUD": "澳元", "NZD": "新西兰元", "CAD": "加元", "CHF": "瑞士法郎", "SEK": "瑞典克朗",
+    "NOK": "挪威克朗", "DKK": "丹麦克朗", "RUB": "卢布", "TRY": "土耳其里拉", "AED": "迪拉姆",
+    "SAR": "沙特里亚尔", "ZAR": "南非兰特", "NGN": "尼日利亚奈拉", "EGP": "埃及镑", "KES": "肯尼亚先令",
+    "BRL": "巴西雷亚尔", "MXN": "墨西哥比索",
+}
+
+
+def currency_name(code: str, language: ResponseLanguage) -> str:
+    return CURRENCY_NAMES.get(code, code) if language == "zh" else code
+
+
+def money_in(value: dict | None, language: ResponseLanguage) -> str:
+    """An amount in the user's currency as replies give it after SGD: 约 6,520 人民币 / ≈ CNY 6,520."""
+    if not value:
+        return ""
+    return _text(language, f"约 {value['amount']:,} {currency_name(value['currency'], 'zh')}", f"≈ {value['currency']} {value['amount']:,}")
+
+
+def _with_money_in(sgd_text: str, value: dict | None, language: ResponseLanguage) -> str:
+    """An SGD amount followed by the same amount in the user's currency, when there is one."""
+    if not value:
+        return sgd_text
+    return _text(language, f"{sgd_text}（{money_in(value, 'zh')}）", f"{sgd_text} ({money_in(value, 'en')})")
+
+
+def _per_person_text(share: dict | None, language: ResponseLanguage) -> str:
+    """Each person's monthly share of a rent: 每人约 S$640/月（2 人平均分摊，约 3,410 人民币）."""
+    if not share:
+        return ""
+    amount = money_in(share.get("in_your_currency"), language)
+    return _text(
+        language,
+        f"每人约 {_sgd(share['sgd'])}/月（{share['people']} 人平均分摊{'，' + amount if amount else ''}）",
+        f"About {_sgd(share['sgd'])} a month each (split evenly among {share['people']}{'; ' + amount if amount else ''})",
+    )
+
+
+def render_rate_note(rate: dict, language: ResponseLanguage = "zh") -> str:
+    """Shown once under a reply whose amounts are also in the user's currency."""
+    name = currency_name(rate["currency"], language)
+    return _text(
+        language,
+        f"汇率：按 1 新币 ≈ {rate['per_sgd']} {name}换算（{rate['rate_date']} 的汇率），换算金额取整到十位，仅供参考。",
+        f"Exchange rate: 1 SGD ≈ {rate['per_sgd']} {name} (rate of {rate['rate_date']}); converted amounts are rounded to the nearest ten and only a guide.",
+    )
+
+
+def render_currency_conversion(result: dict, language: ResponseLanguage = "zh") -> str:
+    """The reply to an exchange-rate question when the model's own fails."""
+    source, target = (currency_name(result[key], language) for key in ("from_currency", "to_currency"))
+    rate = _text(language, f"1 {source} = {result['rate']} {target}（{result['rate_date']} 的汇率）", f"1 {source} = {result['rate']} {target} (rate of {result['rate_date']})")
+    if "converted" not in result:
+        return _text(language, f"汇率：{rate}。", f"Exchange rate: {rate}.")
+    return _text(
+        language,
+        f"{result['amount']:,} {source} ≈ {result['converted']:,} {target}，按 {rate}。",
+        f"{result['amount']:,} {source} ≈ {result['converted']:,} {target}, at {rate}.",
+    )
+
+
+def render_display_currency(currency: str | None, language: ResponseLanguage = "zh") -> str:
+    """Shown verbatim when the user changes the currency amounts are also shown in."""
+    if not currency:
+        return _text(language, "之后金额只显示新币。", "From now on amounts are in SGD only.")
+    name = currency_name(currency, language)
+    return _text(
+        language,
+        f"之后的租金和费用会同时显示约合多少{name}（按当天汇率，取整到十位）。说“只看新币”可以取消。",
+        f"From now on rents and costs are also shown in {name} (at the day's rate, rounded to the nearest ten). Say \"SGD only\" to stop.",
+    )
 
 
 def lease_length(months: int, language: ResponseLanguage) -> str:
@@ -1593,11 +1679,28 @@ _COSTS_CLOSING = (
 )
 
 
+def _per_person_costs(share: dict | None, language: ResponseLanguage) -> str:
+    """Each person's even share of the rent, of what is paid at signing and of the whole lease."""
+    if not share:
+        return ""
+    converted = share.get("in_your_currency") or {}
+
+    def each(key):
+        return _with_money_in(_money(share[key]), converted.get(key), language)
+
+    return _text(
+        language,
+        f"按 {share['people']} 人平均分摊：每人每月约 {each('rent_monthly_sgd')}，签约时每人约 {each('upfront_sgd')}，整个租期每人约 {each('total_cost_sgd')}。这是平均分摊，房间大小不同可能要另外商量",
+        f"split evenly among {share['people']}: about {each('rent_monthly_sgd')} a month each, {each('upfront_sgd')} each at signing and {each('total_cost_sgd')} each over the lease. That is an even split; rooms of different sizes may share it differently",
+    )
+
+
 def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion: dict | None = None) -> str:
     """Shown verbatim: each lease's costs, the assumptions first and an offer to recalculate last.
 
     rows hold costs.lease_costs() results with the listing (title, listing_id, or neither for a
-    stated rent), the rent's source and why the lease length was chosen.
+    stated rent), the rent's source and why the lease length was chosen; with the agent's
+    per_person shares and the three totals in_your_currency when there are any.
     """
     separator = "；" if language == "zh" else "; "
     lines = []
@@ -1611,12 +1714,14 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
     if len(rows) == 1:
         row, costs = rows[0], rows[0]["costs"]
         rent, months = costs["rent_monthly_sgd"], costs["lease_months"]
+        converted = row.get("in_your_currency") or {}
         name = _cost_target(row, language)
         assumptions = [_lease_reason(row, language), *_cost_assumptions(costs, language)]
+        monthly = _with_money_in(_money(rent), converted.get("rent_monthly_sgd"), language)
         lines += [
             _text(language, f"费用估算：{name}", f"Cost estimate: {name}"),
             _text(language, f"假设：{separator.join(assumptions)}。", f"Assumptions: {separator.join(assumptions)}."),
-            _text(language, f"- 月租：{_money(rent)}{_rent_source(row, 'zh')}", f"- Monthly rent: {_money(rent)}{_rent_source(row, 'en')}"),
+            _text(language, f"- 月租：{monthly}{_rent_source(row, 'zh')}", f"- Monthly rent: {monthly}{_rent_source(row, 'en')}"),
             _text(
                 language,
                 f"- 整个租期总租金：{_money(rent)} × {months} = {_money(costs['total_rent_sgd'])}",
@@ -1640,14 +1745,18 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
             upfront.append(_text(language, f"中介费 {_money(costs['agent_fee_sgd'])}", f"agent fee {_money(costs['agent_fee_sgd'])}"))
         if costs["agent_fee_gst_sgd"] is not None:
             upfront.append(f"GST {_money(costs['agent_fee_gst_sgd'])}")
+        paid = _with_money_in(_money(costs["upfront_sgd"]), converted.get("upfront_sgd"), language)
+        spent = _with_money_in(_money(costs["total_cost_sgd"]), converted.get("total_cost_sgd"), language)
         lines += [
-            _text(language, f"- 签约时预付：{' + '.join(upfront)} = {_money(costs['upfront_sgd'])}", f"- Paid at signing: {' + '.join(upfront)} = {_money(costs['upfront_sgd'])}"),
+            _text(language, f"- 签约时预付：{' + '.join(upfront)} = {paid}", f"- Paid at signing: {' + '.join(upfront)} = {paid}"),
             _text(
                 language,
-                f"- 整个租期总花费（不含会退还的押金）：{_money(costs['total_cost_sgd'])}",
-                f"- Spent over the whole lease (not counting the refundable deposit): {_money(costs['total_cost_sgd'])}",
+                f"- 整个租期总花费（不含会退还的押金）：{spent}",
+                f"- Spent over the whole lease (not counting the refundable deposit): {spent}",
             ),
         ]
+        if share := _per_person_costs(row.get("per_person"), language):
+            lines.append(f"- {share[0].upper()}{share[1:]}")
     else:
         lines += [
             _text(language, f"费用对比（{len(rows)} 套，各按自己的租期计算）：", f"Cost comparison ({len(rows)} listings, each for its own lease):"),
@@ -1655,9 +1764,14 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
         ]
         for position, row in enumerate(rows, 1):
             costs = row["costs"]
+            converted = row.get("in_your_currency") or {}
+
+            def amount(key):
+                return _with_money_in(_money(costs[key]), converted.get(key), language)
+
             items = [
                 _lease_reason(row, language),
-                _text(language, f"月租 {_money(costs['rent_monthly_sgd'])}", f"rent {_money(costs['rent_monthly_sgd'])} a month"),
+                _text(language, f"月租 {amount('rent_monthly_sgd')}", f"rent {amount('rent_monthly_sgd')} a month"),
                 _text(language, f"总租金 {_money(costs['total_rent_sgd'])}", f"total rent {_money(costs['total_rent_sgd'])}"),
                 _text(language, f"印花税 {_money(costs['stamp_duty_sgd'])}", f"stamp duty {_money(costs['stamp_duty_sgd'])}"),
                 _text(language, f"押金 {_money(costs['deposit_sgd'])}", f"deposit {_money(costs['deposit_sgd'])}"),
@@ -1667,9 +1781,11 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
                 with_gst = costs["agent_fee_gst_sgd"] is not None
                 items.append(_text(language, f"中介费{'（含 GST）' if with_gst else ''} {fee}", f"agent fee{' incl. GST' if with_gst else ''} {fee}"))
             items += [
-                _text(language, f"签约时预付 {_money(costs['upfront_sgd'])}", f"paid at signing {_money(costs['upfront_sgd'])}"),
-                _text(language, f"总花费 {_money(costs['total_cost_sgd'])}", f"spent over the lease {_money(costs['total_cost_sgd'])}"),
+                _text(language, f"签约时预付 {amount('upfront_sgd')}", f"paid at signing {amount('upfront_sgd')}"),
+                _text(language, f"总花费 {amount('total_cost_sgd')}", f"spent over the lease {amount('total_cost_sgd')}"),
             ]
+            if share := _per_person_costs(row.get("per_person"), language):
+                items.append(share)
             lines.append(f"{position}. {_cost_target(row, language)}{_text(language, '：', ': ')}{separator.join(items)}")
         upfront = min(rows, key=lambda row: row["costs"]["upfront_sgd"])
         same_lease = len({row["costs"]["lease_months"] for row in rows}) == 1

@@ -5,8 +5,8 @@ data pipeline; setup_database.py fills a new database in one go.
 
 - public: the listing tables, written only by the data pipeline (src/dss5105/data, build_commutes.py).
 - agent: written only by the backend: accounts, conversations and kept profiles (sessions.py,
-  accounts.py, profiles.py), LangGraph's checkpoints, link checks, and the agent_listings view that
-  every search reads.
+  accounts.py, profiles.py), LangGraph's checkpoints, OneMap routes, and the agent_listings view
+  that every search reads.
 
 The view is made again at every start, so changing it needs no migration, and it reads the
 pipeline's tables as they are: a data refresh shows from the next query, without a restart.
@@ -120,11 +120,11 @@ SELECT
     array_remove(coalesce(m.review_flags, '{{}}'), 'area_outside_review_range')
         || CASE WHEN round(a.area_sqm / {_SQM_PER_SQFT}) < 80 THEN ARRAY['area_outside_review_range'] ELSE '{{}}'::text[] END
         AS review_flags,
-    coalesce(h.status, 'unknown') AS live_status,
-    h.checked_at AS live_checked_at,
-    h.final_url,
-    h.http_status,
-    h.error_reason AS live_error_reason,
+    -- The data refresh opens each listing page, keeps only listings still up (scrape_status 'active')
+    -- and stamps enriched_at: when the link was last checked. Null when it never opened the page. The
+    -- backend checks no links itself (PropertyGuru refuses automated requests).
+    CASE WHEN a.enriched_at IS NOT NULL THEN 'active' ELSE 'unknown' END AS live_status,
+    replace(a.enriched_at::text, ' ', 'T') AS live_checked_at,
     r.mrt_walk_distance_m,
     r.mrt_walk_seconds,
     r.mrt_walk_minutes
@@ -153,15 +153,10 @@ LEFT JOIN LATERAL (
 ) p ON TRUE
 LEFT JOIN listing_metadata m USING (listing_id)
 LEFT JOIN district_lookup d USING (district_code)
-LEFT JOIN listing_health h USING (listing_id)
 LEFT JOIN listing_route_enrichment r USING (listing_id)
 """
 # The backend's own tables next to the view; no foreign keys, so the pipeline can rebuild listings freely.
 _TABLES = (
-    # Link checks, reused for 24 hours across restarts (tools.validate_ranked_listings).
-    "CREATE TABLE IF NOT EXISTS {schema}.listing_health ("
-    "listing_id TEXT PRIMARY KEY, status TEXT NOT NULL, checked_at TEXT NOT NULL, "
-    "final_url TEXT, http_status INTEGER, error_reason TEXT)",
     # OneMap walking routes to the listed MRT station (tools.refresh_mrt_walk_data).
     "CREATE TABLE IF NOT EXISTS {schema}.listing_route_enrichment ("
     "listing_id TEXT PRIMARY KEY, mrt_walk_distance_m INTEGER, mrt_walk_seconds INTEGER, "

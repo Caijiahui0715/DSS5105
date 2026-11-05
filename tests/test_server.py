@@ -11,7 +11,7 @@ from group_db import UNAVAILABLE
 from mock_db import create_mock_database, empty_storage
 from profiles import UserProfiles
 from sessions import serializer
-from tests.test_agent import ScriptedModel, active_links, tool_calls
+from tests.test_agent import ScriptedModel, tool_calls
 
 PASSWORD = "password123"
 
@@ -36,7 +36,7 @@ class ServerTest(unittest.TestCase):
         self.model = ScriptedModel()
         self.storage = empty_storage()
         self.checkpointer = MemorySaver(serde=serializer())
-        self.app = create_app(self.listings, self.model, self.storage, self.checkpointer, listing_checker=active_links)
+        self.app = create_app(self.listings, self.model, self.storage, self.checkpointer)
         self.client = lambda: TestClient(self.app)
         self.alice, self.bob = self.client(), self.client()
 
@@ -132,8 +132,8 @@ class ServerTest(unittest.TestCase):
         page = self.alice.get("/api/listings?limit=5&offset=10").json()
         details = self.alice.get("/api/listings/S001").json()
 
-        self.assertEqual(page["total"], 12)
-        self.assertEqual(len(page["listings"]), 2)
+        self.assertEqual(page["total"], 11)
+        self.assertEqual(len(page["listings"]), 1)
         self.assertEqual(details["listing"]["listing_id"], "S001")
         self.assertIn("commutes", details["listing"])
         self.assertEqual(self.alice.get("/api/listings/NOPE").status_code, 404)
@@ -339,7 +339,7 @@ class ServerTest(unittest.TestCase):
         from server import create_app
 
         self.assertFalse(self.alice.get("/api/options").json()["invite_code_required"])
-        app = create_app(self.listings, self.model, self.storage, self.checkpointer, listing_checker=active_links, registration_code="nus-5105")
+        app = create_app(self.listings, self.model, self.storage, self.checkpointer, registration_code="nus-5105")
         alice, bob = TestClient(app), TestClient(app)
         self.assertTrue(alice.get("/api/options").json()["invite_code_required"])
 
@@ -368,11 +368,11 @@ class ServerTest(unittest.TestCase):
             writer.update_state({"configurable": {"thread_id": thread_id}}, {"shortlisted_listing_ids": shortlist, "excluded_listing_ids": excluded}, as_node="finalize")
             storage.touch(thread_id, "hi")
 
-        create_app(self.listings, self.model, storage, self.checkpointer, listing_checker=active_links)
+        create_app(self.listings, self.model, storage, self.checkpointer)
         # The latest conversation decides a listing in several lists.
         self.assertEqual(profiles.listings("alice"), (["S004", "S002", "S003"], ["S001"]))
         profiles.unmark("alice", ["S004"], "shortlist")
-        create_app(self.listings, self.model, storage, self.checkpointer, listing_checker=active_links)
+        create_app(self.listings, self.model, storage, self.checkpointer)
         self.assertEqual(profiles.listings("alice"), (["S002", "S003"], ["S001"]))
 
     def test_the_reply_follows_the_message_then_the_interface_language(self):
@@ -397,6 +397,11 @@ class ServerTest(unittest.TestCase):
             language="en",
         )[-1]
         self.assertIn("已更新本次对话的条件", reply["text"])
+
+        # An address alone keeps the conversation's language rather than the interface's: a reply in
+        # English would fail the language check and need a step the model does not have.
+        name, reply = self.send(self.alice, thread_id, "8 Grange Rd, #02-01", AIMessage(content="好的，地址收到了。"), language="en")[-1]
+        self.assertEqual(reply["text"], "好的，地址收到了。")
 
     def test_other_users_cannot_reach_a_conversation(self):
         self.sign_up(self.alice, "alice")

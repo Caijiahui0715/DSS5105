@@ -10,7 +10,7 @@ pipeline's own table scripts:
   commute_faculty.csv, once per test run;
 - storage: accounts and conversations (empty_storage()).
 
-Every call also empties what the backend writes there, link checks and accounts, so tests do not
+Every call also empties what the backend writes there, OneMap routes and accounts, so tests do not
 see each other's. Without a reachable PostgreSQL the tests that need one are skipped with the
 reason; the others still run.
 """
@@ -23,7 +23,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import contextmanager, redirect_stdout
-from datetime import datetime, timezone
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 
@@ -39,7 +39,7 @@ from setup_database import SCRIPT_FOLDER, TABLE_SCRIPTS
 ROOT = Path(__file__).parent
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "mock_listings.json"
 # The tables the backend writes; emptied for every test.
-_AGENT_TABLES = ("listing_health", "listing_route_enrichment", "place_routes")
+_AGENT_TABLES = ("listing_route_enrichment", "place_routes")
 # Listing fields kept in listing_enrichment rather than listings (migration_v2.sql).
 _ENRICHMENT = {
     "enriched_at", "postcode", "street_name", "latitude", "longitude", "poi_hawker_1km", "poi_library_1km",
@@ -53,7 +53,8 @@ _unavailable: list[str] = []
 
 
 def create_mock_database(path: Path = DEFAULT_FIXTURE) -> Database:
-    """The made-up listings, as new; their links are already checked (active unless the fixture says not)."""
+    """The made-up listings, as new; the data refresh checked their links today, and dropped those
+    the fixture says are not listed any more."""
     source = json.loads(path.read_text(encoding="utf-8"))["listings"]
     payload = _legacy_payload(source)
     commutes = [
@@ -61,22 +62,14 @@ def create_mock_database(path: Path = DEFAULT_FIXTURE) -> Database:
         for row in source
         for faculty, trip in (row.get("commutes") or {}).items()
     ]
-    checked_at = datetime.now(timezone.utc).isoformat()
-    health = [
-        {
-            "listing_id": row["listing_id"],
-            "status": "active" if row.get("listing_status_code") == "ACT" else "inactive",
-            "checked_at": checked_at,
-            "final_url": row.get("url"),
-        }
-        for row in source
-    ]
+    checked_at = datetime.now().isoformat(timespec="minutes")
+    refreshed = [{"listing_id": str(row["listing_id"]), "enriched_at": checked_at} for row in source]
     with _new_schema("mock") as pg:
         for table in ("district_lookup", "listings", "listing_metadata"):
             _insert(pg, table, payload[table])
+        _insert(pg, "listing_enrichment", refreshed)
         _import_commutes(pg, commutes)
         prepare(pg, "mock")
-        _insert(pg, "listing_health", health)
     return Database(_pool("mock"), owns_pool=False)
 
 
@@ -282,7 +275,7 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 "air_conditioning": "unknown",
                 "pets_policy": "unknown",
                 "rent_monthly_sgd_now": None,
-                "scrape_status": "active",
+                "scrape_status": "active" if row.get("listing_status_code") == "ACT" else "removed",
                 "lease_term": row.get("lease_term"),
             }
         )

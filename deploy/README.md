@@ -94,7 +94,7 @@ The first time takes about 10 minutes: installing Docker, building the two image
 2. Enter the invite code under "Register", register your own account and send a message to try it.
 3. Send the address and the invite code to the instructors and the group.
 
-Once it is online, check two things first: whether photos show on the listing cards, and the results of the link checks. Both need to reach outside websites from an AWS IP, which may be blocked. Being blocked does not affect anything else; tell Claude what happens, and change it then.
+Once it is online, check first whether photos show on the listing cards: that needs to reach outside websites from an AWS IP, which may be blocked. Links are not checked from the server: the cards show when the data refresh last opened each listing's page. Being blocked does not affect anything else; tell Claude what happens, and change it then.
 
 ## Updating later
 

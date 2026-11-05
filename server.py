@@ -38,7 +38,7 @@ from models import SearchPreferences
 from profiles import EXCLUDED, SHORTLIST, UserProfiles, merged
 from response import criteria_items, render_profile_opening, render_steps
 from sessions import Storage
-from tools import check_listing_url, get_listings_by_ids, load_listings
+from tools import get_listings_by_ids, load_listings
 
 COOKIE = "rental_session"
 PAGE = Path(__file__).parent / "static" / "index.html"
@@ -102,14 +102,13 @@ def create_app(
     model,
     storage: Storage,
     checkpointer,
-    listing_checker=check_listing_url,
     place_router=None,
     registration_code: str | None = None,
 ) -> FastAPI:
     """With registration_code, signing up needs it; anyone can sign up otherwise."""
     accounts = Accounts(storage)
     profiles = UserProfiles(storage)
-    agent = build_agent(listings, model, checkpointer, listing_checker=listing_checker, profiles=profiles, place_router=place_router)
+    agent = build_agent(listings, model, checkpointer, profiles=profiles, place_router=place_router)
     _account_listings_once(storage, profiles, agent)
     # One turn at a time per conversation; a second message waits for the first.
     locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
@@ -151,7 +150,7 @@ def create_app(
         after a reload or on another device, instead of seeming to wait for a reply."""
         try:
             values = agent.get_state(config(thread_id)).values
-            reply_language = _response_language(text, language or values.get("response_language"))
+            reply_language = _response_language(text, values.get("response_language") or language)
             reply = AIMessage(content=_FAILED_REPLY[reply_language], id=f"failed-{uuid4().hex}")
             messages = values.get("messages") or []
             # The message itself, unless the turn failed after keeping it.

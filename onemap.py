@@ -1,8 +1,9 @@
 import base64
 import json
 import os
+import re
 from datetime import datetime
-from math import ceil
+from math import asin, ceil, cos, radians, sin, sqrt
 from pathlib import Path
 from time import sleep, time
 from urllib.error import HTTPError, URLError
@@ -24,6 +25,14 @@ class OneMapError(RuntimeError):
 
 class OneMapNotFound(OneMapError):
     """The API answered normally but had no match for the query."""
+
+
+class OneMapAmbiguous(OneMapNotFound):
+    """Places far apart match the query; candidates holds the first few, to ask which one is meant."""
+
+    def __init__(self, message: str, candidates: list[dict]):
+        super().__init__(message)
+        self.candidates = candidates
 
 
 def get_token(
@@ -241,12 +250,88 @@ def _route(params: dict[str, object], token: str, opener) -> dict | None:
             sleep(4 * (attempt + 1))
 
 
+# OneMap's search matches building names, block and street, and postcodes, but an address as people
+# type it often has a unit number, "Singapore" or a shortened street type that make it match nothing.
+_UNIT = r"(?:\bunit\s*)?#?\s*[A-Za-z]?\d+\s*[-–]\s*\d+[A-Za-z]?\b"
+_POSTCODE = r"(?<!\d)\d{6}(?!\d)"
+_DROPPED = re.compile(rf"{_UNIT}|\bS\s*\(?{_POSTCODE}\)?|{_POSTCODE}|\bsingapore\b|新加坡|\b(?:blk|block)\b\.?|[,，;；()]", re.IGNORECASE)
+# Street types written out, as OneMap has them, after a name or before a number (Grange Rd, Ave 3).
+_STREET_TYPES = {
+    "rd": "Road", "ave": "Avenue", "st": "Street", "dr": "Drive", "cres": "Crescent", "blvd": "Boulevard",
+    "ctr": "Centre", "pl": "Place", "tce": "Terrace", "cl": "Close", "ln": "Lane",
+}
+# Words that start a street name (Upp Thomson Rd, Bt Timah Rd).
+_STREET_STARTS = {"upp": "Upper", "bt": "Bukit", "jln": "Jalan", "lor": "Lorong"}
+# Matches this close to each other are one place: a building's or a mall's entrances and postcodes.
+SAME_PLACE_M = 200
+
+
+def search_variants(query: str) -> list[str]:
+    """How a user's place is searched, in order, each once: as typed, by its postcode, and as block
+    and street without the unit number and "Singapore", street types written out."""
+    typed = " ".join(query.split())
+    postcode = re.search(_POSTCODE, typed)
+    words = _DROPPED.sub(" ", typed).split()
+    street = []
+    for index, word in enumerate(words):
+        key = word.lower().rstrip(".")
+        following = words[index + 1] if index + 1 < len(words) else None
+        if key in _STREET_TYPES and index and (following is None or following[0].isdigit()):
+            word = _STREET_TYPES[key]
+        elif key in _STREET_STARTS and following and not following[0].isdigit():
+            word = _STREET_STARTS[key]
+        street.append(word)
+    return list(dict.fromkeys(variant for variant in (typed, postcode and postcode.group(), " ".join(street)) if variant))
+
+
 def geocode_location(query: str, *, opener=urlopen) -> tuple[float, float]:
-    """Resolve a user-named Singapore place using the existing OneMap search API."""
-    return _geocode(query, load_token(opener=opener), opener, require_unique=True)
+    """Resolve a user-named Singapore place with OneMap's search, trying search_variants() in turn.
+    Matches within SAME_PLACE_M of each other are one place; matches far apart raise OneMapAmbiguous
+    with candidates to ask about, unless a later variant finds one place."""
+    token = load_token(opener=opener)
+    ambiguous = None
+    for variant in search_variants(query):
+        payload = _get_json(
+            "/api/common/elastic/search",
+            {"searchVal": variant, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1},
+            token,
+            opener,
+        )
+        results = payload.get("results") or []
+        if not results:
+            continue
+        try:
+            points = [(float(row["LATITUDE"]), float(row["LONGITUDE"])) for row in results]
+        except (KeyError, TypeError, ValueError) as error:
+            raise OneMapError(f"OneMap returned an unusable match for {variant!r}") from error
+        if all(_distance_m(points[0], point) <= SAME_PLACE_M for point in points):
+            return points[0]
+        ambiguous = ambiguous or OneMapAmbiguous(
+            f"More than one place matches {query!r}; use a precise address/postcode or coordinates.",
+            _candidates(results),
+        )
+    raise ambiguous or OneMapNotFound(f"OneMap has no match for {query!r} (the API call itself succeeded)")
 
 
-def _geocode(query: str, token: str, opener, *, require_unique: bool = False) -> tuple[float, float]:
+def _candidates(results: list[dict], limit: int = 5) -> list[dict]:
+    """The first few distinct matches, as the user would recognise them: name, address, postcode."""
+    def known(value):
+        return value if value and value != "NIL" else None
+
+    found = {}
+    for row in results:
+        candidate = {"name": known(row.get("SEARCHVAL")), "address": known(row.get("ADDRESS")), "postcode": known(row.get("POSTAL"))}
+        found.setdefault((candidate["name"], candidate["postcode"]), candidate)
+    return list(found.values())[:limit]
+
+
+def _distance_m(start: tuple[float, float], end: tuple[float, float]) -> float:
+    (lat1, lon1), (lat2, lon2) = (map(radians, point) for point in (start, end))
+    haversine = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+    return 6_371_008.8 * 2 * asin(sqrt(min(1.0, haversine)))
+
+
+def _geocode(query: str, token: str, opener) -> tuple[float, float]:
     payload = _get_json(
         "/api/common/elastic/search",
         {
@@ -265,8 +350,6 @@ def _geocode(query: str, token: str, opener, *, require_unique: bool = False) ->
         )
 
     try:
-        if require_unique and len({(float(row["LATITUDE"]), float(row["LONGITUDE"])) for row in results}) > 1:
-            raise OneMapNotFound(f"More than one place matches {query!r}; use a precise address/postcode or coordinates.")
         result = results[0]
         return float(result["LATITUDE"]), float(result["LONGITUDE"])
     except (KeyError, IndexError, TypeError, ValueError) as error:

@@ -9,7 +9,10 @@ from tools import resolve_search_location
 # How the user's words map to criteria; the agent's prompt uses the same rules.
 FIELD_RULES = """
 Criteria from the user's words
-- 整租 or a whole unit is rental_scope=entire_unit; 合租, 单间 or a room is rental_scope=room.
+- 整租 or a whole unit is rental_scope=entire_unit; 单间, a room, or 合租 said of the user alone
+  (我想合租) is rental_scope=room. Several people renting together (我们两人合租, 我和朋友一起租,
+  三个人合租) rent one home together: occupant_count with rental_scope=entire_unit. Only people
+  sharing one room (两个人住一间, 合住一个房间, share a room) is rental_scope=room.
   Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
   or studio; district codes look like D05.
 - Set property_types only when a property type is named: 公寓, condo or private apartment means
@@ -38,7 +41,7 @@ Criteria from the user's words
   is occupant_count, not a wish for space.
 - The number of people (三个人住, 我和女朋友两个人) sets only occupant_count. The system then
   picks the rental type and bedrooms itself (whole units with a bedroom each for two or more
-  people, or one room when two people chose 合租) and tells the user. Set min_bedrooms only when
+  people, or one room when two people say they share one room) and tells the user. Set min_bedrooms only when
   the user gives a bedroom count, such as how many bedrooms they need in total.
 """
 

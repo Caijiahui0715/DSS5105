@@ -53,7 +53,7 @@ class Recommendation:
     unknown_factors: list[str]
     breakdown: dict[str, float | None]
     is_demo_score: bool = True
-    # The agent's facts for this listing (commute, MRT, link check), as the backend sent them.
+    # The agent's facts for this listing (commute, MRT, when its link was last checked), as the backend sent them.
     facts: dict[str, Any] = field(default_factory=dict)
 
 @dataclass

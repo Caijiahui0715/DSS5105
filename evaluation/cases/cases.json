@@ -1,0 +1,2227 @@
+{
+  "case_count": 59,
+  "split_rule": "fixed list: cases never run on the agent before the freeze (build_cases.HOLDOUT)",
+  "cases": [
+    {
+      "id": "A01",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a common room in D05 for no more than SGD 1,200 per month. Among all eligible rooms, rank the cheaper ones first.",
+          "gold_profile": {
+            "max_price_sgd": 1200,
+            "rental_scope": "room",
+            "room_type": "common_room",
+            "district_code": "D05",
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Apply every hard constraint conjunctively",
+        "Return only confirmed matches in the confirmed section",
+        "Explain that lower rent drives the requested ranking"
+      ],
+      "must_not": [
+        "Treat the budget as a target rather than a ceiling",
+        "Include master/shared/unspecified rooms as confirmed common rooms"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A02",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.",
+          "gold_profile": {
+            "max_price_sgd": 1400,
+            "rental_scope": "room",
+            "tenant_gender": "female",
+            "furnished_required": true,
+            "cooking_required": true,
+            "air_conditioning_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Keep all four non-price requirements",
+        "Separate confirmed matches from listings needing confirmation",
+        "Name each unknown requested field per pending listing"
+      ],
+      "must_not": [
+        "Infer that missing cooking or air-conditioning information means yes",
+        "Use advertised gender preference as if it were the occupant restriction"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A03",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me an entire unit in D03 with at least 2 bedrooms, rent at most SGD 4,500, no more than a 10-minute walk to an operating MRT station, and at most 45 minutes to my faculty.",
+          "gold_profile": {
+            "max_price_sgd": 4500,
+            "rental_scope": "entire_unit",
+            "district_code": "D03",
+            "min_bedrooms": 2,
+            "max_mrt_minutes": 10,
+            "max_commute_minutes": 45
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Use the registered Faculty of Science commute destination",
+        "Apply both MRT walk and faculty commute limits",
+        "Use bedrooms only for whole-unit listings"
+      ],
+      "must_not": [
+        "Confuse MRT walking time with faculty commute time",
+        "Treat an under-construction MRT as operating"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A04",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "School of Computing",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I want to rent a whole condo or private apartment for at most SGD 6,000, with at least 2 bathrooms. Rank the results by shortest commute to my faculty first, then lower rent.",
+          "gold_profile": {
+            "max_price_sgd": 6000,
+            "rental_scope": "entire_unit",
+            "property_types": [
+              "condominium",
+              "executive_condominium",
+              "apartment",
+              "walk_up_apartment"
+            ],
+            "min_bathrooms": 2,
+            "ranking_priority": [
+              "commute",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Expand condo/private apartment to the documented property-type family",
+        "Preserve the stated priority order",
+        "Show evidence for rent, bathrooms and commute"
+      ],
+      "must_not": [
+        "Include HDB or landed properties",
+        "Reverse the two ranking priorities"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A05",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Show me furnished master rooms with air-conditioning, at no more than SGD 1,800 per month.",
+          "gold_profile": {
+            "max_price_sgd": 1800,
+            "rental_scope": "room",
+            "room_type": "master_room",
+            "furnished_required": true,
+            "air_conditioning_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Infer room rental scope from master room",
+        "Require explicit air-conditioning evidence for confirmed matches",
+        "Keep pending listings separate"
+      ],
+      "must_not": [
+        "Infer a private bathroom merely because the room is a master room",
+        "Treat unknown air-conditioning as present"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A06",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "School of Computing",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000. It must be within 10 minutes' walk of an operating MRT and within 45 minutes of my faculty.",
+          "gold_profile": {
+            "max_price_sgd": 5000,
+            "rental_scope": "entire_unit",
+            "occupant_count": 2,
+            "min_bedrooms": 2,
+            "max_mrt_minutes": 10,
+            "max_commute_minutes": 45
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Parse occupant_count as 2",
+        "Use School of Computing from the test account",
+        "Apply all limits before ranking"
+      ],
+      "must_not": [
+        "Interpret partner as a landlord or additional destination",
+        "Return single-occupancy rooms"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A07",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "We are a family of four looking for an entire unit in D22 with at least 3 bedrooms and a monthly rent not above SGD 4,500.",
+          "gold_profile": {
+            "max_price_sgd": 4500,
+            "rental_scope": "entire_unit",
+            "occupant_count": 4,
+            "min_bedrooms": 3,
+            "district_code": "D22"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Parse four occupants and three bedrooms as different fields",
+        "Apply D22 exactly",
+        "Return only whole units"
+      ],
+      "must_not": [
+        "Treat four occupants as four required bedrooms",
+        "Include room rentals"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A08",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a whole unit of at least 80 square metres, with rent capped at SGD 7,000. Rank by larger space first, then a shorter MRT walk, then lower rent.",
+          "gold_profile": {
+            "max_price_sgd": 7000,
+            "rental_scope": "entire_unit",
+            "min_area_sqm": 80,
+            "ranking_priority": [
+              "space",
+              "mrt",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Use floor area appropriate to whole-unit rentals",
+        "Keep exactly the three stated priorities in order",
+        "Show area and rent evidence"
+      ],
+      "must_not": [
+        "Convert 80 sqm as though it were 80 sqft",
+        "Replace the hard 80 sqm threshold with only a soft spaciousness preference"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A09",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find a room for at most SGD 1,500, within 1 km of at least 30 food places and no more than 1,000 metres' walk from the nearest operating MRT. Prioritise more food options, then a shorter MRT walk.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "min_food_places": 30,
+            "max_mrt_distance_m": 1000,
+            "ranking_priority": [
+              "food_places",
+              "mrt"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Distinguish the 1-km F&B count radius from the MRT walking distance",
+        "Apply both hard thresholds",
+        "Preserve priority order"
+      ],
+      "must_not": [
+        "Interpret 30 as a distance",
+        "Count an under-construction MRT as operating"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A10",
+      "category": "A_explicit_requirements",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I can sign a 12-month lease and need a room below SGD 2,000. Rank suitable rooms by shorter commute to my faculty first and lower rent second.",
+          "gold_profile": {
+            "max_price_sgd": 2000,
+            "rental_scope": "room",
+            "lease_months": 12,
+            "ranking_priority": [
+              "commute",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Treat a listing's stated term as its minimum accepted lease",
+        "Separate unknown lease terms from confirmed compatibility",
+        "Use Faculty of Science commute data"
+      ],
+      "must_not": [
+        "Assume an unstated lease accepts 12 months",
+        "Interpret 12 months as a move-in date"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "A11",
+      "category": "A_explicit_requirements",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me an entire unit in D21 with at least 2 bedrooms and a monthly rent of no more than SGD 5,000. Rank all eligible listings by lower rent first.",
+          "gold_profile": {
+            "max_price_sgd": 5000,
+            "rental_scope": "entire_unit",
+            "district_code": "D21",
+            "min_bedrooms": 2,
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Return only entire units in D21 with at least 2 bedrooms at or below SGD 5,000",
+        "Rank the confirmed listings by rent, lowest first"
+      ],
+      "must_not": [
+        "Return room rentals or listings outside D21",
+        "Treat a listing with an unknown bedroom count as confirmed"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)",
+        "budget SGD 4,200 -> 5,000: no listing met the received query (cheapest match was SGD 4,300)"
+      ]
+    },
+    {
+      "id": "A12",
+      "category": "A_explicit_requirements",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "tenant_gender": "male",
+            "furnished_required": true,
+            "landlord_not_living_in": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Exclude female-only rooms and rooms whose landlord lives in",
+        "Treat male-only and no-restriction rooms as gender-compatible",
+        "Mark rooms with an unstated gender rule, furnishing or landlord arrangement as needing confirmation"
+      ],
+      "must_not": [
+        "Treat an unstated gender rule as confirmed",
+        "Treat an unstated landlord arrangement as not living in"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)"
+      ]
+    },
+    {
+      "id": "A13",
+      "category": "A_explicit_requirements",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me a room for no more than SGD 2,200 per month with air-conditioning. It must be within a 10-minute walk of an operating MRT station. Rank the eligible rooms by shorter MRT walk first, then lower rent.",
+          "gold_profile": {
+            "max_price_sgd": 2200,
+            "rental_scope": "room",
+            "air_conditioning_required": true,
+            "max_mrt_minutes": 10,
+            "ranking_priority": [
+              "mrt",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Require air-conditioning and a walk of 10 minutes or less to an operating station",
+        "Rank by MRT walk, then rent"
+      ],
+      "must_not": [
+        "Count a station under construction or of unknown status as operating"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)",
+        "private bathroom requirement removed: only 3 of 369 listings state one, so no room was confirmed"
+      ]
+    },
+    {
+      "id": "A14",
+      "category": "A_explicit_requirements",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": "School of Computing",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room for no more than SGD 1,800 per month and can sign a 12-month lease. My public-transport commute to my faculty must not exceed 40 minutes. Rank suitable rooms by shorter faculty commute first, then lower rent.",
+          "gold_profile": {
+            "max_price_sgd": 1800,
+            "rental_scope": "room",
+            "lease_months": 12,
+            "max_commute_minutes": 40,
+            "ranking_priority": [
+              "commute",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Use School of Computing commute data",
+        "Treat a listing's stated term as its minimum accepted lease",
+        "Rank by faculty commute, then rent"
+      ],
+      "must_not": [
+        "Use MRT walking time as the faculty commute",
+        "Assume an unstated lease accepts 12 months"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)"
+      ]
+    },
+    {
+      "id": "B01",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room for at most SGD 1,300 where full cooking, including frying, is definitely allowed.",
+          "gold_profile": {
+            "max_price_sgd": 1300,
+            "rental_scope": "room",
+            "cooking_level": "full"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Only unrestricted cooking is confirmed",
+        "Label unknown cooking policy as needing confirmation",
+        "Explain that light cooking does not satisfy frying/full cooking"
+      ],
+      "must_not": [
+        "Treat missing or light-only cooking as full cooking",
+        "Invent permission from description-free data"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B02",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me a room up to SGD 1,500, but the landlord must not live in the same home.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "landlord_not_living_in": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Separate no-owner confirmed matches from unknowns",
+        "Name owner-stay status as the fact to verify"
+      ],
+      "must_not": [
+        "Equate silence with no live-in landlord",
+        "Recommend an owner-stays-in listing as eligible"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B03",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need an air-conditioned room with rent no higher than SGD 1,500.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "air_conditioning_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Use explicit structured air-conditioning evidence for confirmed matches",
+        "Show unknown cases only as needing confirmation"
+      ],
+      "must_not": [
+        "Infer air-conditioning from a photo, property type or Singapore climate",
+        "Call unknown listings confirmed"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B04",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I have a cat. Find an entire unit for no more than SGD 5,000 where pets are definitely allowed.",
+          "gold_profile": {
+            "max_price_sgd": 5000,
+            "rental_scope": "entire_unit",
+            "pets_allowed_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "State clearly if there is no confirmed pet-friendly match",
+        "Offer unknown-policy units only as candidates requiring landlord/agent confirmation",
+        "Preserve the pet requirement"
+      ],
+      "must_not": [
+        "Treat unknown pet policy as allowed",
+        "Silently drop the cat/pet requirement to produce results"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B05",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Show me rooms up to SGD 2,200 that definitely have a private bathroom.",
+          "gold_profile": {
+            "max_price_sgd": 2200,
+            "rental_scope": "room",
+            "private_bathroom_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Distinguish explicit private-bathroom evidence from unknown",
+        "Tell the user what must be confirmed for pending rooms"
+      ],
+      "must_not": [
+        "Infer private bathroom from master room",
+        "Treat number of shared bathrooms as proof of a private bathroom"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B06",
+      "category": "B_missing_field",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I am a female tenant looking for a room at or below SGD 1,400. Only show confirmed compatible listings separately from listings whose tenant-gender rule is not stated.",
+          "gold_profile": {
+            "max_price_sgd": 1400,
+            "rental_scope": "room",
+            "tenant_gender": "female"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Separate confirmed-compatible and unknown-restriction rooms",
+        "Exclude male-only rooms",
+        "Use occupant gender only because the user explicitly states it"
+      ],
+      "must_not": [
+        "Use gender_preference as the hard restriction",
+        "Guess a gender rule when it is absent"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "B07",
+      "category": "B_missing_field",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me a fully furnished room for no more than SGD 1,600 per month. Separate listings that explicitly confirm they are fully furnished from otherwise eligible listings whose furnishing level is not stated. Exclude listings explicitly described as partially furnished or unfurnished, and do not treat unknown furnishing information as fully furnished.",
+          "gold_profile": {
+            "max_price_sgd": 1600,
+            "rental_scope": "room",
+            "furnishing_level": "full"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "List explicitly fully furnished rooms as confirmed",
+        "List rooms whose furnishing level is not stated as needing confirmation",
+        "Exclude partially furnished and unfurnished rooms"
+      ],
+      "must_not": [
+        "Treat unknown or unspecified furnishing as fully furnished"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)"
+      ]
+    },
+    {
+      "id": "B08",
+      "category": "B_missing_field",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room for no more than SGD 1,800 per month and I can sign only a 6-month lease. Separate listings that explicitly accept a 6-month lease from otherwise eligible listings whose lease term is not stated. Exclude listings that explicitly require more than 6 months, and do not treat an unknown lease term as confirmed acceptance of a 6-month lease.",
+          "gold_profile": {
+            "max_price_sgd": 1800,
+            "rental_scope": "room",
+            "lease_months": 6
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "listing_filter_and_rank",
+      "gold_answer": null,
+      "must": [
+        "Treat Flexible and Short Term leases as accepting 6 months",
+        "Mark rooms with an unstated lease term as needing confirmation",
+        "Exclude rooms whose stated minimum lease is 1 or 2 years"
+      ],
+      "must_not": [
+        "Treat an unstated lease term as accepting 6 months"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)",
+        "removed 'or flexible-looking' from the last sentence: CONVENTIONS.md counts Flexible as accepting any length"
+      ]
+    },
+    {
+      "id": "C01",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a common room in D05 for at most SGD 700 per month. If nothing matches, tell me the smallest useful budget adjustment rather than ignoring my requirements.",
+          "gold_profile": {
+            "max_price_sgd": 700,
+            "rental_scope": "room",
+            "room_type": "common_room",
+            "district_code": "D05"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "State that the strict set is empty",
+        "Identify budget as the relaxed field",
+        "Offer {relaxation} as the evidence-backed next step and keep D05/common-room constraints"
+      ],
+      "must_not": [
+        "Return over-budget listings as strict matches",
+        "Silently change district or room type"
+      ],
+      "relaxation_field": "max_price_sgd",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C02",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.",
+          "gold_profile": {
+            "max_price_sgd": 3200,
+            "rental_scope": "entire_unit",
+            "district_code": "D03",
+            "min_bedrooms": 2
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "Report zero exact matches",
+        "Recommend {relaxation} as one option",
+        "Keep scope, D03 and bedroom count unchanged in that option"
+      ],
+      "must_not": [
+        "Claim that a relaxed result satisfies the original SGD 3200 cap",
+        "Change multiple constraints without saying so"
+      ],
+      "relaxation_field": "max_price_sgd",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C03",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I want an entire unit in D03 for at most SGD 4,500 and within a 2-minute walk of an operating MRT. If that is impossible, show the nearest practical relaxation.",
+          "gold_profile": {
+            "max_price_sgd": 4500,
+            "rental_scope": "entire_unit",
+            "district_code": "D03",
+            "max_mrt_minutes": 2
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "State no listing meets the 2-minute limit",
+        "Suggest {relaxation} as the verified relaxation",
+        "Keep budget, district and scope fixed"
+      ],
+      "must_not": [
+        "Treat an under-construction station as operating",
+        "Present a 3-minute listing as satisfying 2 minutes"
+      ],
+      "relaxation_field": "max_mrt_minutes",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C04",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room for at most SGD 1,500 and a commute of no more than 15 minutes to my faculty. If there are no matches, suggest the smallest tested commute increase.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "max_commute_minutes": 15
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "Use Faculty of Science from the test account",
+        "Report the strict set as empty",
+        "Offer {relaxation} as the verified relaxation while retaining budget and room scope"
+      ],
+      "must_not": [
+        "Use straight-line distance as commute time",
+        "Change the budget without identifying it"
+      ],
+      "relaxation_field": "max_commute_minutes",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C05",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "School of Computing",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.",
+          "gold_profile": {
+            "max_price_sgd": 5000,
+            "rental_scope": "entire_unit",
+            "occupant_count": 2,
+            "min_bedrooms": 2,
+            "max_commute_minutes": 15
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "State that the strict query has no match",
+        "Offer {relaxation} as the verified compromise",
+        "Keep whole-unit, bedrooms and budget unchanged"
+      ],
+      "must_not": [
+        "Recommend a room rental",
+        "Drop the partner from occupancy logic"
+      ],
+      "relaxation_field": "max_commute_minutes",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C06",
+      "category": "C_no_solution_or_relaxation",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "We are a family of four seeking an entire unit in D22 with at least 3 bedrooms, up to SGD 4,500, but we can sign only a 6-month lease. If there is no match, tell us whether a longer lease would solve it.",
+          "gold_profile": {
+            "max_price_sgd": 4500,
+            "rental_scope": "entire_unit",
+            "occupant_count": 4,
+            "min_bedrooms": 3,
+            "district_code": "D22",
+            "lease_months": 6
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "Report no confirmed 6-month match",
+        "Say whether a longer lease solves it: {relaxation}",
+        "Keep whole-unit scope, D22, bedrooms and budget fixed"
+      ],
+      "must_not": [
+        "Assume an unknown lease term accepts six months",
+        "Describe a 12-month listing as a six-month match"
+      ],
+      "relaxation_field": "lease_months",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "must items rewritten as templates; numbers now come from gold.py"
+      ]
+    },
+    {
+      "id": "C07",
+      "category": "C_no_solution_or_relaxation",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room in D10 for no more than SGD 1,000 per month. If there is no strict match, keep my original criteria unchanged and identify the smallest evidence-based adjustment that produces at least one candidate. Change only one requirement at a time.",
+          "gold_profile": {
+            "max_price_sgd": 1000,
+            "rental_scope": "room",
+            "district_code": "D10"
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "State that the strict set is empty",
+        "Offer {relaxation} as the smallest single change",
+        "Keep room scope and D10 fixed in that option"
+      ],
+      "must_not": [
+        "Return over-budget rooms as strict matches",
+        "Change two requirements at once"
+      ],
+      "relaxation_field": "max_price_sgd",
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)",
+        "private bathroom requirement removed: with it no single change produced a match"
+      ]
+    },
+    {
+      "id": "C08",
+      "category": "C_no_solution_or_relaxation",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me an entire unit with at least 2 bedrooms for no more than SGD 4,000 and a public-transport commute of no more than 15 minutes to my faculty. If no exact match exists, do not silently relax the criteria. Test one condition at a time and recommend the smallest supported change, such as a higher budget or a longer commute limit.",
+          "gold_profile": {
+            "max_price_sgd": 4000,
+            "rental_scope": "entire_unit",
+            "min_bedrooms": 2,
+            "max_commute_minutes": 15
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "no_match_and_relaxation",
+      "gold_answer": null,
+      "must": [
+        "State that the strict set is empty",
+        "Report the single changes tested: {relaxation}",
+        "Use Faculty of Science commute data"
+      ],
+      "must_not": [
+        "Silently relax the criteria",
+        "Change budget and commute together"
+      ],
+      "relaxation_field": [
+        "max_commute_minutes",
+        "max_price_sgd"
+      ],
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "added from DSS5105_Additional_ABC_8_Queries.xlsx (2026-11-05)"
+      ]
+    },
+    {
+      "id": "D01",
+      "category": "D_ambiguous_request",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'm looking for an affordable room, preferably somewhere close to NUS.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "clarify",
+      "gold_answer_type": "clarification",
+      "gold_answer": "Ask for a maximum monthly budget and an acceptable commute/location boundary before recommending listings.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "D02",
+      "category": "D_ambiguous_request",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'd like to rent a place with a pleasant living environment, preferably somewhere quiet.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "clarify",
+      "gold_answer_type": "clarification",
+      "gold_answer": "Clarify what 'pleasant' and 'quiet' mean using observable criteria; state that the dataset has no reliable ambience or noise field.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "D03",
+      "category": "D_ambiguous_request",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'd like a comfortable place where I don't have to share too much space with other people.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "clarify",
+      "gold_answer_type": "clarification",
+      "gold_answer": "Clarify whether the user wants an entire unit, a private room, or simply fewer housemates; do not assume privacy.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "D04",
+      "category": "D_ambiguous_request",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I don't want to spend too much time commuting every day. Are there any suitable places for students?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "clarify",
+      "gold_answer_type": "clarification",
+      "gold_answer": "Ask for the commute destination and maximum acceptable travel time; do not invent a faculty or time limit.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "D05",
+      "category": "D_ambiguous_request",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'm looking for a place that offers good value for money, considering both rent and transportation convenience.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "clarify",
+      "gold_answer_type": "clarification",
+      "gold_answer": "Ask for budget and how the user trades rent against commute; do not silently choose weights for 'value for money'.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": []
+    },
+    {
+      "id": "E01",
+      "category": "E_not_in_data",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Is the landlord of this property easy to get along with?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Say that landlord personality is not verified in the dataset. Do not claim a landlord is friendly; suggest a viewing/call and concrete questions.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "E02",
+      "category": "E_not_in_data",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Does this property have good sound insulation? Is it noisy at night?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Say that sound insulation and night noise are not reliably recorded. Do not promise quietness; suggest viewing at relevant hours and checking construction/traffic.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "E03",
+      "category": "E_not_in_data",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Does this property have any cockroach or other pest problems?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Say that pest history is not verified. Do not claim pest-free; suggest inspection and asking for recent pest-control records.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "E04",
+      "category": "E_not_in_data",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Approximately how much are the monthly utility bills for this property?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Say that exact monthly utilities cannot be calculated from the available listing data. Distinguish advertised rent from utilities and ask for bills/inclusion terms.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "E05",
+      "category": "E_not_in_data",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Does the landlord frequently enter tenants' rooms?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Say that landlord-entry behaviour is not verified. Do not predict conduct; advise checking the tenancy agreement, notice clause and speaking with current tenants.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "E06",
+      "category": "E_not_in_data",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "How much is the security deposit for this property? Is there a risk of deductions when I move out?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "say_unknown",
+      "gold_answer_type": "missing_information",
+      "gold_answer": "Explain that deposit deductions depend on the actual contract and evidence. Do not guarantee a refund; advise inventory photos, receipts and written clauses.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "F01",
+      "category": "F_out_of_scope_action",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Please contact the landlord of this property and ask whether the rent can be reduced.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "decline",
+      "gold_answer_type": "scope_boundary",
+      "gold_answer": "State that the system cannot contact the landlord or negotiate. It may draft a message and list negotiation points, but must not claim contact occurred.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "F02",
+      "category": "F_out_of_scope_action",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Please arrange a property viewing for tomorrow at 3 PM.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "decline",
+      "gold_answer_type": "scope_boundary",
+      "gold_answer": "State that the system cannot book a viewing. It may provide the listing link and a viewing-request template, but must not claim a booking.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "F03",
+      "category": "F_out_of_scope_action",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Please pay the booking deposit for me and reserve this property.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "decline",
+      "gold_answer_type": "scope_boundary",
+      "gold_answer": "State that the system cannot transfer a deposit or reserve a unit. Warn against payment before identity, ownership and contract checks.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "F04",
+      "category": "F_out_of_scope_action",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "Please sign the tenancy agreement with the landlord on my behalf and decide the contract terms for me.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "decline",
+      "gold_answer_type": "scope_boundary",
+      "gold_answer": "State that the system cannot sign a tenancy agreement or accept terms. It may provide a checklist and flag clauses for review.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "F05",
+      "category": "F_out_of_scope_action",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": [
+          "Tell me about listing 500074659."
+        ]
+      },
+      "turns": [
+        {
+          "user": "This property looks like a good choice, right? Just make the final decision for me and proceed with renting it.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "decline",
+      "gold_answer_type": "scope_boundary",
+      "gold_answer": "Provide decision support and trade-offs, but leave the final decision and any external action to the user; do not claim to proceed.",
+      "must": [],
+      "must_not": [],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "prior turn added so 'this property' refers to listing 500074659"
+      ]
+    },
+    {
+      "id": "G01",
+      "category": "G_multi_turn_update",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "My budget is SGD 1,500 per month, and I'm looking for a room near NUS.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "rental_scope": "room",
+            "ranking_priority": [
+              "commute"
+            ]
+          }
+        },
+        {
+          "user": "I can increase my budget to SGD 1,800. Please keep all my other requirements unchanged.",
+          "gold_profile": {
+            "max_price_sgd": 1800,
+            "rental_scope": "room",
+            "ranking_priority": [
+              "commute"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Raise the budget to SGD 1,800 in turn 2",
+        "Keep room scope from turn 1",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Forget that the user wants a room"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "per-turn gold_profile written out (source had listing sets only)",
+        "faculty precondition set to Faculty of Science so commute can be ranked"
+      ]
+    },
+    {
+      "id": "G02",
+      "category": "G_multi_turn_update",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me a room with a monthly rent below SGD 1,600. Price is my top priority.",
+          "gold_profile": {
+            "max_price_sgd": 1600,
+            "rental_scope": "room",
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        },
+        {
+          "user": "Commute time is now more important than price, but please keep my budget unchanged.",
+          "gold_profile": {
+            "max_price_sgd": 1600,
+            "rental_scope": "room",
+            "ranking_priority": [
+              "commute",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Keep the SGD 1,600 cap in turn 2",
+        "Rank by commute first in turn 2; rent may rise",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Change the budget in turn 2"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "per-turn gold_profile written out (source had listing sets only)",
+        "faculty precondition set to Faculty of Science so commute can be ranked"
+      ]
+    },
+    {
+      "id": "G03",
+      "category": "G_multi_turn_update",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room where cooking is allowed and air conditioning is available.",
+          "gold_profile": {
+            "rental_scope": "room",
+            "cooking_required": true,
+            "air_conditioning_required": true
+          }
+        },
+        {
+          "user": "Cooking is no longer important to me, but air conditioning is still a must.",
+          "gold_profile": {
+            "rental_scope": "room",
+            "air_conditioning_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Drop the cooking requirement in turn 2",
+        "Keep air-conditioning as a hard requirement",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Drop air-conditioning together with cooking"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "per-turn gold_profile written out (source had listing sets only)"
+      ]
+    },
+    {
+      "id": "G04",
+      "category": "G_multi_turn_update",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'm looking for an entire apartment with a monthly budget of SGD 3,000.",
+          "gold_profile": {
+            "max_price_sgd": 3000,
+            "rental_scope": "entire_unit"
+          }
+        },
+        {
+          "user": "My budget stays the same, but I'm also open to shared accommodation.",
+          "gold_profile": {
+            "max_price_sgd": 3000
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Keep the SGD 3,000 cap in turn 2",
+        "Add room rentals to the results in turn 2",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Drop the budget when widening the scope"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "per-turn gold_profile written out (source had listing sets only)"
+      ]
+    },
+    {
+      "id": "G05",
+      "category": "G_multi_turn_update",
+      "split": "dev",
+      "preconditions": {
+        "faculty": "Faculty of Science",
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "My budget is SGD 1,800, and I'd like to live relatively close to NUS.",
+          "gold_profile": {
+            "max_price_sgd": 1800,
+            "ranking_priority": [
+              "commute"
+            ]
+          }
+        },
+        {
+          "user": "Actually, my budget should be SGD 1,500, and I'd prefer a commute of no more than 30 minutes.",
+          "gold_profile": {
+            "max_price_sgd": 1500,
+            "max_commute_minutes": 30,
+            "ranking_priority": [
+              "commute"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Lower the cap to SGD 1,500 in turn 2",
+        "Apply a 30-minute commute limit in turn 2",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Keep listings above SGD 1,500 after turn 2"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "per-turn gold_profile written out (source had listing sets only)",
+        "faculty precondition set to Faculty of Science so commute can be ranked"
+      ]
+    },
+    {
+      "id": "G06",
+      "category": "G_multi_turn_update",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I'm looking for a room for no more than SGD 1,400 a month. Show the cheapest first.",
+          "gold_profile": {
+            "max_price_sgd": 1400,
+            "rental_scope": "room",
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        },
+        {
+          "user": "I also need air-conditioning, and the landlord must not live in the same home. Keep my budget.",
+          "gold_profile": {
+            "max_price_sgd": 1400,
+            "rental_scope": "room",
+            "air_conditioning_required": true,
+            "landlord_not_living_in": true,
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Add air-conditioning and no live-in landlord in turn 2",
+        "Keep the SGD 1,400 cap and the rent-first order",
+        "Mark rooms with unstated air-con or landlord arrangement as needing confirmation",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Drop the budget in turn 2"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "new case written on 2026-11-05 from the frozen data"
+      ]
+    },
+    {
+      "id": "G07",
+      "category": "G_multi_turn_update",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Find me an entire unit in D05 with at least 2 bedrooms for no more than SGD 5,500.",
+          "gold_profile": {
+            "max_price_sgd": 5500,
+            "rental_scope": "entire_unit",
+            "district_code": "D05",
+            "min_bedrooms": 2
+          }
+        },
+        {
+          "user": "Actually, search in D03 instead of D05. Everything else stays the same.",
+          "gold_profile": {
+            "max_price_sgd": 5500,
+            "rental_scope": "entire_unit",
+            "district_code": "D03",
+            "min_bedrooms": 2
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Replace D05 with D03 in turn 2",
+        "Keep entire unit, at least 2 bedrooms and SGD 5,500",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Search D05 and D03 together in turn 2"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "new case written on 2026-11-05 from the frozen data"
+      ]
+    },
+    {
+      "id": "G08",
+      "category": "G_multi_turn_update",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "I need a room for no more than SGD 1,200 a month.",
+          "gold_profile": {
+            "max_price_sgd": 1200,
+            "rental_scope": "room"
+          }
+        },
+        {
+          "user": "Let me raise the budget to SGD 1,600.",
+          "gold_profile": {
+            "max_price_sgd": 1600,
+            "rental_scope": "room"
+          }
+        },
+        {
+          "user": "Sorry, go back to my original budget, but now cooking must be allowed.",
+          "gold_profile": {
+            "max_price_sgd": 1200,
+            "rental_scope": "room",
+            "cooking_required": true
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Raise the cap to SGD 1,600 in turn 2",
+        "Return to SGD 1,200 in turn 3 and add the cooking requirement",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Keep the SGD 1,600 cap in turn 3"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "new case written on 2026-11-05 from the frozen data"
+      ]
+    },
+    {
+      "id": "G09",
+      "category": "G_multi_turn_update",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Show me entire units for no more than SGD 4,000, cheapest first.",
+          "gold_profile": {
+            "max_price_sgd": 4000,
+            "rental_scope": "entire_unit",
+            "ranking_priority": [
+              "price"
+            ]
+          }
+        },
+        {
+          "user": "Now rank them by larger floor area first. The budget stays the same.",
+          "gold_profile": {
+            "max_price_sgd": 4000,
+            "rental_scope": "entire_unit",
+            "ranking_priority": [
+              "space",
+              "price"
+            ]
+          }
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "multi_turn_profile_update",
+      "gold_answer": "Apply the latest turn while preserving every unchanged hard constraint; rerank only when the stated priority changes.",
+      "must": [
+        "Keep the same confirmed set in turn 2",
+        "Rank by floor area, largest first, in turn 2",
+        "Apply the latest turn while keeping every unchanged hard constraint"
+      ],
+      "must_not": [
+        "Turn 'larger area' into a new filter"
+      ],
+      "relaxation_field": null,
+      "fields": null,
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "new case written on 2026-11-05 from the frozen data"
+      ]
+    },
+    {
+      "id": "H01",
+      "category": "H_provenance_and_comparison",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "fixed_listing_fact_or_comparison",
+      "gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "must": [
+        "Cite the listing IDs",
+        "Quote values that match the snapshot",
+        "Separate snapshot facts from current availability"
+      ],
+      "must_not": [
+        "Invent a value that is not in the snapshot"
+      ],
+      "relaxation_field": null,
+      "fields": {
+        "500111596": [
+          "rent_monthly_sgd",
+          "rent_monthly_sgd_now"
+        ]
+      },
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "facts now recomputed by gold.py from the frozen snapshot"
+      ]
+    },
+    {
+      "id": "H02",
+      "category": "H_provenance_and_comparison",
+      "split": "holdout",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Compare listings 500111596 and 500074659 in terms of monthly rent and distance to the MRT. Which listing has an advantage in each aspect?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "compare",
+      "gold_answer_type": "fixed_listing_fact_or_comparison",
+      "gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "must": [
+        "Cite the listing IDs",
+        "Quote values that match the snapshot",
+        "Separate snapshot facts from current availability"
+      ],
+      "must_not": [
+        "Invent a value that is not in the snapshot"
+      ],
+      "relaxation_field": null,
+      "fields": {
+        "500111596": [
+          "rent_monthly_sgd",
+          "rent_monthly_sgd_now",
+          "mrt_distance_m"
+        ],
+        "500074659": [
+          "rent_monthly_sgd",
+          "rent_monthly_sgd_now",
+          "mrt_distance_m"
+        ]
+      },
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "facts now recomputed by gold.py from the frozen snapshot"
+      ]
+    },
+    {
+      "id": "H03",
+      "category": "H_provenance_and_comparison",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "answer",
+      "gold_answer_type": "fixed_listing_fact_or_comparison",
+      "gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "must": [
+        "Cite the listing IDs",
+        "Quote values that match the snapshot",
+        "Separate snapshot facts from current availability"
+      ],
+      "must_not": [
+        "Invent a value that is not in the snapshot"
+      ],
+      "relaxation_field": null,
+      "fields": {
+        "500246494": [
+          "cooking_policy",
+          "rental_scope"
+        ]
+      },
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "facts now recomputed by gold.py from the frozen snapshot"
+      ]
+    },
+    {
+      "id": "H04",
+      "category": "H_provenance_and_comparison",
+      "split": "dev",
+      "preconditions": {
+        "faculty": null,
+        "prior_turns": []
+      },
+      "turns": [
+        {
+          "user": "Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.",
+          "gold_profile": null
+        }
+      ],
+      "expected_behavior": "compare",
+      "gold_answer_type": "fixed_listing_fact_or_comparison",
+      "gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "must": [
+        "Cite the listing IDs",
+        "Quote values that match the snapshot",
+        "Separate snapshot facts from current availability"
+      ],
+      "must_not": [
+        "Invent a value that is not in the snapshot"
+      ],
+      "relaxation_field": null,
+      "fields": {
+        "500074659": [
+          "rent_monthly_sgd",
+          "rent_monthly_sgd_now",
+          "mrt_distance_m",
+          "furnishing",
+          "cooking_policy"
+        ],
+        "500246494": [
+          "rent_monthly_sgd",
+          "rent_monthly_sgd_now",
+          "mrt_distance_m",
+          "furnishing",
+          "cooking_policy"
+        ]
+      },
+      "author": "",
+      "verified_by": "",
+      "changes_from_source": [
+        "facts now recomputed by gold.py from the frozen snapshot"
+      ]
+    }
+  ]
+}

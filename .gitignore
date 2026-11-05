@@ -225,6 +225,9 @@ __marimo__/
 commute_faculty.csv.*
 *.pdf
 *.xlsx
+# Evaluation set, gold answers and the received source files are shared through Git.
+!evaluation/**/*.csv
+!evaluation/source/*.xlsx
 docs/*.visual-check.*
 
 # Local Python and API configuration

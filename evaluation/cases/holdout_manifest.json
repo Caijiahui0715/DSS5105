@@ -1,0 +1,30 @@
+{
+  "sealed_on": "2026-11-05",
+  "split_rule": "fixed list: cases never run on the agent before the freeze (build_cases.HOLDOUT)",
+  "holdout_ids": [
+    "A11",
+    "A12",
+    "A13",
+    "A14",
+    "B07",
+    "B08",
+    "C07",
+    "C08",
+    "D01",
+    "D04",
+    "E01",
+    "E02",
+    "F02",
+    "F05",
+    "G06",
+    "G07",
+    "G08",
+    "G09",
+    "H01",
+    "H02"
+  ],
+  "holdout_count": 20,
+  "dev_count": 39,
+  "holdout_sha256": "9b8340f739251bc8c83a44801f4006ee6ab138b1d16c4cc83258bd61b61b422a",
+  "hash_method": "sha256 of compact sorted-key JSON of hashed_view() for holdout cases sorted by id"
+}

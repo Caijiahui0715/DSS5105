@@ -1,0 +1,19 @@
+﻿Case ID,Label,Listing ID,Sampling source,Gold rank among confirmed,Confirmed total,Order fully set by user
+A08,A,19433767,gold_top3,1,62,yes
+A08,B,25172442,random_confirmed,57,62,yes
+A08,C,500053744,cheapest_remaining,59,62,yes
+A08,D,500285969,gold_top3,2,62,yes
+A08,E,25604246,gold_top3,3,62,yes
+A09,A,500029855,gold_top3,2,45,yes
+A09,B,24995389,gold_top3,3,45,yes
+A09,C,25420249,cheapest_remaining,42,45,yes
+A09,D,24203641,gold_top3,1,45,yes
+A09,E,24417854,random_confirmed,13,45,yes
+B01,A,60151578,gold_top3,1,3,no
+B01,B,24203641,gold_top3,2,3,no
+B01,C,500039510,gold_top3,3,3,no
+G04,A,500250282,gold_top3,3,125,no
+G04,B,25558520,cheapest_remaining,4,125,no
+G04,C,500291446,random_confirmed,45,125,no
+G04,D,500029855,gold_top3,1,125,no
+G04,E,25420249,gold_top3,2,125,no

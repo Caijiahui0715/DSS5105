@@ -233,7 +233,7 @@ def diagnose_conditions(
 ) -> list[dict]:
     """For each active condition, report what dropping only that condition yields.
 
-    Counts are database matches before URL checks. known_fail and unknown split
+    Counts are database matches. known_fail and unknown split
     the listings that meet every other condition by their status on this one.
     """
     preferences = resolve_search_location(preferences)
@@ -440,13 +440,30 @@ def _stated(value, test) -> str:
     return _check(None if value == "unknown" else value, test)
 
 
+# Room types that are a room in a shared home; a studio is a whole unit.
+_ROOM_TYPES = {"common_room", "master_room", "shared_room", "room_unspecified"}
+
+
 def occupant_rules(current: SearchPreferences, changes: dict) -> tuple[dict, dict | None]:
     """Further changes and the note to show when the number of people or the rental type changes.
 
     The system cannot find several rooms in one home, so two or more people search whole units
     with a bedroom each, unless two chose to rent one room together. Bedrooms equal to the
     earlier number of people count as set from it and follow it, or go when it drops below two.
+    A bedroom count is the whole home's, so no room in a shared home meets it: a search for rooms
+    drops it, whichever criterion changed, and the note says so.
     """
+    extra, note = _people_rules(current, changes)
+    after = {**current.model_dump(), **changes, **extra}
+    room_type = str(after["room_type"] or "").strip().casefold().replace(" ", "_")
+    if (after["rental_scope"] == "room" or room_type in _ROOM_TYPES) and after["min_bedrooms"] is not None:
+        extra = {**extra, "min_bedrooms": None}
+        note = {**(note or {"kind": "rooms"}), "dropped_bedrooms": after["min_bedrooms"]}
+    return extra, note
+
+
+def _people_rules(current: SearchPreferences, changes: dict) -> tuple[dict, dict | None]:
+    """occupant_rules for the number of people and the rental type."""
     if not {"occupant_count", "rental_scope"} & changes.keys():
         return {}, None
     before = current.occupant_count

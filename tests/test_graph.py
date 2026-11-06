@@ -1076,7 +1076,7 @@ class WorkflowParityTest(unittest.TestCase):
         self.assertIn("结果主要被以下条件卡住", draft)
         self.assertIn("放开「做饭政策」", draft)
         # Listings to confirm are shown, so it does not say that nothing would help.
-        self.assertNotIn("单项小幅放宽后也暂未找到", draft)
+        self.assertNotIn("单项小幅放宽预算、MRT、通勤或租期后也没有找到", draft)
 
     def test_strict_matches_come_first_and_listings_to_confirm_fill_the_rest(self):
         # In D05 only S001 says the landlord does not live there; four more do not say.

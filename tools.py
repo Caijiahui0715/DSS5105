@@ -655,6 +655,13 @@ def rental_area_sqm(listing: Listing) -> float | None:
     return area if scope and listing.get("area_scope") == scope and isinstance(area, (int, float)) and area > 0 else None
 
 
+def ranking_weights(preferences: SearchPreferences) -> dict[str, float]:
+    """Each ranking factor's share of the weight, as rank_listings() weighs a listing with data for all."""
+    weights = _factor_weights(_ranking_factors(preferences), preferences.ranking_priority)
+    total = sum(weights.values())
+    return {name: round(weight / total, 2) for name, weight in weights.items()}
+
+
 def _ranking_factors(preferences: SearchPreferences) -> list[str]:
     priorities = preferences.ranking_priority
     asked = {

@@ -1,3 +1,4 @@
+import json
 import re
 from collections import Counter
 from datetime import date
@@ -946,14 +947,46 @@ TOOL_LABELS = {
 
 
 def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[str]:
-    """One reply's processing steps, from its trace, in words a renter can follow."""
+    """One reply's processing steps, from its trace, in words a renter can follow. A step's first
+    line is the step; any further lines are its details, such as what a search found."""
     steps = []
+    tool_step = None
     for line in trace:
         kind, _, rest = line.partition(" ")
         if kind == "[tool]":
-            label = _text(language, *TOOL_LABELS.get(rest.split("(", 1)[0], (rest, rest)))
-            failed = " -> error: " in rest
-            steps.append(label + (_text(language, "：参数有误，已把原因告诉模型", " - failed; the reason went back to the model") if failed else ""))
+            name, args, failed = _tool_call(rest)
+            label = _text(language, *TOOL_LABELS.get(name, (name, name)))
+            if failed:
+                steps.append(label + _text(language, "：参数有误，已把原因告诉模型", " - failed; the reason went back to the model"))
+            else:
+                steps.append("\n".join([label, *_call_details(name, args, language)]))
+            tool_step = len(steps) - 1
+        elif kind == "[facts]":
+            details = _fact_details(json.loads(rest), language)
+            if tool_step is None:
+                steps.extend(details)
+            else:
+                steps[tool_step] += "".join(f"\n{detail}" for detail in details)
+        elif kind == "[check]":
+            checked = json.loads(rest)
+            if checked.get("drafts"):
+                steps.append(_text(language, "回复直接用了系统根据工具结果写好的内容", "The reply is the system's own text, built from the tool results"))
+            elif checked["figures"] or checked["listing_ids"]:
+                steps.append(_text(
+                    language,
+                    f"回复已通过事实核对：核对了 {checked['figures']} 个数字、{checked['listing_ids']} 个房源编号",
+                    f"The reply passed the fact check: {checked['figures']} figure{'' if checked['figures'] == 1 else 's'} and "
+                    f"{checked['listing_ids']} listing ID{'' if checked['listing_ids'] == 1 else 's'} checked",
+                ))
+            else:
+                steps.append(_text(language, "回复已通过事实核对：里面没有需要核对的数字或房源编号", "The reply passed the fact check: it states no figures or listing IDs to check"))
+        elif kind == "[routes]" and (match := re.fullmatch(r"(.+): (\d+) worked out, (\d+) failed", rest)):
+            label, done, failed = match[1], int(match[2]), int(match[3])
+            steps.append(_text(
+                language,
+                f"计算到「{label}」的通勤：算好 {done} 套" + (f"，{failed} 套暂时算不出" if failed else ""),
+                f"Worked out commutes to \"{label}\": {done} listings" + (f", {failed} not yet" if failed else ""),
+            ))
         elif kind == "[link-dates]":
             # "S001 2026-11-02; S004 2026-10-20 stale; S007 unchecked"
             entries = [entry.split() for entry in rest.split("; ")]
@@ -986,12 +1019,13 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
                 if match else line
             )
         elif kind == "[guard]":
-            problems = rest.removeprefix("reply rejected (").rsplit(") -> ", 1)
+            problems = rest.removeprefix("reply rejected (").rsplit(") -> ", 1)[0].split("; ")
+            reasons = ("；" if language == "zh" else "; ").join(_guard_problem(problem, language) for problem in problems)
             retried = rest.endswith("-> retry")
             steps.append(_text(
                 language,
-                f"回复未通过事实核对（{problems[0]}），" + ("已让模型重写" if retried else "改用系统模板回复"),
-                f"The reply failed the fact check ({problems[0]}); " + ("the model rewrote it" if retried else "the system template was used"),
+                f"回复未通过事实核对（{reasons}），" + ("已让模型重写" if retried else "改用系统模板回复"),
+                f"The reply failed the fact check ({reasons}); " + ("the model rewrote it" if retried else "the system template was used"),
             ))
         elif kind == "[resume]" and rest.startswith("dropped delisted shortlist entries: "):
             ids = rest.split(": ", 1)[1]
@@ -1006,6 +1040,165 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
         else:
             steps.append(line)
     return steps
+
+# What the reply check found wrong (graph._reply_problems), in the reply's language.
+_GUARD_PROBLEMS = (
+    ("it names listings that no tool returned: ", "提到了工具结果里没有的房源：", "it named listings no tool returned: "),
+    ("it states figures that no tool returned: ", "写了工具结果里没有的数字：", "it stated figures no tool returned: "),
+    ("it offers an action this agent cannot take", "提出了 agent 做不到的事，比如联系房东或预约看房", "it offered something this agent cannot do, such as contacting landlords or booking viewings"),
+    ("it is not in the reply language", "没有用对话的语言回复", "it was not in the conversation's language"),
+)
+_MEMORY_ACTIONS = {
+    "save": ("存到长期资料", "saved to the long-term profile"),
+    "show": ("查看长期资料", "showed the long-term profile"),
+    "restore": ("沿用长期资料的条件", "used the long-term profile's criteria"),
+    "on": ("打开长期记忆", "turned long-term memory on"),
+    "off": ("关闭长期记忆", "turned long-term memory off"),
+    "auto_on": ("打开自动保存", "turned auto-save on"),
+    "auto_off": ("关闭自动保存", "turned auto-save off"),
+    "delete": ("删除长期资料", "deleted the long-term profile"),
+    "forget": ("忘掉你的信息", "forgot your information"),
+}
+# Why a cost estimate used the lease it did (agent.py, estimate_costs).
+_STEP_LEASE_REASONS = {
+    "yours": ("你的租期", "your lease"),
+    "listing": ("房源要求的最短租期", "the listing's shortest lease"),
+    "listing_over_yours": ("房源要求比你的租期长", "the listing asks for longer than yours"),
+    "default": ("没有设租期，按一年", "no lease set, so a year"),
+    "default_no_listing": ("没有设租期，按一年", "no lease set, so a year"),
+}
+
+
+def _guard_problem(problem: str, language: ResponseLanguage) -> str:
+    for english, zh, en in _GUARD_PROBLEMS:
+        if problem.startswith(english):
+            return _text(language, zh, en) + problem[len(english):]
+    return problem
+
+
+def _tool_call(rest: str) -> tuple[str, dict, bool]:
+    """A [tool] line's tool name, its arguments and whether it failed."""
+    call, _, error = rest.partition(" -> error: ")
+    name, _, args = call.partition("(")
+    try:
+        args = json.loads(args.removesuffix(")"))
+    except ValueError:
+        args = {}
+    return name, args if isinstance(args, dict) else {}, bool(error)
+
+
+def _ids(listing_ids: list[str], language: ResponseLanguage) -> str:
+    return ("、" if language == "zh" else ", ").join(listing_ids)
+
+
+def _call_details(name: str, args: dict, language: ResponseLanguage) -> list[str]:
+    """Details of a tool call that its arguments say all of; other tools record [facts]."""
+    if name == "get_listing_details" and args.get("listing_id"):
+        return [_text(language, f"查看了 {args['listing_id']}", f"Opened {args['listing_id']}")]
+    if name == "explain_listing" and args.get("listing_id"):
+        return [_text(language, f"解释 {args['listing_id']} 的排名", f"Explained the ranking of {args['listing_id']}")]
+    if name == "exclude_listings":
+        return [
+            *([_text(language, f"排除 {_ids(args['exclude'], language)}", f"Excluded {_ids(args['exclude'], language)}")] if args.get("exclude") else []),
+            *([_text(language, f"恢复 {_ids(args['restore'], language)}", f"Restored {_ids(args['restore'], language)}")] if args.get("restore") else []),
+        ]
+    if name == "user_memory" and args.get("action") in _MEMORY_ACTIONS:
+        return [_text(language, *_MEMORY_ACTIONS[args["action"]])]
+    if name == "faculty":
+        faculty = faculty_label(args.get("faculty"), language)
+        if args.get("action") == "set" and faculty:
+            return [_text(language, f"学院设为{faculty}", f"Faculty set to {faculty}")]
+        if args.get("action") == "commute":
+            return [_text(language, f"查看到{faculty or '你的学院'}的通勤", f"Looked up commutes to {faculty or 'your faculty'}")]
+    return []
+
+
+def _fact_details(facts: dict, language: ResponseLanguage) -> list[str]:
+    """What a tool found or did, as recorded in a [facts] line (agent._record_facts)."""
+    tool = facts.get("tool")
+    if tool == "search_listings":
+        return _search_details(facts, language)
+    if tool == "compare_listings":
+        return [
+            *([_text(language, f"比较了 {_ids(facts['compared'], language)}", f"Compared {_ids(facts['compared'], language)}")] if facts["compared"] else []),
+            *([_text(language, f"没有加入比较（不在当前数据中）：{_ids(facts['left_out'], language)}", f"Not compared (no longer in the data): {_ids(facts['left_out'], language)}")] if facts["left_out"] else []),
+        ]
+    if tool == "shortlist" and "shown" in facts:
+        return [_text(language, f"候选清单里有 {facts['shown']} 套", f"The shortlist holds {facts['shown']} listings")]
+    if tool == "shortlist":
+        return [
+            text
+            for key, zh, en in (("added", "加入", "Added"), ("removed", "移除", "Removed"), ("not_found", "没找到", "Not found"))
+            if facts.get(key)
+            for text in [_text(language, f"{zh} {_ids(facts[key], language)}", f"{en} {_ids(facts[key], language)}")]
+        ]
+    if tool == "estimate_costs":
+        lines = [
+            _text(
+                language,
+                f"{row['listing_id'] or '按月租'}：按 {row['months']} 个月计算（{_STEP_LEASE_REASONS[row['lease_reason']][0]}）",
+                f"{row['listing_id'] or 'Rent'}: worked out for {row['months']} months ({_STEP_LEASE_REASONS[row['lease_reason']][1]})",
+            )
+            for row in facts["rows"]
+        ]
+        if facts["rows"]:
+            lines.append(_text(
+                language,
+                f"押金 {facts['deposit_months']} 个月，{'经中介' if facts['uses_agent'] else '不经中介'}",
+                f"Deposit of {facts['deposit_months']} months, {'with' if facts['uses_agent'] else 'without'} an agent",
+            ))
+        return lines
+    if tool == "explore_budgets":
+        levels = [_sgd(level) if level is not None else _text(language, "不限预算", "no limit") for level in facts["levels"]]
+        return [_text(language, f"比较了 {'、'.join(levels)}", f"Compared {', '.join(levels)}")]
+    if tool == "currency" and "display" in facts:
+        currency = facts["display"]
+        return [_text(language, "只显示新币", "SGD only") if currency == "SGD" else _text(language, f"金额也用 {currency} 显示", f"Amounts also shown in {currency}")]
+    if tool == "currency":
+        source, target, day = facts["from_currency"], facts["to_currency"], facts["rate_date"]
+        if facts.get("amount"):
+            return [_text(
+                language,
+                f"{facts['amount']:,} {source} ≈ {facts['converted']:,} {target}（汇率日期 {day}）",
+                f"{facts['amount']:,} {source} ≈ {facts['converted']:,} {target} (rate of {day})",
+            )]
+        return [_text(language, f"1 {source} = {facts['rate']} {target}（汇率日期 {day}）", f"1 {source} = {facts['rate']} {target} (rate of {day})")]
+    return []
+
+
+def _search_details(facts: dict, language: ResponseLanguage) -> list[str]:
+    """The criteria a search used, what it found and how it ranked, and what kept results few."""
+    separator = "；" if language == "zh" else "; "
+    labels = PREFERENCE_LABELS[language]
+    criteria = separator.join(f"{item['label'][language]} {item['value'][language]}" for item in criteria_items(facts["criteria"], {}))
+    changed = ("、" if language == "zh" else ", ").join(labels.get(field, field) for field in facts["changed"])
+    if facts["preview"]:
+        note = _text(language, f"（预览，没有保存：{changed}）", f" (a preview, not saved: {changed})") if changed else _text(language, "（预览，没有保存）", " (a preview, not saved)")
+    else:
+        note = _text(language, f"（本轮新加或修改：{changed}）", f" (new or changed now: {changed})") if changed else ""
+    lines = [
+        _text(language, f"条件：{criteria or '还没有设条件'}{note}", f"Criteria: {criteria or 'none yet'}{note}"),
+        _text(
+            language,
+            f"结果：完全符合 {facts['strict']} 套，需确认 {facts['pending']} 套，展示了 {facts['shown']} 套",
+            f"Results: {facts['strict']} meet every condition, {facts['pending']} need confirming; {facts['shown']} shown",
+        ),
+    ]
+    if facts["weights"]:
+        weights = sorted(facts["weights"].items(), key=lambda pair: -pair[1])
+        ranking = ("、" if language == "zh" else ", ").join(f"{_FACTOR_LABELS[language].get(name, name)} {round(share * 100)}%" for name, share in weights)
+        lines.append(_text(language, f"排序：{ranking}", f"Ranked by: {ranking}"))
+    if facts["blocked"]:
+        blocked = ("、" if language == "zh" else ", ").join(
+            _text(language, f"{labels.get(row['field'], row['field'])}（去掉后有 {row['count']} 套）", f"{labels.get(row['field'], row['field'])} ({row['count']} without it)")
+            for row in facts["blocked"]
+        )
+        lines.append(_text(language, f"结果少，主要卡在：{blocked}", f"Few results, held back mainly by: {blocked}"))
+    if facts["shortlisted"]:
+        lines.append(_text(language, f"已收藏的 {facts['shortlisted']} 套没有重复列出", f"{facts['shortlisted']} shortlisted listings were not listed again"))
+    if facts["excluded"]:
+        lines.append(_text(language, f"已排除的 {facts['excluded']} 套没有列出", f"{facts['excluded']} excluded listings were left out"))
+    return lines
 
 
 def _budget_phrase(budget: dict, language: ResponseLanguage) -> str:
@@ -1377,7 +1570,7 @@ def render_rental_scope_mix(mix: dict, language: ResponseLanguage = "zh") -> str
 
 def _render_relaxations(relaxations: list[RelaxationSuggestion], language: ResponseLanguage) -> str:
     if not relaxations:
-        return _text(language, "当前没有可展示的严格匹配房源，单项小幅放宽后也暂未找到经检查可展示的候选。", "There are currently no strict matches to display, and no checked candidates could be displayed after a single small relaxation.")
+        return _text(language, "当前没有可展示的严格匹配房源，单项小幅放宽预算、MRT、通勤或租期后也没有找到房源。", "There are currently no strict matches to display, and a single small relaxation of the budget, MRT, commute or lease finds none either.")
 
     lines = [_text(language, "当前没有可展示的严格匹配房源，可以考虑以下单项放宽（原条件尚未修改）：", "There are currently no strict matches to display. You could consider these single-condition relaxations; your original criteria have not changed:")]
     for suggestion in relaxations:
@@ -1593,7 +1786,22 @@ def render_lease_minimum(months: int | None, language: ResponseLanguage = "zh") 
 
 
 def render_occupants(note: dict, language: ResponseLanguage = "zh") -> str:
-    """Shown verbatim when the number of people changed the rental type or bedrooms (decision.occupant_rules)."""
+    """Shown verbatim when the number of people or a search for rooms changed the rental type or
+    bedrooms (decision.occupant_rules)."""
+    text = _occupant_text(note, language)
+    if bedrooms := note.get("dropped_bedrooms"):
+        dropped = _text(
+            language,
+            f"合租单间不按整套房子的卧室数筛选，已去掉“至少 {bedrooms} 间卧室”。",
+            f"Rooms in a shared home are not filtered by the whole home's bedrooms, so \"at least {bedrooms} bedroom{'s' if bedrooms != 1 else ''}\" was removed.",
+        )
+        text = f"{text}{dropped}" if language == "zh" else " ".join(part for part in (text, dropped) if part)
+    return text
+
+
+def _occupant_text(note: dict, language: ResponseLanguage) -> str:
+    if note["kind"] == "rooms":
+        return ""
     if note["kind"] == "shared_room":
         return _text(
             language,

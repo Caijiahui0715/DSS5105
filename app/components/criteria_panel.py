@@ -67,7 +67,8 @@ def criteria_form(api, saved, key, submit_label, on_submit, disabled=False):
         source(b, 'rental_scope')
         # As on the sign-up form; a count saved in chat outside 1-20 stays selectable.
         counts = list(dict.fromkeys([None, *range(1, 21), requirements.min_bedrooms]))
-        bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), counts, index=counts.index(requirements.min_bedrooms), disabled=disabled,
+        bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), counts, index=counts.index(requirements.min_bedrooms),
+                               disabled=disabled or requirements.rental_scope == 'room', help=t('Whole units only: rooms in a shared home are not filtered by the whole home\'s bedrooms.', '只用于整租：合租单间不按整套房子的卧室数筛选。'),
                                format_func=lambda v: t('No minimum', '不限') if v is None else str(v))
         source(c, 'min_bedrooms')
         a, b, c = st.columns(3)
@@ -99,7 +100,7 @@ def criteria_form(api, saved, key, submit_label, on_submit, disabled=False):
         submitted = st.form_submit_button(submit_label, type='primary', disabled=disabled)
     if submitted:
         after = (
-            replace(requirements, max_budget=budget, rental_scope=scope, min_bedrooms=bedrooms, lease_months=lease),
+            replace(requirements, max_budget=budget, rental_scope=scope, min_bedrooms=None if scope == 'room' else bedrooms, lease_months=lease),
             replace(preferences, districts=[chosen] if chosen else [], mrt_distance=mrt, commute_minutes=commute, property_type=prop, **values),
         )
         st.session_state[f'{key}-revision'] = revision + 1

@@ -20,6 +20,7 @@ from exchange import CurrencyConversionError, UnknownCurrencyError
 from models import SearchPreferences
 from onemap import OneMapError
 from profiles import UserProfiles, merged
+from response import render_steps
 from sessions import STATE_MODULES
 from tools import get_listings_by_ids, rank_listings
 
@@ -429,7 +430,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("Use a listing_id from shown_listings_in_display_order", errors[1])
         self.assertTrue(errors[2].startswith("The arguments do not match the search_listings schema; fix them and call again."))
         self.assertIsNone(result["preferences"].max_price_sgd)
-        self.assertTrue(all(" -> error: " in line for line in result["trace"]))
+        self.assertTrue(all(" -> error: " in line for line in result["trace"] if line.startswith("[tool]")))
 
     def test_echoed_defaults_keep_saved_criteria_and_clear_drops_one(self):
         conversion = {"original_amount": 5000, "original_currency": "CNY", "rate_to_sgd": "0.18", "rate_date": "2026-10-02", "amount_sgd": 900}
@@ -772,7 +773,7 @@ class AgentTest(unittest.TestCase):
             if pax[card["listing_id"]]:
                 self.assertIn(f"广告标注 {pax[card['listing_id']]} pax，能住几个人要问房东", "；".join(card["unknown_condition_labels"]))
         # Relaxing the budget or the MRT walk cannot settle an unstated occupancy.
-        self.assertNotIn("单项小幅放宽后也暂未找到", result["response"])
+        self.assertNotIn("单项小幅放宽预算、MRT、通勤或租期后也没有找到", result["response"])
 
     def test_bedrooms_set_from_the_number_of_people_follow_it(self):
         turns = [
@@ -792,6 +793,18 @@ class AgentTest(unittest.TestCase):
         self.assertIn("最少卧室数 3 → 2", results[2]["response"])
         self.assertEqual(results[3]["preferences"].rental_scope, "entire_unit")
         self.assertIn("按一个人住找，按人数设的卧室数也去掉了，仍然只找整租。要不要也看看单间？", results[3]["response"])
+
+    def test_a_room_search_leaves_out_a_bedroom_count(self):
+        request = "合租单间，预算1500，至少1间卧室，不要房东同住"
+        search = {"set": {"rental_scope": "room", "max_price_sgd": 1500, "min_bedrooms": 1, "landlord_not_living_in": True}, "user_quote": request}
+        model = ScriptedModel(tool_calls(("search_listings", search)), AIMessage(content=""))
+        with closing(create_database()) as connection:
+            (result,) = run_agent(connection, model, request)
+
+        self.assertIsNone(result["preferences"].min_bedrooms)
+        self.assertTrue(result["shown_listing_ids"])
+        self.assertIn("合租单间不按整套房子的卧室数筛选，已去掉“至少 1 间卧室”。", result["response"])
+        self.assertNotIn("最少卧室数", render_steps(result["trace"])[0])
 
     def test_bold_text_ending_in_punctuation_still_renders(self):
         model = ScriptedModel(AIMessage(content="**主要取舍：**先告诉我你的预算。"))
@@ -1183,7 +1196,7 @@ class AgentTest(unittest.TestCase):
             result = graph.invoke({"message": "看看候选清单"})
 
         self.assertEqual(len(model.calls), 3)
-        self.assertEqual(len(result["trace"]), 2)
+        self.assertEqual(len([line for line in result["trace"] if line.startswith("[tool]")]), 2)
         self.assertIn("候选清单目前是空的", result["response"])
 
     def test_openai_responses_api_round_trip(self):
@@ -1371,6 +1384,52 @@ class AgentTest(unittest.TestCase):
 
         self.assertTrue(result["response"].startswith("房源详情"))
 
+    def test_processing_steps_say_what_each_tool_found(self):
+        today = date.today().isoformat()
+        search = {"set": {"max_price_sgd": 900, "district_code": "D05"}, "user_quote": "预算900 D05"}
+        model = ScriptedModel(
+            tool_calls(("search_listings", search), ("compare_listings", {"listing_ids": ["S004", "NOPE"]})),
+            AIMessage(content="S004 每月 S$850。"),
+        )
+        with closing(create_mock_database()) as connection:
+            (result,) = run_agent(connection, model, "预算900 D05，比较 S004 和 NOPE")
+
+        self.assertEqual(render_steps(result["trace"]), [
+            "搜索房源\n"
+            "条件：每月最高预算 S$900；地区 D05（本轮新加或修改：每月最高预算、地区）\n"
+            "结果：完全符合 1 套，需确认 0 套，展示了 1 套\n"
+            "排序：MRT 50%、价格 50%\n"
+            "结果少，主要卡在：每月最高预算（去掉后有 5 套）",
+            f"原链接最后检查：{today} 1 套",
+            "比较房源\n比较了 S004\n没有加入比较（不在当前数据中）：NOPE",
+            f"原链接最后检查：{today} 1 套",
+            "回复已通过事实核对：核对了 1 个数字、1 个房源编号",
+        ])
+        self.assertEqual(render_steps(result["trace"], "en")[-1], "The reply passed the fact check: 1 figure and 1 listing ID checked")
+
+    def test_processing_steps_are_in_plain_words(self):
+        trace = [
+            '[tool] get_listing_details({"listing_id": "S010"})',
+            '[tool] user_memory({"action": "save", "user_quote": "存起来"})',
+            '[tool] shortlist({"add": ["S001"]}) -> error: The arguments do not match',
+            '[tool] estimate_costs({})',
+            '[facts] {"tool": "estimate_costs", "rows": [{"listing_id": "S010", "months": 12, "lease_reason": "yours"}], "deposit_months": 2, "uses_agent": false}',
+            "[routes] 健身房: 120 worked out, 2 failed",
+            "[links] S001 active; S004 unknown (http_403)",
+            "[guard] reply rejected (it states figures that no tool returned: 400; it is not in the reply language) -> retry",
+            '[check] {"figures": 0, "listing_ids": 0}',
+        ]
+        self.assertEqual(render_steps(trace), [
+            "查看房源详情\n查看了 S010",
+            "处理长期记忆\n存到长期资料",
+            "更新候选清单：参数有误，已把原因告诉模型",
+            "计算租房费用\nS010：按 12 个月计算（你的租期）\n押金 2 个月，不经中介",
+            "计算到「健身房」的通勤：算好 120 套，2 套暂时算不出",
+            # Replies from before the backend stopped checking links itself.
+            "检查房源链接",
+            "回复未通过事实核对（写了工具结果里没有的数字：400；没有用对话的语言回复），已让模型重写",
+            "回复已通过事实核对：里面没有需要核对的数字或房源编号",
+        ])
 
 
 class CostAndLeaseTest(unittest.TestCase):

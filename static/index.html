@@ -208,8 +208,10 @@
   details.steps { margin-top: 10px; font-size: 13px; color: var(--muted); }
   details.steps summary { cursor: pointer; width: fit-content; }
   details.steps ol { list-style: none; margin: 10px 0 0; padding: 0 0 0 4px; }
-  details.steps li { position: relative; padding: 0 0 10px 22px; font-family: var(--sign); }
-  details.steps li::before {
+  details.steps ol > li { position: relative; padding: 0 0 10px 22px; font-family: var(--sign); }
+  details.steps ul { list-style: none; margin: 4px 0 0; padding: 0; font-family: var(--body); }
+  details.steps ul li { padding: 2px 0 0; }
+  details.steps ol > li::before {
     content: "";
     position: absolute;
     left: 0;
@@ -220,7 +222,7 @@
     border-radius: 50%;
     background: var(--panel);
   }
-  details.steps li:not(:last-child)::after {
+  details.steps ol > li:not(:last-child)::after {
     content: "";
     position: absolute;
     left: 5px;
@@ -490,7 +492,13 @@ function addReply(text, steps, failed = false) {
   if (steps && steps.length) {
     const details = document.createElement("details");
     details.className = "steps";
-    details.innerHTML = `<summary>How this reply was made (${steps.length} steps)</summary><ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>`;
+    // A step's first line is the step; any further lines are its details.
+    const item = (step) => {
+      const [first, ...details] = step.split("\n");
+      const more = details.length ? `<ul>${details.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul>` : "";
+      return `<li>${escapeHtml(first)}${more}</li>`;
+    };
+    details.innerHTML = `<summary>How this reply was made (${steps.length} steps)</summary><ol>${steps.map(item).join("")}</ol>`;
     turn.append(details);
   }
   $("log").append(turn);

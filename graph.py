@@ -1270,6 +1270,12 @@ def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) 
     return problems
 
 
+def _reply_claims(reply: str) -> tuple[int, int]:
+    """How many distinct figures and listing IDs a reply states: what _reply_problems checks."""
+    figures = {_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)}
+    return len(figures), len(set(_listing_ids_in(reply)))
+
+
 def _number(text: str) -> str:
     try:
         return format(Decimal(text.replace(",", "")).normalize(), "f")

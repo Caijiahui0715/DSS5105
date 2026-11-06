@@ -23,6 +23,12 @@ def as_markdown(text):
     return text.replace('$', '\\$').replace('\n', '  \n')
 
 
+def step_markdown(step):
+    """One processing step as a list item: its first line is the step, the rest its details."""
+    first, *details = step.split('\n')
+    return '\n'.join([f'- {as_markdown(first)}', *(f'    - {as_markdown(detail)}' for detail in details)])
+
+
 def send(message, agent, thread):
     """One message to the agent. The message shows at once in the thread, with the agent's progress under it."""
     conv = current()
@@ -368,7 +374,7 @@ def render(api, agent):
                             st.warning(message['clarification'])
                         if message.get('steps'):
                             with st.expander(t('How this reply was made', '这条回复是怎么得出的')):
-                                st.markdown('\n'.join(f'- {as_markdown(step)}' for step in message['steps']))
+                                st.markdown('\n'.join(step_markdown(step) for step in message['steps']))
             if live() and waiting_for_reply(conv):
                 await_reply(conv)
             else:

@@ -20,9 +20,10 @@ def criteria_from_form(skip_preferences):
     budget = st.session_state.get('register-budget')
     scope = st.session_state.get('register-scope')
     bedrooms = st.session_state.get('register-bedrooms')
-    if budget is None or budget <= 0 or scope not in ('room', 'entire_unit') or bedrooms is None:
+    # A bedroom count is the whole home's: a room needs none.
+    if budget is None or budget <= 0 or scope not in ('room', 'entire_unit') or (bedrooms is None and scope != 'room'):
         return None
-    requirements = RentalRequirements(float(budget), scope, None if bedrooms == 'No minimum' else int(bedrooms), st.session_state.get('register-lease'))
+    requirements = RentalRequirements(float(budget), scope, None if bedrooms in (None, 'No minimum') or scope == 'room' else int(bedrooms), st.session_state.get('register-lease'))
     pref = RentalPreferences(districts=[], mrt_distance=None, commute_minutes=None)
     if not skip_preferences:
         pref.districts = list(st.session_state.get('register-districts', []))
@@ -34,8 +35,8 @@ def criteria_from_form(skip_preferences):
 
 
 def hard_requirements_error():
-    return t('Complete all hard requirements: monthly budget, rental scope, and minimum bedroom choice. These cannot be skipped.',
-             '请填写全部硬性条件：月租预算、租住方式和最少卧室数。这些不能跳过。')
+    return t('Complete all hard requirements: monthly budget, rental scope, and, for an entire unit, minimum bedroom choice. These cannot be skipped.',
+             '请填写全部硬性条件：月租预算、租住方式，整租时还有最少卧室数。这些不能跳过。')
 
 
 def submit(mode, skip_preferences=False):
@@ -232,7 +233,7 @@ def criteria_fields(live):
     st.number_input(t('Maximum advertised monthly budget (SGD) *', '最高月租预算（新元）*'), min_value=1, value=None, step=100, key='register-budget', placeholder=t('Enter your monthly budget', '输入每月预算'))
     st.selectbox(t('Rental scope *', '租住方式 *'), ['room', 'entire_unit'], index=None, key='register-scope', placeholder=t('Choose a rental scope', '选择租住方式'),
                  format_func=lambda v: {'room':t('Shared accommodation / room', '合租单间'), 'entire_unit':t('Entire unit', '整租')}[v])
-    st.selectbox(t('Minimum bedrooms *', '最少卧室数 *'), ['No minimum', *range(1, 21)], index=None, key='register-bedrooms',
+    st.selectbox(t('Minimum bedrooms *', '最少卧室数 *'), ['No minimum', *range(1, 21)], index=None, key='register-bedrooms', help=t('Whole units only: rooms in a shared home are not filtered by the whole home\'s bedrooms.', '只用于整租：合租单间不按整套房子的卧室数筛选。'),
                  placeholder=t('Choose a minimum or explicitly select No minimum', '选择数量，或明确选择“不限”'), format_func=lambda v: t('No minimum', '不限') if v == 'No minimum' else str(v))
     if live:
         # Adverts state the shortest lease they accept, so a short stay rules many out.

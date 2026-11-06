@@ -10,12 +10,13 @@ from decision import (
     diagnose_conditions,
     explain_listing,
     load_source_evidence,
+    occupant_rules,
     rental_scope_mix,
     search_with_unknowns,
 )
 from mock_db import create_database, create_mock_database, set_listing
 from models import SearchPreferences
-from response import render_listing_details, render_listing_explanation
+from response import render_listing_details, render_listing_explanation, render_occupants
 from tools import get_listings_by_ids, rank_listings, search_listings
 
 
@@ -84,6 +85,19 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual([status(1, "room", pax) for pax in (None, 1, 8)], ["pass", "pass", "pass"])
         self.assertEqual([status(2, "room", pax) for pax in (None, 1, 2, 8)], ["unknown", "fail", "unknown", "unknown"])
         self.assertEqual(status(2, "unknown"), "unknown")
+
+    def test_a_search_for_rooms_drops_a_bedroom_count(self):
+        # A bedroom count is the whole home's, so no room in a shared home meets it.
+        saved = SearchPreferences(max_price_sgd=1500, rental_scope="room", min_bedrooms=1)
+        extra, note = occupant_rules(saved, {"landlord_not_living_in": True})
+        self.assertEqual(extra, {"min_bedrooms": None})
+        self.assertEqual(render_occupants(note), "合租单间不按整套房子的卧室数筛选，已去掉“至少 1 间卧室”。")
+        self.assertEqual(occupant_rules(SearchPreferences(min_bedrooms=2), {"rental_scope": "room"})[0], {"min_bedrooms": None})
+        self.assertEqual(occupant_rules(SearchPreferences(rental_scope="room"), {"min_bedrooms": 2})[0], {"min_bedrooms": None})
+        self.assertEqual(occupant_rules(SearchPreferences(room_type="common_room", min_bedrooms=1), {})[0], {"min_bedrooms": None})
+        # A studio is a whole unit, and so are the homes several people are searched for.
+        self.assertEqual(occupant_rules(SearchPreferences(room_type="studio", min_bedrooms=1), {}), ({}, None))
+        self.assertEqual(occupant_rules(SearchPreferences(rental_scope="room"), {"occupant_count": 3})[0], {"rental_scope": "entire_unit", "min_bedrooms": 3})
 
     def test_occupant_matches_are_exactly_the_sql_search(self):
         with closing(create_database()) as connection:

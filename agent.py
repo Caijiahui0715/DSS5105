@@ -55,6 +55,7 @@ from graph import (
     _REFINEMENT_LABELS,
     _has_search_criteria,
     _open_preferences,
+    _reply_claims,
     _reply_problems,
     _response_language,
     _search_exclusions,
@@ -118,6 +119,7 @@ from tools import (
     mrt_distance_m,
     own_commute_needed,
     rank_listings,
+    ranking_weights,
     location_distance_m,
     rent_percentile_sgd,
     resolve_search_location,
@@ -843,6 +845,29 @@ def build_agent(
         if preferences.move_in_date:
             parts.append(_text(work, *_MOVE_IN_NOTE))
         work["drafts"].append("\n\n".join(part for part in parts if part))
+        excluded_matches = 0
+        if work["excluded_listing_ids"]:
+            unexcluded, _ = search_with_unknowns(connection, preferences)
+            excluded_matches = len({listing["listing_id"] for listing in unexcluded} & set(work["excluded_listing_ids"]))
+        _record_facts(
+            work,
+            "search_listings",
+            criteria=preferences.model_dump(mode="json", exclude_defaults=True),
+            changed=[field for field in SearchPreferences.model_fields if field in changes],
+            preview=preview,
+            strict=len(strict),
+            pending=len(pending),
+            shown=len(shown) + len(pending_shown),
+            weights=ranking_weights(preferences) if shown or pending_shown else {},
+            # Fewer strict matches than a page: what dropping each condition would give.
+            blocked=sorted(
+                ({"field": row["condition"], "count": row["database_matches_without_it"]} for row in context
+                 if row["database_matches_without_it"] > len(strict)),
+                key=lambda row: -row["count"],
+            )[:2] if len(strict) < 3 else [],
+            shortlisted=len(shortlisted_matches),
+            excluded=excluded_matches,
+        )
 
         observation = {
             "preview": preview,
@@ -896,6 +921,7 @@ def build_agent(
         base = rows[0] if saved is None else next(row for row in rows if row["max_price_sgd"] == saved)
         grows = rows[-1]["strict_matches"]["count"] > base["strict_matches"]["count"]
         work["drafts"].append(render_budget_ladder(rows, saved, grows, work["response_language"]))
+        _record_facts(work, "explore_budgets", levels=[row["max_price_sgd"] for row in rows])
         return {
             "saved_budget_sgd": saved,
             "strict_matches_grow_with_budget": grows,
@@ -950,6 +976,7 @@ def build_agent(
         # In the order the user chose; a listing no longer in the data is left out.
         items = [by_id[listing_id] for listing_id in wanted if listing_id in by_id]
         left_out = {listing_id: "missing" for listing_id in wanted if listing_id not in by_id}
+        _record_facts(work, "compare_listings", compared=[item["listing"]["listing_id"] for item in items], left_out=list(left_out))
         if len(items) < 2 and not left_out:
             raise ToolError(
                 "At least two listings are needed; the shortlist may have fewer. Pass two or three "
@@ -1025,6 +1052,7 @@ def build_agent(
                     f"Shortlist updated: added {', '.join(found) or 'none'}; removed {', '.join(removed) or 'none'}; not found {', '.join(not_found) or 'none'}. Current shortlist: {', '.join(saved) or 'empty'}.",
                 )
             )
+            _record_facts(work, "shortlist", added=found, removed=removed, not_found=not_found)
             return {"added": found, "removed": removed, "not_found": not_found, "shortlist": saved}
 
         listings = get_listings_by_ids(connection, saved)
@@ -1034,6 +1062,7 @@ def build_agent(
         }
         ranked = [by_id[listing_id] for listing_id in saved if listing_id in by_id]
         work["shown_listing_ids"] = [item["listing"]["listing_id"] for item in ranked]
+        _record_facts(work, "shortlist", shown=len(ranked))
         work["drafts"].append(
             render_response(
                 ranked,
@@ -1314,6 +1343,13 @@ def build_agent(
                 "in_your_currency": rate and {key: _in_currency(costs[key], rate) for key in totals},
             })
         work["notes"].append(render_costs(rows, language, conversion))
+        _record_facts(
+            work,
+            "estimate_costs",
+            rows=[{"listing_id": row["listing_id"], "months": row["costs"]["lease_months"], "lease_reason": row["lease_reason"]} for row in rows],
+            deposit_months=rows[0]["costs"]["deposit_months"] if rows else None,
+            uses_agent=bool(assumptions.get("uses_agent")),
+        )
         work["drafts"].append(_text(work, "费用明细见上。", "The cost breakdown is above."))
         if len(rows) == 1 and rows[0]["listing_id"]:
             work["viewed_listing_id"] = rows[0]["listing_id"]
@@ -1362,6 +1398,7 @@ def build_agent(
                     pass  # Kept: amounts are shown in it once the service answers again.
                 work["display_currency"] = target
             work["notes"].append(render_display_currency(work["display_currency"], language))
+            _record_facts(work, "currency", display=work["display_currency"] or "SGD")
             work["drafts"].append(_text(work, "显示币种已经设好。", "The display currency is set."))
             return {"display_currency": work["display_currency"] or "SGD only"}
         try:
@@ -1376,6 +1413,7 @@ def build_agent(
             converted = (Decimal(str(args.amount)) * value).quantize(Decimal("0.01"), ROUND_HALF_UP)
             result.update({"amount": whole(args.amount), "converted": whole(float(converted))})
         work["drafts"].append(render_currency_conversion(result, language))
+        _record_facts(work, "currency", **result)
         return result
 
     tools = {
@@ -1622,6 +1660,11 @@ def build_agent(
             return {"messages": [RemoveMessage(id=last.id), SystemMessage(content=feedback)], "trace": trace}
         if problems:
             trace.append(f"[guard] reply rejected ({'; '.join(problems)}) -> fallback")
+        elif reply.strip():
+            figures, listing_ids = _reply_claims(reply)
+            trace.append(f"[check] {json.dumps({'figures': figures, 'listing_ids': listing_ids})}")
+        else:
+            trace.append('[check] {"drafts": true}')
         footers = list(state["footers"])
         if problems or not reply.strip():
             # Drafts already note each link to check in their data notes.
@@ -1721,6 +1764,11 @@ def destination_changes(work, current: SearchPreferences, given: dict, changes: 
         )
     if not keep_limit:
         changes["max_other_commute_minutes"] = None
+
+
+def _record_facts(work: dict, tool: str, **facts) -> None:
+    """What a tool found or did, for the reply's processing steps (response.render_steps)."""
+    work["trace"].append(f"[facts] {json.dumps({'tool': tool, **facts}, ensure_ascii=False, default=str)}")
 
 
 def _progress(zh: str, en: str) -> None:

@@ -89,7 +89,11 @@ class ServerTest(unittest.TestCase):
         self.assertIn("已更新本次对话的条件：每月最高预算 不限 → S$1,300", reply["text"])
         self.assertNotIn("长期资料吗", reply["text"])
         self.assertEqual(reply["sources"]["max_price_sgd"]["quote"], "预算1300")
-        self.assertEqual(reply["steps"][0], "搜索房源")
+        # A step's first line is the step; the lines after it say what it found.
+        search, *_, checked = reply["steps"]
+        self.assertEqual(search.split("\n")[:2], ["搜索房源", "条件：每月最高预算 S$1,300（本轮新加或修改：每月最高预算）"])
+        self.assertIn("\n结果：完全符合", search)
+        self.assertEqual(checked, "回复直接用了系统根据工具结果写好的内容")
         # The listings the search showed, for the frontend's cards, in display order.
         shown = reply["recommendations"]["listings"]
         self.assertFalse(reply["recommendations"]["preview"])

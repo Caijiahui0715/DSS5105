@@ -190,6 +190,7 @@ def render_demo(api):
         bedroom_options = ['No minimum', *range(1, 21)]
         bedrooms = c.selectbox(t('Minimum bedrooms', '最少卧室数'), bedroom_options,
                               index=bedroom_options.index(req.min_bedrooms or 'No minimum'),
+                              disabled=req.rental_scope == 'room', help=t('Whole units only: rooms in a shared home are not filtered by the whole home\'s bedrooms.', '只用于整租：合租单间不按整套房子的卧室数筛选。'),
                               format_func=lambda v: t('No minimum', '不限') if v == 'No minimum' else str(v))
         st.subheader(t('Soft preferences', '偏好'))
         districts = st.multiselect(t('Preferred districts', '想住的区'),district_codes,default=pref.districts,
@@ -206,7 +207,7 @@ def render_demo(api):
         submitted = save.form_submit_button(t('Save profile', '保存'),type='primary')
         canceled = cancel.form_submit_button(t('Cancel changes', '取消修改'))
     if submitted:
-        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=None if bedrooms == 'No minimum' else int(bedrooms))
+        new_req = replace(req,max_budget=float(budget),rental_scope=None if scope=='No requirement' else scope,min_bedrooms=None if bedrooms == 'No minimum' or scope == 'room' else int(bedrooms))
         new_pref = replace(pref,districts=districts,mrt_distance=int(mrt) if mrt is not None else None,commute_minutes=int(commute) if commute is not None else None,property_type=property_type,**values)
         if not name.strip() or '@' not in email:
             st.error(t('Provide your name and a valid email.', '请填写姓名和有效邮箱。'))

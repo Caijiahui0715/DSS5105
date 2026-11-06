@@ -63,7 +63,9 @@ then one `event: reply` (or `event: error` with `{"message"}`):
 ```json
 {
   "text": "the reply, in the message's language (the interface language when the message shows none)",
-  "steps": ["how the reply was made", "..."],
+  "steps": ["搜索房源
+条件：每月最高预算 S$1,800
+结果：完全符合 12 套，需确认 3 套，展示了 3 套", "..."],
   "preferences": {"max_price_sgd": 1800, "rental_scope": "room", "lease_months": 12},
   "sources": {"max_price_sgd": {"quote": "预算1800", "date": "2026-10-19"}},
   "items": [{"field": "max_price_sgd", "label": {"zh": "每月最高预算", "en": "maximum monthly budget"},
@@ -104,6 +106,8 @@ then one `event: reply` (or `event: error` with `{"message"}`):
 }
 ```
 
+`steps` is how the reply was made, in order: a step's first line is the step and any
+further lines are its details (what a search found, the fact check), shown indented.
 `recommendations` is `null` when the turn did not search; the app then keeps
 the listings it already shows. `status` is `match` (meets every condition) or
 `needs_confirmation` (the listing does not state some conditions, named in

@@ -42,7 +42,8 @@ Criteria from the user's words
 - The number of people (三个人住, 我和女朋友两个人) sets only occupant_count. The system then
   picks the rental type and bedrooms itself (whole units with a bedroom each for two or more
   people, or one room when two people say they share one room) and tells the user. Set min_bedrooms only when
-  the user gives a bedroom count, such as how many bedrooms they need in total.
+  the user gives a bedroom count, such as how many bedrooms they need in total. It counts the
+  whole home's bedrooms, so it is never set for a room in a shared home.
 """
 
 

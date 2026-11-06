@@ -122,17 +122,32 @@ can perform: search, refine conditions, show details, shortlist, or compare. Ret
 only the user-facing reply.
 """
 
+# Within one clause, so "我可以帮你估算费用，但不能帮你付定金" declines rather than offers. Paying,
+# signing and bargaining count only when done for the user: what the user would pay is a cost estimate.
 _UNSUPPORTED_ACTION_OFFER = re.compile(
-    r"(?:需要我|要我|我可以|我能|我来|让我).*?"
+    r"(?:需要我|要我|我可以|我能|我来|让我)(?:(?!不能|无法|不会|不可以|但)[^，,。；！？\n])*?"
     r"(?:联系.{0,8}(?:房东|发布方)|"
     r"(?:确认|核实).{0,24}(?:入住|空房|可租|档期)|"
-    r"预约.{0,8}(?:看房|房源)|(?:预订|预定|保留).{0,8}(?:房源|房间))"
+    r"预约.{0,8}(?:看房|房源)|(?:预订|预定|保留).{0,8}(?:房源|房间)|"
+    r"(?:替你|帮你|代你|为你)(?:(?:和|跟|向|与).{0,6})?(?:付|支付|缴|交(?:定金|订金|押金|租金|钱|款)|签|议价|砍价|讲价|还价|谈.{0,4}(?:租金|价)))"
+)
+# Saying it is done, not only offering it.
+_CLAIMED_ACTION = re.compile(
+    r"(?:我已经?|已经?(?:帮你|替你|为你))(?:帮你|替你|为你)?"
+    r"(?:联系|询问|通知|预约|预订|预定|保留.{0,8}(?:房源|房间)|支付|付|缴|签|议价|砍价|讲价)"
+    r"|\bI(?:'ve|’ve| have)?\s+(?:already\s+|just\s+)?"
+    r"(?:contacted|called|emailed|messaged|reached out|booked|scheduled|reserved|paid|signed|negotiated|arranged (?:a |the |your )?viewing)\b",
+    re.IGNORECASE,
 )
 _CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 _HAN = re.compile(r"[\u4e00-\u9fff]")
-_OFFER = r"\b(?:I can(?!not|'t|’t)|I could(?! not|n't|n’t)|I will(?! not)|I'll(?! not)|let me(?! know)|shall I|want me to)\b[^.?!\n]{0,60}"
+_OFFER = (
+    r"\b(?:I can(?!not|'t|’t)|I could(?! not|n't|n’t)|I will(?! not)|I'll(?! not)|let me(?! know)|shall I|want me to)\b"
+    r"(?:(?!\b(?:but|cannot|can't|can’t|won't|won’t|not)\b)[^.,;?!\n]){0,60}"
+)
 _UNSUPPORTED_OFFER_EN = re.compile(
-    _OFFER + r"\b(?:contact|call|email|reach out|book|schedule|arrange|reserve|hold|confirm (?:the )?availability)",
+    _OFFER + r"\b(?:contact|call|email|reach out|book|schedule|arrange|reserve|hold|confirm (?:the )?availability"
+    r"|(?:pay|sign|negotiate)\b[^.?!\n]{0,40}\b(?:for you|on your behalf)|(?<!to )negotiate with)",
     re.IGNORECASE,
 )
 _NUMBER = r"\d+(?:,\d{3})*(?:\.\d+)?"
@@ -1265,6 +1280,8 @@ def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) 
         problems.append(f"it states figures that no tool returned: {', '.join(figures)}")
     if _UNSUPPORTED_ACTION_OFFER.search(reply) or _UNSUPPORTED_OFFER_EN.search(reply):
         problems.append("it offers an action this agent cannot take")
+    if _CLAIMED_ACTION.search(reply):
+        problems.append("it says it did something this agent cannot do")
     if _CYRILLIC.search(reply) or (language == "en" and _HAN.search(reply)) or (language == "zh" and not _HAN.search(reply)):
         problems.append("it is not in the reply language")
     return problems

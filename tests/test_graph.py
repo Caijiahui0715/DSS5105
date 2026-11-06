@@ -9,7 +9,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 import agent
 import parser
 from decision import search_with_unknowns
-from graph import _has_search_criteria, _listing_ids_in, _open_preferences, _response_language, build_graph
+from graph import _has_search_criteria, _listing_ids_in, _open_preferences, _reply_problems, _response_language, build_graph
 from mock_db import create_database, create_mock_database, set_listing
 from models import ParsedTurn, SearchPreferences
 
@@ -23,6 +23,41 @@ def _memory() -> MemorySaver:
 
 
 class GraphTest(unittest.TestCase):
+    def test_the_reply_check_catches_actions_the_agent_cannot_take(self):
+        offers = "it offers an action this agent cannot take"
+        claims = "it says it did something this agent cannot do"
+        for language, reply, expected in (
+            ("zh", "需要我帮你联系房东吗？", [offers]),
+            ("zh", "我可以帮你付定金。", [offers]),
+            ("zh", "我可以替你签约。", [offers]),
+            ("zh", "要我帮你和房东砍价吗？", [offers]),
+            ("zh", "我已经帮你联系了房东。", [claims]),
+            ("zh", "已为你预约看房。", [claims]),
+            ("zh", "我已替你支付定金。", [claims]),
+            ("en", "I can contact the landlord for you.", [offers]),
+            ("en", "I can pay the deposit for you.", [offers]),
+            ("en", "I'll sign the agreement on your behalf.", [offers]),
+            ("en", "I can negotiate with the landlord.", [offers]),
+            ("en", "I've contacted the landlord.", [claims]),
+            ("en", "I have already paid the deposit.", [claims]),
+            ("en", "I just booked a viewing.", [claims]),
+            # Declining, and what the agent can do, are not offers.
+            ("zh", "我不能帮你联系房东，但我可以帮你比较房源。", []),
+            ("zh", "我可以帮你估算费用，但不能帮你付定金。", []),
+            ("zh", "我可以比较房源但无法联系房东。", []),
+            ("zh", "我可以帮你算签约时要付多少押金。", []),
+            ("zh", "我已保留你的预算条件。", []),
+            ("zh", "我可以给你一些砍价的建议。", []),
+            ("en", "I can't contact landlords, but I can estimate costs.", []),
+            ("en", "I can estimate costs, but I can't contact the landlord.", []),
+            ("en", "I can search listings but cannot contact the landlord.", []),
+            ("en", "I can estimate what you would pay at signing.", []),
+            ("en", "I can tell you how to negotiate with the landlord.", []),
+            ("en", "I've arranged them by rent.", []),
+        ):
+            with self.subTest(reply=reply):
+                self.assertEqual(_reply_problems(reply, [reply], language), expected)
+
     def test_recognizes_real_propertyguru_listing_ids(self):
         self.assertEqual(
             _listing_ids_in("比较 500253628 和 24534844"),

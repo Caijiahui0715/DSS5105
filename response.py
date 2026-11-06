@@ -1046,6 +1046,7 @@ _GUARD_PROBLEMS = (
     ("it names listings that no tool returned: ", "提到了工具结果里没有的房源：", "it named listings no tool returned: "),
     ("it states figures that no tool returned: ", "写了工具结果里没有的数字：", "it stated figures no tool returned: "),
     ("it offers an action this agent cannot take", "提出了 agent 做不到的事，比如联系房东或预约看房", "it offered something this agent cannot do, such as contacting landlords or booking viewings"),
+    ("it says it did something this agent cannot do", "声称做了 agent 做不到的事，比如联系房东或付款", "it said it did something this agent cannot do, such as contacting a landlord or paying"),
     ("it is not in the reply language", "没有用对话的语言回复", "it was not in the conversation's language"),
 )
 _MEMORY_ACTIONS = {

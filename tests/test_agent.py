@@ -1417,6 +1417,7 @@ class AgentTest(unittest.TestCase):
             "[routes] 健身房: 120 worked out, 2 failed",
             "[links] S001 active; S004 unknown (http_403)",
             "[guard] reply rejected (it states figures that no tool returned: 400; it is not in the reply language) -> retry",
+            "[guard] reply rejected (it says it did something this agent cannot do) -> fallback",
             '[check] {"figures": 0, "listing_ids": 0}',
         ]
         self.assertEqual(render_steps(trace), [
@@ -1428,6 +1429,7 @@ class AgentTest(unittest.TestCase):
             # Replies from before the backend stopped checking links itself.
             "检查房源链接",
             "回复未通过事实核对（写了工具结果里没有的数字：400；没有用对话的语言回复），已让模型重写",
+            "回复未通过事实核对（声称做了 agent 做不到的事，比如联系房东或付款），改用系统模板回复",
             "回复已通过事实核对：里面没有需要核对的数字或房源编号",
         ])
 

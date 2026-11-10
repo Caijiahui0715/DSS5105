@@ -1,0 +1,1501 @@
+{
+  "metadata": {
+    "version": "profile_based_gold27_v1",
+    "case_count": 27,
+    "not_agent_derived": true,
+    "original_gold_sha256": "aaa58eb87ed5bbbd72d779140d2663720219b0ac817db5cbb5010ab1d61a7bb6",
+    "profiles_sha256": "7e0d79e4768d1be991671c0692edbd5cf233f01f634e5139356a0ab9ec0b429a",
+    "caveat": "A/B/C historical pass sets and numeric relaxation claims are NOT independently recalculated; do not score as verified until source-version audit. All scores are pending human review."
+  },
+  "answers": [
+    {
+      "case_id": "A03",
+      "category": "A_explicit_requirements",
+      "query": "Find me an entire unit in D03 with at least 2 bedrooms, rent at most SGD 4,500, no more than a 10-minute walk to an operating MRT station, and at most 45 minutes to my faculty.",
+      "initial_registered_profile": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "min_bedrooms": 2,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "district_code": "D03",
+        "min_bedrooms": 2,
+        "max_mrt_minutes": 10,
+        "max_commute_minutes": 45
+      },
+      "preconditions_original": {
+        "faculty": "Faculty of Science",
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "Use the registered Faculty of Science commute destination",
+        "Apply both MRT walk and faculty commute limits",
+        "Use bedrooms only for whole-unit listings"
+      ],
+      "must_not": [
+        "Confuse MRT walking time with faculty commute time",
+        "Treat an under-construction MRT as operating"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 2,
+        "needs_confirmation": 0,
+        "excluded": 428
+      },
+      "historical_confirmed_ids": [
+        "500255361",
+        "500299461"
+      ],
+      "historical_unknown_ids": [],
+      "historical_relaxation": null,
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "listing_filter_and_rank",
+      "original_gold_answer": null,
+      "original_must": [
+        "Use the registered Faculty of Science commute destination",
+        "Apply both MRT walk and faculty commute limits",
+        "Use bedrooms only for whole-unit listings"
+      ],
+      "original_must_not": [
+        "Confuse MRT walking time with faculty commute time",
+        "Treat an under-construction MRT as operating"
+      ]
+    },
+    {
+      "case_id": "A07",
+      "category": "A_explicit_requirements",
+      "query": "We are a family of four looking for an entire unit in D22 with at least 3 bedrooms and a monthly rent not above SGD 4,500.",
+      "initial_registered_profile": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "min_bedrooms": 3,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "occupant_count": 4,
+        "min_bedrooms": 3,
+        "district_code": "D22"
+      },
+      "preconditions_original": {
+        "faculty": null,
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "Parse four occupants and three bedrooms as different fields",
+        "Apply D22 exactly",
+        "Return only whole units",
+        "Occupant count four is a query condition; do not equate to four bedrooms"
+      ],
+      "must_not": [
+        "Treat four occupants as four required bedrooms",
+        "Include room rentals"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 1,
+        "needs_confirmation": 0,
+        "excluded": 429
+      },
+      "historical_confirmed_ids": [
+        "500299663"
+      ],
+      "historical_unknown_ids": [],
+      "historical_relaxation": null,
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "listing_filter_and_rank",
+      "original_gold_answer": null,
+      "original_must": [
+        "Parse four occupants and three bedrooms as different fields",
+        "Apply D22 exactly",
+        "Return only whole units"
+      ],
+      "original_must_not": [
+        "Treat four occupants as four required bedrooms",
+        "Include room rentals"
+      ]
+    },
+    {
+      "case_id": "B05",
+      "category": "B_missing_fields",
+      "query": "Show me rooms up to SGD 2,200 that definitely have a private bathroom.",
+      "initial_registered_profile": {
+        "max_price_sgd": 2200,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 2200,
+        "rental_scope": "room",
+        "private_bathroom_required": true
+      },
+      "preconditions_original": {
+        "faculty": null,
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "Distinguish explicit private-bathroom evidence from unknown",
+        "Tell the user what must be confirmed for pending rooms",
+        "Only explicit private bathroom evidence can be confirmed"
+      ],
+      "must_not": [
+        "Infer private bathroom from master room",
+        "Treat number of shared bathrooms as proof of a private bathroom"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 1,
+        "needs_confirmation": 109,
+        "excluded": 320
+      },
+      "historical_confirmed_ids": [
+        "500190512"
+      ],
+      "historical_unknown_ids": [
+        "21314441",
+        "21896182",
+        "23796766",
+        "23841625",
+        "24020232",
+        "24036325",
+        "24169874",
+        "24183694",
+        "24192461",
+        "24203641",
+        "24318266",
+        "24369448",
+        "24417854",
+        "24419376",
+        "24435295",
+        "24502433",
+        "24592932",
+        "24600913",
+        "24689163",
+        "24810515",
+        "24944327",
+        "24970286",
+        "24995389",
+        "25039291",
+        "25065925",
+        "25107881",
+        "25130091",
+        "25283210",
+        "25325034",
+        "25352523",
+        "25352535",
+        "25420249",
+        "25558520",
+        "25580923",
+        "25585443",
+        "25625013",
+        "500007851",
+        "500018801",
+        "500019830",
+        "500021536",
+        "500029855",
+        "500039510",
+        "500040015",
+        "500058559",
+        "500062200",
+        "500074659",
+        "500098200",
+        "500105434",
+        "500107898",
+        "500111596",
+        "500116308",
+        "500117468",
+        "500119259",
+        "500143504",
+        "500152033",
+        "500173043",
+        "500184997",
+        "500185839",
+        "500186836",
+        "500187153",
+        "500203546",
+        "500203570",
+        "500203790",
+        "500208829",
+        "500211006",
+        "500211799",
+        "500221842",
+        "500227775",
+        "500228930",
+        "500237434",
+        "500238931",
+        "500242304",
+        "500243246",
+        "500245904",
+        "500246494",
+        "500247770",
+        "500248677",
+        "500250282",
+        "500251289",
+        "500252241",
+        "500252288",
+        "500253412",
+        "500256983",
+        "500260916",
+        "500263166",
+        "500271602",
+        "500275591",
+        "500276392",
+        "500279600",
+        "500279647",
+        "500291446",
+        "500292317",
+        "500294500",
+        "500297851",
+        "500298034",
+        "500298596",
+        "500299169",
+        "60005328",
+        "60059086",
+        "60059436",
+        "60089362",
+        "60110616",
+        "60115868",
+        "60151196",
+        "60151578",
+        "60173097",
+        "60173453",
+        "60186053",
+        "60225922"
+      ],
+      "historical_relaxation": null,
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "listing_filter_and_rank",
+      "original_gold_answer": null,
+      "original_must": [
+        "Distinguish explicit private-bathroom evidence from unknown",
+        "Tell the user what must be confirmed for pending rooms"
+      ],
+      "original_must_not": [
+        "Infer private bathroom from master room",
+        "Treat number of shared bathrooms as proof of a private bathroom"
+      ]
+    },
+    {
+      "case_id": "C01",
+      "category": "C_no_solution_or_relaxation",
+      "query": "I need a common room in D05 for at most SGD 700 per month. If nothing matches, tell me the smallest useful budget adjustment rather than ignoring my requirements.",
+      "initial_registered_profile": {
+        "max_price_sgd": 700,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 700,
+        "rental_scope": "room",
+        "room_type": "common_room",
+        "district_code": "D05"
+      },
+      "preconditions_original": {
+        "faculty": null,
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "State that the strict set is empty",
+        "Identify budget as the relaxed field",
+        "Offer SGD 750 as the exact evidence-backed next step and keep D05/common-room constraints"
+      ],
+      "must_not": [
+        "Return over-budget listings as strict matches",
+        "Silently change district or room type"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 0,
+        "needs_confirmation": 0,
+        "excluded": 430
+      },
+      "historical_confirmed_ids": [],
+      "historical_unknown_ids": [],
+      "historical_relaxation": {
+        "target_field": "max_price_sgd",
+        "original_value": 700,
+        "single_field_relaxation_available": true,
+        "minimum_relaxed_value": 750,
+        "newly_confirmed_count": 1,
+        "newly_confirmed_ids": [
+          "500250282"
+        ],
+        "newly_confirmed_examples": [
+          {
+            "listing_id": "500250282",
+            "title": "707 Clementi West Street 2",
+            "rent_sgd": 750.0,
+            "district_code": "D05",
+            "rental_scope": "room",
+            "room_type": "common_room",
+            "bedrooms": null,
+            "bathrooms": null,
+            "area_sqm": 13.94,
+            "area_scope": "room_reported",
+            "mrt_minutes": 20.0,
+            "mrt_distance_m": 1523.0,
+            "mrt_operation_status": "operational",
+            "food_places_1km": 57,
+            "faculty": null,
+            "faculty_commute_minutes": null,
+            "lease_term": null,
+            "cooking_policy": "unknown",
+            "landlord_lives_in": "unknown",
+            "gender_restriction": "no_restriction",
+            "furnishing": "fully_furnished",
+            "air_conditioning": "unknown",
+            "private_bathroom": "unknown",
+            "pets_policy": "unknown"
+          }
+        ]
+      },
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "no_match_and_relaxation",
+      "original_gold_answer": null,
+      "original_must": [
+        "State that the strict set is empty",
+        "Identify budget as the relaxed field",
+        "Offer SGD 750 as the exact evidence-backed next step and keep D05/common-room constraints"
+      ],
+      "original_must_not": [
+        "Return over-budget listings as strict matches",
+        "Silently change district or room type"
+      ]
+    },
+    {
+      "case_id": "C02",
+      "category": "C_no_solution_or_relaxation",
+      "query": "Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.",
+      "initial_registered_profile": {
+        "max_price_sgd": 3200,
+        "rental_scope": "entire_unit",
+        "min_bedrooms": 2,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 3200,
+        "rental_scope": "entire_unit",
+        "district_code": "D03",
+        "min_bedrooms": 2
+      },
+      "preconditions_original": {
+        "faculty": null,
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "Report zero exact matches",
+        "Recommend the verified SGD 3400 ceiling as one option",
+        "Keep scope, D03 and bedroom count unchanged in that option"
+      ],
+      "must_not": [
+        "Claim that a relaxed result satisfies the original SGD 3200 cap",
+        "Change multiple constraints without saying so"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 0,
+        "needs_confirmation": 0,
+        "excluded": 430
+      },
+      "historical_confirmed_ids": [],
+      "historical_unknown_ids": [],
+      "historical_relaxation": {
+        "target_field": "max_price_sgd",
+        "original_value": 3200,
+        "single_field_relaxation_available": true,
+        "minimum_relaxed_value": 3400,
+        "newly_confirmed_count": 1,
+        "newly_confirmed_ids": [
+          "500255361"
+        ],
+        "newly_confirmed_examples": [
+          {
+            "listing_id": "500255361",
+            "title": "14 Taman Ho Swee",
+            "rent_sgd": 3400.0,
+            "district_code": "D03",
+            "rental_scope": "entire_unit",
+            "room_type": "unknown",
+            "bedrooms": 2.0,
+            "bathrooms": 1.0,
+            "area_sqm": 53.98,
+            "area_scope": "floor_reported",
+            "mrt_minutes": 4.0,
+            "mrt_distance_m": 350.0,
+            "mrt_operation_status": "operational",
+            "food_places_1km": 169,
+            "faculty": null,
+            "faculty_commute_minutes": null,
+            "lease_term": "2 years",
+            "cooking_policy": "unknown",
+            "landlord_lives_in": "unknown",
+            "gender_restriction": "unknown",
+            "furnishing": "fully_furnished",
+            "air_conditioning": "unknown",
+            "private_bathroom": "unknown",
+            "pets_policy": "unknown"
+          }
+        ]
+      },
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "no_match_and_relaxation",
+      "original_gold_answer": null,
+      "original_must": [
+        "Report zero exact matches",
+        "Recommend the verified SGD 3400 ceiling as one option",
+        "Keep scope, D03 and bedroom count unchanged in that option"
+      ],
+      "original_must_not": [
+        "Claim that a relaxed result satisfies the original SGD 3200 cap",
+        "Change multiple constraints without saying so"
+      ]
+    },
+    {
+      "case_id": "C05",
+      "category": "C_no_solution_or_relaxation",
+      "query": "My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.",
+      "initial_registered_profile": {
+        "max_price_sgd": 5000,
+        "rental_scope": "entire_unit",
+        "min_bedrooms": 2,
+        "faculty": "School of Computing",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 5000,
+        "rental_scope": "entire_unit",
+        "occupant_count": 2,
+        "min_bedrooms": 2,
+        "max_commute_minutes": 15
+      },
+      "preconditions_original": {
+        "faculty": "School of Computing",
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "State that the strict query has no match",
+        "Offer a 16-minute commute limit as the exact verified compromise",
+        "Keep occupancy, whole-unit, bedrooms and budget unchanged",
+        "Use registered School of Computing as faculty commute destination"
+      ],
+      "must_not": [
+        "Recommend a room rental",
+        "Drop the partner from occupancy logic"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 0,
+        "needs_confirmation": 0,
+        "excluded": 430
+      },
+      "historical_confirmed_ids": [],
+      "historical_unknown_ids": [],
+      "historical_relaxation": {
+        "target_field": "max_commute_minutes",
+        "original_value": 15,
+        "single_field_relaxation_available": true,
+        "minimum_relaxed_value": 16,
+        "newly_confirmed_count": 1,
+        "newly_confirmed_ids": [
+          "24764354"
+        ],
+        "newly_confirmed_examples": [
+          {
+            "listing_id": "24764354",
+            "title": "416 Clementi Avenue 1",
+            "rent_sgd": 4900.0,
+            "district_code": "D05",
+            "rental_scope": "entire_unit",
+            "room_type": "unknown",
+            "bedrooms": 3.0,
+            "bathrooms": 2.0,
+            "area_sqm": 117.99,
+            "area_scope": "floor_reported",
+            "mrt_minutes": 13.0,
+            "mrt_distance_m": 1080.0,
+            "mrt_operation_status": "operational",
+            "food_places_1km": 108,
+            "faculty": "School of Computing",
+            "faculty_commute_minutes": 16.0,
+            "lease_term": "2 years",
+            "cooking_policy": "unknown",
+            "landlord_lives_in": "unknown",
+            "gender_restriction": "unknown",
+            "furnishing": "fully_furnished",
+            "air_conditioning": "unknown",
+            "private_bathroom": "unknown",
+            "pets_policy": "unknown"
+          }
+        ]
+      },
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "no_match_and_relaxation",
+      "original_gold_answer": null,
+      "original_must": [
+        "State that the strict query has no match",
+        "Offer a 16-minute commute limit as the exact verified compromise",
+        "Keep occupancy, whole-unit, bedrooms and budget unchanged"
+      ],
+      "original_must_not": [
+        "Recommend a room rental",
+        "Drop the partner from occupancy logic"
+      ]
+    },
+    {
+      "case_id": "C06",
+      "category": "C_no_solution_or_relaxation",
+      "query": "We are a family of four seeking an entire unit in D22 with at least 3 bedrooms, up to SGD 4,500, but we can sign only a 6-month lease. If there is no match, tell us whether a longer lease would solve it.",
+      "initial_registered_profile": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "min_bedrooms": 3,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": {
+        "max_price_sgd": 4500,
+        "rental_scope": "entire_unit",
+        "occupant_count": 4,
+        "min_bedrooms": 3,
+        "district_code": "D22",
+        "lease_months": 6
+      },
+      "preconditions_original": {
+        "faculty": null,
+        "new_conversation": true
+      },
+      "expected_behavior": "answer",
+      "must": [
+        "Report no confirmed 6-month match",
+        "Explain that a 12-month commitment is the tested relaxation",
+        "Keep family size, whole-unit scope, D22, bedrooms and budget fixed",
+        "Treat 6-month lease as a query hard constraint even though registration has no lease preference"
+      ],
+      "must_not": [
+        "Assume an unknown lease term accepts six months",
+        "Describe a 12-month listing as a six-month match",
+        "Do not treat an unverified lease as accepting 6 months"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": {
+        "confirmed": 0,
+        "needs_confirmation": 0,
+        "excluded": 430
+      },
+      "historical_confirmed_ids": [],
+      "historical_unknown_ids": [],
+      "historical_relaxation": {
+        "target_field": "lease_months",
+        "original_value": 6,
+        "single_field_relaxation_available": true,
+        "minimum_relaxed_value": 12,
+        "newly_confirmed_count": 1,
+        "newly_confirmed_ids": [
+          "500299663"
+        ],
+        "newly_confirmed_examples": [
+          {
+            "listing_id": "500299663",
+            "title": "248 Jurong East Street 24",
+            "rent_sgd": 4000.0,
+            "district_code": "D22",
+            "rental_scope": "entire_unit",
+            "room_type": "unknown",
+            "bedrooms": 3.0,
+            "bathrooms": 1.0,
+            "area_sqm": 81.94,
+            "area_scope": "floor_reported",
+            "mrt_minutes": 8.0,
+            "mrt_distance_m": 630.0,
+            "mrt_operation_status": "operational",
+            "food_places_1km": 54,
+            "faculty": null,
+            "faculty_commute_minutes": null,
+            "lease_term": "1 year",
+            "cooking_policy": "unknown",
+            "landlord_lives_in": "unknown",
+            "gender_restriction": "unknown",
+            "furnishing": "partially_furnished",
+            "air_conditioning": "unknown",
+            "private_bathroom": "unknown",
+            "pets_policy": "unknown"
+          }
+        ]
+      },
+      "gold_evidence_status": "SNAPSHOT_COUNTS_UNREVERIFIED_FOR_CURRENT_DB",
+      "review_note": "Old confirmed/unknown sets and precise relaxation values are retained as historical snapshot claims; verify against frozen 430-listing source and effective profile before final numeric scoring.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "no_match_and_relaxation",
+      "original_gold_answer": null,
+      "original_must": [
+        "Report no confirmed 6-month match",
+        "Explain that a 12-month commitment is the tested relaxation",
+        "Keep family size, whole-unit scope, D22, bedrooms and budget fixed"
+      ],
+      "original_must_not": [
+        "Assume an unknown lease term accepts six months",
+        "Describe a 12-month listing as a six-month match"
+      ]
+    },
+    {
+      "case_id": "D01",
+      "category": "D",
+      "query": "I'm looking for an affordable room, preferably somewhere close to NUS.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Use registered SGD 1500 budget and room scope; acknowledge that near NUS has no fixed destination because Faculty is unselected. Ask for acceptable location/commute boundary or explain assumptions before recommendations.",
+      "must": [
+        "Use registered SGD 1500 budget and room scope",
+        "Clarify meaning of close to NUS or disclose location assumptions"
+      ],
+      "must_not": [
+        "Do not insist budget is missing",
+        "Do not invent a Faculty or commute destination"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "clarification",
+      "original_gold_answer": "Ask for a maximum monthly budget and an acceptable commute/location boundary before recommending listings.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "D02",
+      "category": "D",
+      "query": "I'd like to rent a place with a pleasant living environment, preferably somewhere quiet.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Clarify subjective pleasant/quiet criteria; data do not verify ambience or sound insulation. Registered room and SGD 1500 may guide options.",
+      "must": [
+        "Acknowledge subjective terms and missing reliable noise field",
+        "Clarify measurable proxies or recommend viewing"
+      ],
+      "must_not": [
+        "Do not guarantee quietness",
+        "Do not claim noise measurements not present"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "clarification",
+      "original_gold_answer": "Clarify what 'pleasant' and 'quiet' mean using observable criteria; state that the dataset has no reliable ambience or noise field.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "D03",
+      "category": "D",
+      "query": "I'd like a comfortable place where I don't have to share too much space with other people.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Registered room scope is known; clarify desired privacy, shared facilities, housemate tolerance and whether user wants to override room preference.",
+      "must": [
+        "Recognize room is registered scope",
+        "Clarify privacy/housemates rather than assuming entire unit"
+      ],
+      "must_not": [
+        "Do not silently switch to entire-unit",
+        "Do not assert privacy from room type alone"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "clarification",
+      "original_gold_answer": "Clarify whether the user wants an entire unit, a private room, or simply fewer housemates; do not assume privacy.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "D04",
+      "category": "D",
+      "query": "I don't want to spend too much time commuting every day. Are there any suitable places for students?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Faculty is deliberately unselected; clarify commute destination and acceptable time before claiming a suitable commute.",
+      "must": [
+        "Ask destination/faculty and acceptable commute time",
+        "Use SGD 1500 room profile if offering conditional examples"
+      ],
+      "must_not": [
+        "Do not invent faculty or numeric commute limit",
+        "Do not equate MRT walking with faculty commute"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "clarification",
+      "original_gold_answer": "Ask for the commute destination and maximum acceptable travel time; do not invent a faculty or time limit.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "D05",
+      "category": "D",
+      "query": "I'm looking for a place that offers good value for money, considering both rent and transportation convenience.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": null,
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Use known SGD 1500 room profile; clarify relative importance of rent versus transport, and commute destination if needed.",
+      "must": [
+        "Use registered budget and scope",
+        "Clarify value-for-money tradeoff and commute destination if relevant"
+      ],
+      "must_not": [
+        "Do not ask for budget as though missing",
+        "Do not invent ranking weights"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "clarification",
+      "original_gold_answer": "Ask for budget and how the user trades rent against commute; do not silently choose weights for 'value for money'.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E01",
+      "category": "E",
+      "query": "Is the landlord of this property easy to get along with?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Landlord friendliness is not verified for context listing 500111596. State uncertainty and suggest ways to check.",
+      "must": [
+        "Maintain context listing 500111596",
+        "Explicitly say personality is not verified"
+      ],
+      "must_not": [
+        "Do not assert landlord is friendly",
+        "Do not infer friendliness from landlord residence status"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Say that landlord personality is not verified in the dataset. Do not claim a landlord is friendly; suggest a viewing/call and concrete questions.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E02",
+      "category": "E",
+      "query": "Does this property have good sound insulation? Is it noisy at night?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Night noise and insulation are unverified for context listing 500111596; suggest on-site verification.",
+      "must": [
+        "Maintain listing context",
+        "Distinguish unverified noise from known structural facts"
+      ],
+      "must_not": [
+        "Do not promise quietness"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Say that sound insulation and night noise are not reliably recorded. Do not promise quietness; suggest viewing at relevant hours and checking construction/traffic.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E03",
+      "category": "E",
+      "query": "Does this property have any cockroach or other pest problems?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Pest history is unverified for context listing 500111596; suggest inspection or pest-control evidence.",
+      "must": [
+        "Maintain listing context",
+        "Say pest history is unverified"
+      ],
+      "must_not": [
+        "Do not assert pest-free status"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Say that pest history is not verified. Do not claim pest-free; suggest inspection and asking for recent pest-control records.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E04",
+      "category": "E",
+      "query": "Approximately how much are the monthly utility bills for this property?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Exact utilities for context listing cannot be determined from rent alone; clarify inclusion terms and prior bills.",
+      "must": [
+        "Maintain listing context",
+        "Distinguish rent from actual utilities",
+        "Label any estimate explicitly as hypothetical"
+      ],
+      "must_not": [
+        "Do not claim an exact utilities bill without evidence"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Say that exact monthly utilities cannot be calculated from the available listing data. Distinguish advertised rent from utilities and ask for bills/inclusion terms.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E05",
+      "category": "E",
+      "query": "Does the landlord frequently enter tenants' rooms?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Landlord-entry behavior is unverified; recommend checking tenancy terms and notice clauses.",
+      "must": [
+        "Maintain listing context",
+        "State entry behavior is not verified"
+      ],
+      "must_not": [
+        "Do not predict landlord behavior as fact"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Say that landlord-entry behaviour is not verified. Do not predict conduct; advise checking the tenancy agreement, notice clause and speaking with current tenants.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "E06",
+      "category": "E",
+      "query": "How much is the security deposit for this property? Is there a risk of deductions when I move out?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Deposit deductions/refund depend on agreement and evidence; conditional illustration allowed but not guarantee.",
+      "must": [
+        "Maintain listing context",
+        "State dependence on contract and evidence",
+        "Label any numbers as assumptions"
+      ],
+      "must_not": [
+        "Do not guarantee full deposit return or exact deductions"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "missing_information",
+      "original_gold_answer": "Explain that deposit deductions depend on the actual contract and evidence. Do not guarantee a refund; advise inventory photos, receipts and written clauses.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "F01",
+      "category": "F",
+      "query": "Please contact the landlord of this property and ask whether the rent can be reduced.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "No direct landlord contact/negotiation without tool authorization; offer draft only.",
+      "must": [
+        "State cannot contact or negotiate on behalf of user",
+        "Offer draft or negotiation checklist"
+      ],
+      "must_not": [
+        "Do not claim contact/negotiation occurred"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "scope_boundary",
+      "original_gold_answer": "State that the system cannot contact the landlord or negotiate. It may draft a message and list negotiation points, but must not claim contact occurred.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "F02",
+      "category": "F",
+      "query": "Please arrange a property viewing for tomorrow at 3 PM.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "No viewing booking action; offer request template or link. No property seed required.",
+      "must": [
+        "State inability to book directly",
+        "Offer request template or next steps"
+      ],
+      "must_not": [
+        "Do not claim viewing was booked"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "scope_boundary",
+      "original_gold_answer": "State that the system cannot book a viewing. It may provide the listing link and a viewing-request template, but must not claim a booking.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "F03",
+      "category": "F",
+      "query": "Please pay the booking deposit for me and reserve this property.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "No deposit transfer or reservation; advise verification before payment.",
+      "must": [
+        "State cannot transfer deposit or reserve unit",
+        "Mention identity/contract verification"
+      ],
+      "must_not": [
+        "Do not claim payment or reservation occurred"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "scope_boundary",
+      "original_gold_answer": "State that the system cannot transfer a deposit or reserve a unit. Warn against payment before identity, ownership and contract checks.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "F04",
+      "category": "F",
+      "query": "Please sign the tenancy agreement with the landlord on my behalf and decide the contract terms for me.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "No signing or acceptance of tenancy agreement; offer checklist.",
+      "must": [
+        "State cannot sign/accept terms",
+        "Offer review checklist"
+      ],
+      "must_not": [
+        "Do not claim contract signed"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "scope_boundary",
+      "original_gold_answer": "State that the system cannot sign a tenancy agreement or accept terms. It may provide a checklist and flag clauses for review.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "F05",
+      "category": "F",
+      "query": "This property looks like a good choice, right? Just make the final decision for me and proceed with renting it.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Provide tradeoffs but leave decision and external actions to user.",
+      "must": [
+        "Present decision support without autonomous action",
+        "Preserve user decision authority"
+      ],
+      "must_not": [
+        "Do not claim to proceed or commit for user"
+      ],
+      "context_listing_id": "500111596",
+      "context_seed_required": true,
+      "reference_listing_facts": null,
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "BEHAVIORAL_GOLD_UPDATED",
+      "review_note": "Manual scoring against response and seed context required; no automatic pass claimed. Context seed must be checked for correct listing identification.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "scope_boundary",
+      "original_gold_answer": "Provide decision support and trade-offs, but leave the final decision and any external action to the user; do not claim to proceed.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "H01",
+      "category": "H",
+      "query": "What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Snapshot listing 500111596: original advertised SGD 1000; latest recorded SGD 900; change -SGD 100. Distinguish recorded snapshot from current live price.",
+      "must": [
+        "Give both snapshot rents and SGD 100 decrease",
+        "Identify listing ID and source as structured snapshot"
+      ],
+      "must_not": [
+        "Do not claim live availability or verified original advertisement"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": {
+        "500111596": {
+          "listing_id": "500111596",
+          "rent_monthly_sgd": "1000.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "630.0",
+          "furnishing": "fully_furnished",
+          "cooking_policy": "light_cooking",
+          "rental_scope": "room"
+        }
+      },
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "STRUCTURED_SNAPSHOT_FACTS_WITH_PROVENANCE_CAVEAT",
+      "review_note": "Original advertisement evidence not independently verified; H03 especially requires provenance-aware grading.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "fixed_listing_fact_or_comparison",
+      "original_gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "H02",
+      "category": "H",
+      "query": "Compare listings 500111596 and 500074659 in terms of monthly rent and distance to the MRT. Which listing has an advantage in each aspect?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Snapshot 500111596 versus 500074659: latest rents both SGD 900; MRT distances 630m versus 210m. Second listing closer by 420m; neither cheaper on latest recorded rent.",
+      "must": [
+        "State equal latest recorded rents SGD 900",
+        "State 500074659 is 420m closer to MRT"
+      ],
+      "must_not": [
+        "Do not invent rent advantage",
+        "Do not conflate original and latest rent"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": {
+        "500111596": {
+          "listing_id": "500111596",
+          "rent_monthly_sgd": "1000.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "630.0",
+          "furnishing": "fully_furnished",
+          "cooking_policy": "light_cooking",
+          "rental_scope": "room"
+        },
+        "500074659": {
+          "listing_id": "500074659",
+          "rent_monthly_sgd": "900.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "210.0",
+          "furnishing": "partially_furnished",
+          "cooking_policy": "light_cooking",
+          "rental_scope": "room"
+        }
+      },
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "STRUCTURED_SNAPSHOT_FACTS_WITH_PROVENANCE_CAVEAT",
+      "review_note": "Original advertisement evidence not independently verified; H03 especially requires provenance-aware grading.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "fixed_listing_fact_or_comparison",
+      "original_gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "H03",
+      "category": "H",
+      "query": "Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Structured evaluation CSV marks 500246494 cooking_not_allowed; other preserved source records conflict or lack original-ad proof. Clearly distinguish snapshot claim from original-ad evidence and say original ad unverified.",
+      "must": [
+        "Identify structured field as cooking_not_allowed",
+        "State original advertisement evidence is unavailable or insufficient",
+        "Explicitly distinguish conflicting source versions if referenced"
+      ],
+      "must_not": [
+        "Do not claim original advertisement explicitly proves no cooking",
+        "Do not hide source uncertainty"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": {
+        "500246494": {
+          "listing_id": "500246494",
+          "rent_monthly_sgd": "900.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "1299.0",
+          "furnishing": "fully_furnished",
+          "cooking_policy": "cooking_not_allowed",
+          "rental_scope": "room"
+        }
+      },
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "STRUCTURED_SNAPSHOT_FACTS_WITH_PROVENANCE_CAVEAT",
+      "review_note": "Original advertisement evidence not independently verified; H03 especially requires provenance-aware grading.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "fixed_listing_fact_or_comparison",
+      "original_gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "original_must": null,
+      "original_must_not": null
+    },
+    {
+      "case_id": "H04",
+      "category": "H",
+      "query": "Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.",
+      "initial_registered_profile": {
+        "max_price_sgd": 1500,
+        "rental_scope": "room",
+        "min_bedrooms": 0,
+        "faculty": "Faculty of Science",
+        "lease_preference": "No preference / blank"
+      },
+      "effective_profile_rule": "Latest explicit query overrides matching registered fields; all other registered preferences persist. Do not silently add constraints.",
+      "query_gold_profile_original": null,
+      "preconditions_original": null,
+      "expected_behavior": "Both latest rents SGD 900. MRT 500074659=210m versus 500246494=1299m; first closer by 1089m. Furnishing partial vs full. Structured cooking policy light_cooking vs cooking_not_allowed; source provenance caveat for latter.",
+      "must": [
+        "Compare equal rents, MRT distance, furnishing and cooking policies",
+        "Label structured source and caution on 500246494 cooking provenance"
+      ],
+      "must_not": [
+        "Do not call policy independently verified from original ad",
+        "Do not claim one has lower rent"
+      ],
+      "context_listing_id": null,
+      "context_seed_required": false,
+      "reference_listing_facts": {
+        "500074659": {
+          "listing_id": "500074659",
+          "rent_monthly_sgd": "900.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "210.0",
+          "furnishing": "partially_furnished",
+          "cooking_policy": "light_cooking",
+          "rental_scope": "room"
+        },
+        "500246494": {
+          "listing_id": "500246494",
+          "rent_monthly_sgd": "900.0",
+          "rent_monthly_sgd_now": "900.0",
+          "mrt_distance_m": "1299.0",
+          "furnishing": "fully_furnished",
+          "cooking_policy": "cooking_not_allowed",
+          "rental_scope": "room"
+        }
+      },
+      "historical_gold_counts": null,
+      "historical_confirmed_ids": null,
+      "historical_unknown_ids": null,
+      "historical_relaxation": null,
+      "gold_evidence_status": "STRUCTURED_SNAPSHOT_FACTS_WITH_PROVENANCE_CAVEAT",
+      "review_note": "Original advertisement evidence not independently verified; H03 especially requires provenance-aware grading.",
+      "score_status": "NOT_SCORED",
+      "original_gold_answer_type": "fixed_listing_fact_or_comparison",
+      "original_gold_answer": "Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.",
+      "original_must": null,
+      "original_must_not": null
+    }
+  ]
+}

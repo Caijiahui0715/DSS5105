@@ -1,0 +1,20 @@
+{
+  "agent_sha256": "0e471774e5ce592218aedf101cc967797f8a6c0c22fcef0f2e5e5056ab18449d",
+  "profiles_sha256": "63757a69097c0f0ad1c5b81125e3bfac3ad8df39901d2f362d47b5771ca57927",
+  "listings_sha256": "0c7a044b91e412e03e1d1acf02aab2dce11971de3801fd1c58b6dd84aa1a0d35",
+  "commute_sha256": "3e53cbefcab4d78f9023a9e4caba91dec7d173a6cd247c536d0994e338eef189",
+  "commute_records": 6848,
+  "snapshot_listing_count": 430,
+  "records": 25,
+  "scope": "recommended listing hard constraints only; not full pass set, recall, ranking or human judgments",
+  "gold_evidence_sha256": "aaa58eb87ed5bbbd72d779140d2663720219b0ac817db5cbb5010ab1d61a7bb6",
+  "caveats": [
+    "Faculty commute is joined by listing_id and exact faculty name; missing pairs remain UNKNOWN",
+    "Unknown and missing fields are never treated as PASS",
+    "Registered-profile and query-derived conditions taken from independently defined Excel, not Agent parsed preferences",
+    "Agent link activity/availability not independently checked",
+    "C03: relaxed <=7 MRT minutes is shown separately; this is NOT an override of original FAIL",
+    "A09 food_places_1km absent from listings CSV; optional Gold JSON enrichment is provisional, not independently validated",
+    "C04: no listing IDs; evaluate no-match explanation manually"
+  ]
+}

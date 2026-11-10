@@ -47,19 +47,28 @@ def load_probes() -> list[dict]:
 
 
 def run(graph, connection, probe: dict) -> dict:
-    """One probe in its own conversation; the last message's reply is the one to judge."""
+    """One probe in its own conversation: what each message got, with the last reply on the row itself."""
     config = {"configurable": {"thread_id": f"probe-{probe['id']}"}}
     changed = probe.get("set_title")
     if changed:
         (original,) = connection.query("SELECT title FROM listings WHERE listing_id = %s", (changed["listing_id"],))
         set_listing(connection, changed["listing_id"], title=changed["title"])
     try:
+        turns = []
         for message in probe["messages"]:
             result = graph.invoke({"message": message, "user_id": f"probe-{probe['id'].lower()}"}, config=config)
+            turns.append({
+                "user": message,
+                "reply": result["response"],
+                "preferences": result["preferences"].model_dump(mode="json", exclude_defaults=True),
+                "shown": [item["listing_id"] for item in (result.get("recommendations") or {}).get("listings", [])],
+                "tools": [line.split("(", 1)[0].removeprefix("[tool] ") for line in result["trace"] if line.startswith("[tool]")],
+            })
     finally:
         if changed:
             set_listing(connection, changed["listing_id"], title=original["title"])
     return {
+        "turns": turns,
         "reply": result["response"],
         "tools": [line.split("(", 1)[0].removeprefix("[tool] ") for line in result["trace"] if line.startswith("[tool]")],
         "guard": [line for line in result["trace"] if line.startswith("[guard]")],

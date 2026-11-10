@@ -19,6 +19,10 @@
 | `gold.py` | 冻结数据 + 通勤缓存 → 标准答案。只用 pandas，不 import 系统代码 |
 | `human_ranking.py` | 标准答案 → 人工排序表 |
 | `source/` | 收到的原始文件：47 题、新增 A–C 8 题（xlsx）、人工排序原表、11/05 agent 运行记录 |
+| `check_search.py` | 不调用模型：把开发集每轮的 `gold_profile` 直接交给系统的搜索和排序，和标准答案比较。不花钱，改完搜索或排序就能复测 |
+| `run_eval.py` | 用真实模型跑系统（B5 agent），每轮存一行到 `results/<标签>.jsonl`，开头记下代码版本、模型和数据的哈希。要花钱。默认只跑开发集，加 `--holdout` 才跑留出集 |
+| `score.py` | 从 `results/<标签>.jsonl` 算指标，并写出逐轮的 `_review.md` 给人看。只用标准答案和冻结数据，不 import 系统代码。行为分不在里面，要人工打 |
+| `failure_log.md` | 失败案例记录，按评估方案第 6 节的模板写，给 Evaluation.pdf 用 |
 | `boundary/` | 边界测试：无关问题、租房常识、法律和准证、注入、拒绝过头。不属于这 59 题，也不动 `cases.json`；只用开发集的题，不碰留出集。见该目录的 `README.md` |
 
 ## 怎么运行
@@ -75,4 +79,6 @@
 3. ~~留出集里有题已经用 agent 跑过~~：2026-11-05 已重分，见上面第 8 条。**留出集的 20 题在 11/9 冻结系统之前不要在 agent 上跑**，包括 xlsx 里"Run Instructions"说要复制进 agent 的那 8 题。
 4. **人工核验 20%**：另一位组员在 Excel 里手动筛几题，和 `gold_answers.json` 对照，并填 `cases.json` 里的 `verified_by`。我已经用另外写的 pandas 筛选核对了 A01、A03、A08、B01、B03、G03、G05 第 2 轮，结果完全一致，但这不能代替组员核验。
 5. **填 `author`**：写明每题是谁出的。
-6. **还没有写** `run_eval.py`（跑系统、存 trace）和 `score.py`（算指标）。
+6. **留出集只跑一次**：11/9 冻结系统后运行 `evaluation/run_eval.py holdout --holdout --runs 3`，开发集也用同一版代码跑 3 遍（`run_eval.py final --runs 3`）。`run_eval.py` 只支持 B5 agent，基线 B1–B3 还没有。
+7. **行为分**：冻结后两人各自复制一份 `results/<标签>_behaviour.csv`，对照 `_review.md` 打决策分和解释分（各 0 或 1），规则见评估方案的指标 5。打完再看 `failure_log.md` 里作者的草稿分，它不是正式分。
+8. **重新生成 PDF**：`CONVENTIONS.md` 2026-11-06 改过（第 5 节和更改记录），`CONVENTIONS.pdf`、`CONVENTIONS_confirmed.pdf` 还是旧的。

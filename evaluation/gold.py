@@ -204,6 +204,11 @@ def overall(statuses: dict[str, str]) -> str:
 
 def rank(ids, df_idx, priority, faculty, commute):
     """Strict lexicographic order on the stated priorities; missing values last; then rent, then id."""
+    return sorted(ids, key=lambda lid: rank_key(lid, df_idx, priority, faculty, commute) + (lid,))
+
+
+def rank_key(lid, df_idx, priority, faculty, commute) -> tuple:
+    """What rank() compares before the listing ID: listings with equal keys are tied."""
     def value(lid, p):
         r = df_idx.loc[lid]
         if p == "price":
@@ -223,7 +228,7 @@ def rank(ids, df_idx, priority, faculty, commute):
     order = list(priority or ["price"])
     if "price" not in order:
         order.append("price")
-    return sorted(ids, key=lambda lid: tuple(value(lid, p) for p in order) + (lid,))
+    return tuple(value(lid, p) for p in order)
 
 
 def summary(lid, df_idx, faculty, commute):

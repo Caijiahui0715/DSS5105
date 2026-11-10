@@ -1,0 +1,52 @@
+﻿Case ID,Label,Listing ID,Candidate source,Agent rank,Gold status,Gold rank among confirmed
+A01,A,500211006,agent 前 3 名（11/05 运行）,3,confirmed,5
+A01,B,500203570,agent 前 3 名（11/05 运行）,1,confirmed,2
+A01,C,500297851,agent 前 3 名（11/05 运行）,2,confirmed,3
+A02,A,500105434,agent 前 3 名（11/05 运行）,3,confirmed,10
+A02,B,500074659,agent 前 3 名（11/05 运行）,1,confirmed,2
+A02,C,500297851,agent 前 3 名（11/05 运行）,2,confirmed,4
+A04,A,500230487,agent 前 3 名（11/05 运行）,3,confirmed,45
+A04,B,500226916,agent 前 3 名（11/05 运行）,2,confirmed,44
+A04,C,500250753,agent 前 3 名（11/05 运行）,1,confirmed,13
+A05,A,500247770,agent 前 3 名（11/05 运行）,2,confirmed,1
+A05,B,24036325,agent 前 3 名（11/05 运行）,3,confirmed,3
+A05,C,500253412,agent 前 3 名（11/05 运行）,1,confirmed,2
+A08,A,19433767,标准答案前 3 名,,confirmed,1
+A08,B,25172442,标准答案中随机抽取,,confirmed,57
+A08,C,500053744,其余符合房源中最便宜的,,confirmed,59
+A08,D,500285969,标准答案前 3 名,,confirmed,2
+A08,E,25604246,标准答案前 3 名,,confirmed,3
+A09,A,500029855,标准答案前 3 名,,confirmed,2
+A09,B,24995389,标准答案前 3 名,,confirmed,3
+A09,C,25420249,其余符合房源中最便宜的,,confirmed,42
+A09,D,24203641,标准答案前 3 名,,confirmed,1
+A09,E,24417854,标准答案中随机抽取,,confirmed,13
+B01,A,60151578,标准答案前 3 名,,confirmed,1
+B01,B,24203641,标准答案前 3 名,,confirmed,2
+B01,C,500039510,标准答案前 3 名,,confirmed,3
+B02,A,500203570,agent 前 3 名（11/05 运行）,2,confirmed,5
+B02,B,500297851,agent 前 3 名（11/05 运行）,3,confirmed,6
+B02,C,500260916,agent 前 3 名（11/05 运行）,1,confirmed,8
+B03,A,60059436,agent 前 3 名（11/05 运行）,2,confirmed,7
+B03,B,500098200,agent 前 3 名（11/05 运行）,3,confirmed,15
+B03,C,500074659,agent 前 3 名（11/05 运行）,1,confirmed,4
+B06,A,25420249,agent 前 3 名（11/05 运行）,3,confirmed,2
+B06,B,500029855,agent 前 3 名（11/05 运行）,2,confirmed,1
+B06,C,500074659,agent 前 3 名（11/05 运行）,1,confirmed,7
+G01,A,500098200,agent 前 3 名（11/05 运行）,3,confirmed,48
+G01,B,500074659,agent 前 3 名（11/05 运行）,1,confirmed,85
+G01,C,60059436,agent 前 3 名（11/05 运行）,2,confirmed,76
+G02,A,500211006,agent 前 3 名（11/05 运行）,3,confirmed,2
+G02,B,500297851,agent 前 3 名（11/05 运行）,2,confirmed,4
+G02,C,500203570,agent 前 3 名（11/05 运行）,1,confirmed,3
+G03,A,60059436,agent 前 3 名（11/05 运行）,2,confirmed,7
+G03,B,500098200,agent 前 3 名（11/05 运行）,3,confirmed,15
+G03,C,500074659,agent 前 3 名（11/05 运行）,1,confirmed,4
+G04,A,500250282,标准答案前 3 名,,confirmed,3
+G04,B,25558520,其余符合房源中最便宜的,,confirmed,4
+G04,C,500291446,标准答案中随机抽取,,confirmed,45
+G04,D,500029855,标准答案前 3 名,,confirmed,1
+G04,E,25420249,标准答案前 3 名,,confirmed,2
+G05,A,500203570,agent 前 3 名（11/05 运行）,2,confirmed,3
+G05,B,500211006,agent 前 3 名（11/05 运行）,1,confirmed,2
+G05,C,500297851,agent 前 3 名（11/05 运行）,3,confirmed,4

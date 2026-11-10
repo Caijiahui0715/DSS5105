@@ -4,7 +4,7 @@
 
 根因只用这六类：解析错误、工具或 SQL 错误、数据缺失或取值不一致、LLM 改写出错、守卫误拦、评估集本身出错。
 
-这里的结果都来自**开发集**。留出集 11/9 之前不跑。
+前面几节的结果都来自**开发集**：看着这些题改系统是允许的，所以每条都写了怎么修、修好没有。最后一节是**留出集**（2026-11-09 跑的），按规定只记录、不修。
 
 ## 第一轮：不调用模型的比对（`check_search.py`，2026-11-06）
 
@@ -93,6 +93,16 @@ dev5 没有逐题重打，只重读了 D、E、F、H 类和 B01、C05：D03、E0
 - **根因**：解析错误。提示词只在用户明确说"按通勤排"时才设置。
 - **是否修复**：是。"离学校近"这类说法立刻把通勤加入优先项。
 - **修复后开发集的结果**：dev2、dev3 正确。
+- **人工排序问卷的旁证**（V6 问卷的候选来自 agent 11/05 的一次运行，用的是 11/02 复查前的数据，见 `human_ranking/v6_final/`）：那次同样没有识别出通勤优先，图上的"排序重点"写的是"综合适合程度"，推荐的 3 套顺序和标准答案完全相反（τ-b −1.00）。5 位评审的平均顺序和标准答案一致。
+
+### G02 · G_multi_turn_update（排序）
+
+- **用户输入**：第 1 轮 Find me a room with a monthly rent below SGD 1,600. Price is my top priority. 第 2 轮 Commute time is now more important than price, but please keep my budget unchanged.
+- **期望结果**：第 2 轮先按通勤、再按租金排。人工问卷的 3 个候选里，A 到 Faculty of Science 20 分钟；B、C 都是 22 分钟、月租 1,050，排序依据相同，算并列。标准答案 A > B=C。
+- **实际结果**（V6 问卷，agent 11/05 运行）：优先项解析对了（commute、price），推荐顺序却是 C > B > A，把通勤最短的 A 排在最后（τ-b −0.82）。
+- **根因**：工具或 SQL 错误。当时排序是加权打分（说了的优先项共占 70%，其余因素占 30%），不是依次比较：A 的通勤只比 B、C 短 2 分钟，租金却贵 150，加权后反而排到最后。和 A01 是同一个问题。
+- **是否修复**：是，和 A01 一起修：说了优先项就依次严格比较，再比租金（提交 `1b6ba07`）。
+- **修复后开发集的结果**：dev5 第 2 轮前 3 名顺序和标准答案一致；`check_search.py` 里 11 轮说了优先项的题全部一致。
 
 ### G04 · G_multi_turn_update
 
@@ -238,8 +248,54 @@ dev5 没有逐题重打，只重读了 D、E、F、H 类和 B01、C05：D03、E0
 - **是否修复**：部分修复。提示词加了一句，修之前 2/4 错，修之后 1/3 错。回复核对和 `score.py` 都查不出这种说法。
 - **修复后的结果**：`final3` 仍然错。留作已知限制。
 
+## 留出集（2026-11-09，冻结系统，每题 3 遍，没有修）
+
+留出集只用来报告成绩，所以下面的问题都**没有修**；如果以后要修，只能在开发集上验证，留出集的数字保持这一次的结果。逐轮分析见 `results/holdout_report.md`。
+
+### A12 · A_explicit_requirements（3 遍里 2 遍错）
+
+- **用户输入**：I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.
+- **期望结果**：26 套符合，23 套需确认。
+- **实际结果**：除了 `tenant_gender: male`，还多设了 `gender_preference: male`（房东在广告里偏好男租客）。冻结数据里这个字段 369 套全是 unknown，于是全部变成需确认，回复说"没有符合的房源"。第 3 遍正确。
+- **根因**：解析错误。字段说明写了"数据很少"，模型仍然设了。一个完全没有数据的字段被当成条件，就会把所有结果打成未知。
+- **是否修复**：否（留出集）。
+
+### B07 · B_missing_field（3 遍里 1 遍错）
+
+- **用户输入**：Find me a fully furnished room for no more than SGD 1,600 per month. … do not treat unknown furnishing information as fully furnished.
+- **期望结果**：71 套符合，2 套家具情况不明的需确认。
+- **实际结果**（第 2 遍）：把 `furnished_unspecified` 也当成可以接受，说"73 strict matches"，还说没有需要确认的房源。
+- **根因**：解析错误，违反了题目明确写的 `must_not`。
+- **是否修复**：否（留出集）。
+- **另外**：第 1、3 遍被 `score.py` 判成解析错误，其实是打分脚本没有把 `furnishing_types: [fully_furnished]` 当成"全配"。属于评估集本身出错，已改 `score.py`（只改打分，没动系统）。
+
+### H01 · H_provenance_and_comparison（3 遍都错）
+
+- **用户输入**：What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?
+- **期望结果**：最近记录 S$900，原始挂牌价 S$1,000，低了 S$100。
+- **实际结果**：3 遍都说原始挂牌价"数据里没有"。
+- **根因**：工具或 SQL 错误。模型调用的 `get_listing_details` 只返回生效租金，不返回卡片原价；原价只在 `explain_listing` 里有。
+- **是否修复**：否（留出集）。
+
+### D01、D04 · D_ambiguous_request（问得不全）
+
+- **用户输入**：D01 I'm looking for an affordable room, preferably somewhere close to NUS.；D04 I don't want to spend too much time commuting every day. Are there any suitable places for students?
+- **期望结果**：先问预算（D01）和能接受的通勤上限，不替用户假定。
+- **实际结果**：D01 第 1 遍没问就按租金搜了；其余几遍都先问了学院和预算，但 6 遍都没有问通勤最长能接受多久。
+- **根因**：解析错误。和开发集 D05 一样，提示词只要求问清楚有几种理解的话，没有要求问上限。
+- **是否修复**：否（留出集）。正式行为打分前，两位评分人要先统一"没问上限算不算错"。
+
+### C07 · C_no_solution_or_relaxation（3 遍里 1 遍错）
+
+- **用户输入**：I need a room in D10 for no more than SGD 1,000 per month. … keep my original criteria unchanged …
+- **期望结果**：严格匹配 0 套，单独把预算放到 S$2,205 是最小改动。
+- **实际结果**（第 1 遍）：自己加了 `room_type: common_room`，把"单间"缩成"普通房"。这次结论恰好没变。
+- **根因**：解析错误，违反"保持原条件不变"。
+- **是否修复**：否（留出集）。
+
 ## 还没有解决
 
+- **没说排序时的默认排法和人不一致**：按约定不计分，但人工问卷显示，用户没说排序时，系统按 MRT 和租金平衡排的结果和评审差别很大。B02 里 5 位评审都把最贵的 C 排最后，11/05 的 agent 把它排第一；G04 里现在的系统和评审的一致度只有 0.20。见 `ranking_summary.md`。
 - **D05 问得不全**：严格按标准 4 遍都不算对，决定不改，见上。
 - **"最多问两件事"不总是遵守**：D05、V1 有时一次问 3 到 4 件。只靠提示词。
 - **说了顺序但没说可以改**：V4、V6 说了按什么顺序排，大多没说用户可以改。

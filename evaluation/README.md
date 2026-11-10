@@ -11,8 +11,11 @@
 | `cases/holdout_manifest.json` | 留出集 20 题的编号和 SHA-256 |
 | `gold/gold_answers.json` | 标准答案：每轮的 confirmed（已排序）、needs_confirmation（附未知字段）、排除原因计数、前 3 名、C 类放宽结果、H 类事实 |
 | `gold/drift_vs_source.md` | 新旧标准答案逐题对比 |
-| `human_ranking/form.csv` | 人工排序表，评审看这个 |
-| `human_ranking/key.csv` | 答案表：房源 ID、抽样来源、标准答案名次。**不要给评审看** |
+| `human_ranking/v6_final/` | **人工排序问卷的最终版（15 题）**：V6 的 11 题，加上替换后的 A08、A09、B01、G04。`DSS5105_V6_human_ranking.pdf` 是完整问卷（每题的图、5 位评审的名次和留言、和标准答案及 agent 的对照）；还有合并后的 `responses.csv`、`key.csv`、`analysis.md` 和 `images/`。由 `analyze_human_ranking.py` 生成。这里的标准答案按图上显示的数值算（500203570 月租 1,050，冻结数据是 1,300），排序依据完全相同的候选算并列；`gold_answers.json` 不受影响。11 道原题对照 agent 11/05 的顺序；4 道替换题的候选 agent 没有完整排过，对照的是现在冻结的系统给这些候选的排序（`system_order.csv`，由 `human_ranking_system_order.py` 不经过模型算出，要先于 `analyze_human_ranking.py` 运行） |
+| `human_ranking/responses/` | 两份 Google 表单导出的原始回答（V6 原题、4 道替换题），不修改 |
+| `human_ranking/图片/`、`v6_key.csv` | V6 原题的对比图，以及从图上读出的候选房源和 agent 名次 |
+| `human_ranking/form.csv` | 按冻结数据重做的 17 题排序表，没有整份发给评审；替换题的候选取自这里 |
+| `human_ranking/key.csv` | 上一行排序表的答案表：房源 ID、抽样来源、标准答案名次。**不要给评审看** |
 | `human_ranking/v6_replacement/` | V6 问卷 A08、A09、B01、G04 的替换题：对比图、表单设置（`questions.md`）、答案表（`key.csv`，不要给评审看）。由 `v6_replacement.py` 生成 |
 | `human_ranking/form_v7/` | 中文版 Google 表单（V7）：15 张对比图、建表单的 Apps Script（`build_form.gs`）、答案表（`key.csv`，不要给评审看）。由 `form_v7.py` 生成，用法见该目录的 `README.md`。**暂停中：现有图片按"全部商学院"画的，已过时，恢复后要按各题学院重新生成** |
 | `build_cases.py` | 原始文件 → `cases.json`，同时划分留出集 |
@@ -22,7 +25,8 @@
 | `check_search.py` | 不调用模型：把开发集每轮的 `gold_profile` 直接交给系统的搜索和排序，和标准答案比较。不花钱，改完搜索或排序就能复测 |
 | `run_eval.py` | 用真实模型跑系统（B5 agent），每轮存一行到 `results/<标签>.jsonl`，开头记下代码版本、模型和数据的哈希。要花钱。默认只跑开发集，加 `--holdout` 才跑留出集 |
 | `score.py` | 从 `results/<标签>.jsonl` 算指标，并写出逐轮的 `_review.md` 给人看。只用标准答案和冻结数据，不 import 系统代码。行为分不在里面，要人工打 |
-| `failure_log.md` | 失败案例记录，按评估方案第 6 节的模板写，给 Evaluation.pdf 用 |
+| `failure_log.md` | 失败案例记录，按评估方案第 6 节的模板写，给 Evaluation.pdf 用。前面是开发集（写了怎么修），最后一节是留出集（只记录，不修） |
+| `ranking_summary.md` | 排序评估总结：自动的顺序检查（开发集、留出集）、人工排序问卷（指标 7），以及各种排序不一致怎么归类 |
 | `boundary/` | 边界测试：无关问题、租房常识、法律和准证、注入、拒绝过头。不属于这 59 题，也不动 `cases.json`；只用开发集的题，不碰留出集。见该目录的 `README.md` |
 
 ## 怎么运行

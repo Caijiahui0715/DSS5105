@@ -17,7 +17,7 @@ from decision import (
 from mock_db import create_database, create_mock_database, set_listing
 from models import SearchPreferences
 from response import render_listing_details, render_listing_explanation, render_occupants
-from tools import get_listings_by_ids, rank_listings, search_listings
+from tools import get_listings_by_ids, mrt_minutes, rank_listings, search_listings
 
 
 class DecisionTest(unittest.TestCase):
@@ -254,27 +254,19 @@ class DecisionTest(unittest.TestCase):
             self.assertEqual(explanation["sources"]["commute_minutes"], source)
             self.assertIn(f"到计算机学院通勤时间来自{name}", render_listing_explanation(explanation))
 
-    def test_a_stated_priority_without_data_needs_confirmation(self):
-        preferences = SearchPreferences(max_price_sgd=1500, ranking_priority="amenities")
-        with closing(create_mock_database()) as connection:
-            strict, pending = search_with_unknowns(connection, preferences)
-
-        # The legacy fixture has no nearby counts, so nothing can be ranked on food.
-        self.assertEqual(strict, [])
-        self.assertTrue(pending)
-        self.assertTrue(all(listing["unknown_conditions"] == ["nearby_food"] for listing in pending))
-
-    def test_each_stated_priority_without_data_is_named(self):
+    def test_a_stated_priority_orders_listings_without_filtering_them(self):
         preferences = SearchPreferences(max_price_sgd=1500, ranking_priority=["amenities", "commute"], faculty="School of Computing")
         with closing(create_mock_database()) as connection:
             strict, pending = search_with_unknowns(connection, preferences)
             self.assertEqual(strict, search_listings(connection, preferences))
+            ranked = [item["listing"]["listing_id"] for item in rank_listings(strict, preferences)]
 
-        # No fixture listing has nearby counts; S009 has no commute minutes either.
-        self.assertEqual(strict, [])
-        conditions = {listing["listing_id"]: listing["unknown_conditions"] for listing in pending}
-        self.assertEqual(conditions["S009"], ["nearby_food", "max_commute_minutes"])
-        self.assertEqual(conditions["S006"], ["nearby_food"])
+        # No fixture listing has nearby counts, and S009 has no commute minutes: they stay matches,
+        # S009 last among those compared on commute.
+        self.assertEqual(pending, [])
+        self.assertIn("S009", ranked)
+        self.assertLess(ranked.index("S006"), ranked.index("S010"))
+        self.assertGreater(ranked.index("S009"), ranked.index("S001"))
 
     def test_new_conditions_match_the_sql_search(self):
         grid = product(
@@ -362,19 +354,47 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual({listing["listing_id"] for listing in strict}, {"S006", "S010"})
         self.assertIn("S009", {listing["listing_id"] for listing in pending})
         self.assertEqual(ranked[0]["listing"]["listing_id"], "S006")
-        self.assertEqual(ranked[0]["factors"]["commute"]["weight"], 0.7)
+        self.assertEqual(ranked[0]["ranking_order"], ["commute", "price"])
         self.assertEqual(elsewhere, [])
 
-    def test_mrt_priority_sends_listings_without_mrt_data_to_confirmation(self):
+    def test_mrt_priority_ranks_listings_without_an_open_station_last(self):
         preferences = SearchPreferences(max_price_sgd=8000, ranking_priority="mrt")
         with closing(create_database()) as connection:
             strict, pending = search_with_unknowns(connection, preferences)
 
-        self.assertTrue(pending)
-        self.assertTrue(all(listing["unknown_conditions"] == ["max_mrt_minutes"] for listing in pending))
+        self.assertEqual(pending, [])
+        ranked = [item["listing"] for item in rank_listings(strict, preferences)]
+        minutes = [mrt_minutes(listing) for listing in ranked]
+        stated = [value for value in minutes if value is not None]
+        self.assertEqual(stated, sorted(stated))
         # A station still under construction does not count as MRT access.
-        self.assertIn("under_construction", {listing["mrt_operation_status"] for listing in pending})
-        self.assertNotIn("under_construction", {listing["mrt_operation_status"] for listing in strict})
+        self.assertEqual(minutes[len(stated):], [None] * (len(minutes) - len(stated)))
+        self.assertIn("under_construction", {listing["mrt_operation_status"] for listing in ranked[len(stated):]})
+
+    def test_an_explanation_gives_what_the_data_states_and_when_it_was_checked(self):
+        with closing(create_mock_database()) as connection:
+            (listing,) = get_listings_by_ids(connection, ["S010"])
+            explanation = explain_listing(listing, SearchPreferences())
+
+        self.assertEqual(explanation["known_conditions"]["cooking"], "not_allowed")
+        self.assertEqual(explanation["link_last_checked"], listing["live_checked_at"][:10])
+
+    def test_a_walking_limit_needs_a_station_known_to_operate(self):
+        limit = SearchPreferences(max_mrt_minutes=5)
+        for status, minutes, expected in (
+            ("operational", 5, "pass"),
+            ("operational", 6, "fail"),
+            ("unknown", 5, "unknown"),
+            ("under_construction", 5, "unknown"),
+            # The nearest operating station is at least as far.
+            ("under_construction", 6, "fail"),
+            ("unknown", 6, "fail"),
+            ("operational", None, "unknown"),
+        ):
+            with self.subTest(status=status, minutes=minutes):
+                listing = {"mrt_operation_status": status, "mrt_minutes_reported": minutes, "mrt_distance_m": minutes and minutes * 100}
+                self.assertEqual(condition_status("max_mrt_minutes", listing, limit), expected)
+                self.assertEqual(condition_status("max_mrt_distance_m", listing, SearchPreferences(max_mrt_distance_m=500)), expected)
 
     def test_area_filters_and_space_ranking_respect_rental_scope(self):
         with closing(create_mock_database()) as connection:
@@ -395,7 +415,7 @@ class DecisionTest(unittest.TestCase):
                         [row["listing_id"] for row in strict],
                         [row["listing_id"] for row in search_listings(connection, preferences)],
                     )
-                    if minimum or priority == "space":
+                    if minimum:
                         self.assertNotIn("S001", {row["listing_id"] for row in strict})
                         if scope != "entire_unit":
                             self.assertIn("S001", {row["listing_id"] for row in pending})
@@ -404,11 +424,11 @@ class DecisionTest(unittest.TestCase):
             strict, _ = search_with_unknowns(connection, preferences)
             ranked = rank_listings(strict, preferences)
             by_id = {item["listing"]["listing_id"]: item for item in ranked}
-            # Equally spacious within their own group; do not compare 20 sqm with 200 sqm.
-            self.assertEqual(by_id["S002"]["factors"]["space"]["ratio"], by_id["S009"]["factors"]["space"]["ratio"])
-            self.assertLess(by_id["S002"]["rank_value"], by_id["S004"]["rank_value"])
-            self.assertLess(by_id["S009"]["rank_value"], by_id["S010"]["rank_value"])
-            self.assertEqual(by_id["S002"]["rank_value"], explain_listing(by_id["S002"]["listing"], preferences)["rank_value"])
+            # Largest rented area first; S001's 200 sqm is the whole flat's, so the room comes last.
+            order = [item["listing"]["listing_id"] for item in ranked]
+            self.assertEqual(order[:4], ["S009", "S010", "S002", "S004"])
+            self.assertGreater(order.index("S001"), order.index("S004"))
+            self.assertEqual(explain_listing(by_id["S009"]["listing"], preferences)["ranking_values"]["space"], -200)
             wrong_scope = get_listings_by_ids(connection, ["S001"])[0]
             self.assertIn("房间面积未注明", render_listing_details(wrong_scope, {}, "zh"))
             self.assertIn("room area not stated", render_listing_details(wrong_scope, {}, "en"))

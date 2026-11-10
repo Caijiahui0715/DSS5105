@@ -73,6 +73,7 @@ from response import (
     comparison_view,
     destination_label,
     profile_change_rows,
+    NOT_SEARCHED,
     render_auto_save,
     render_budget_check,
     render_budget_conversion,
@@ -119,6 +120,7 @@ from tools import (
     mrt_distance_m,
     own_commute_needed,
     rank_listings,
+    ranking_order,
     ranking_weights,
     location_distance_m,
     rent_percentile_sgd,
@@ -180,18 +182,41 @@ Facts
   the system lists the links the user should open themselves, so mention links only when the
   user asks, quoting link_note. Take availability from availability_note; neither proves a room
   is still available.
+- When asked what supports a fact or where it comes from, call explain_listing: answer from its
+  known_conditions, which hold even when the advert's words do not mention them, then quote its
+  evidence and sources. In those answers and in comparisons, name each listing with its listing_id
+  and say the facts come from the last data refresh on link_last_checked (never another date), not
+  from checking availability today.
+- database_count is how many listings match; those returned are only the first few. Give the total
+  from database_count and say you are showing the top ones; never call what is shown the total.
+  It counts every rental type that matches, so do not name the total after the kind shown.
 - You cannot contact landlords or agents, confirm availability, reserve rooms, arrange viewings,
   pay or sign anything, or negotiate or decide terms, so never offer to and never say you have.
   Only offer what the tools do: search, preview a change, show
   details, explain a ranking, compare, estimate costs, convert currencies, shortlist, exclude or
   restore listings. Do not offer to review adverts, clauses or other text the user sends.
+- When asked to pay a deposit or reserve a home, decline and warn the user not to pay anyone before
+  checking that person's identity, who owns the home and the written contract.
 
 Using tools
 - When a tool returns an error that says how to fix the call, fix the arguments and call it
   again before answering. Tell the user about a failure only when the error says to ask them
   or the corrected call fails too.
-- Search as soon as the user gives at least one criterion instead of asking questions first.
-  Afterwards you may mention one item from missing_refinements.
+- Search as soon as the user gives at least one condition that narrows the listings instead of
+  asking questions first. Afterwards you may mention one item from missing_refinements.
+- A ranking preference narrows nothing. Given only that, search_listings refuses once in a
+  conversation and says what to ask. If you have already asked and the user adds no condition, call
+  search_listings with the preference alone: it goes through.
+- A wish can have several readings and match no one field or ranking factor unless you choose
+  between them, such as 住得好一点, a nice place or 适合学生住. Do not guess a priority for it.
+  Naming something the data holds is not such a wish: near campus, cheaper, spacious, furnished. Nor
+  is asking for better options, which has its own rule below. Before searching, ask what it means,
+  in one message and about at most two things: offer readings from what the listings record, say
+  what the data cannot measure, and show no listings. If the message also states conditions, first
+  pass them to search_listings with save_only=true, which saves them and searches nothing. Ask about
+  a wish only once: whatever the user says next, search with the conditions you have, without
+  save_only. A preference from before you asked was not saved, so pass it again; user_quote still
+  comes from the latest message. After an earlier search, ask the same way and change nothing.
 - Resolve "the second one" with shown_listings_in_display_order, "this one" with
   last_viewed_listing_id or a single shown listing, and saved listings with the shortlist.
   Ask when a reference is ambiguous.
@@ -209,6 +234,8 @@ Using tools
 - For a listing under needs_confirmation, name each requirement in its unknown_conditions and
   say the listing does not state it, so the user should ask the publisher; for example, a room
   whose tenant gender rule is not stated may or may not accept them.
+- A value the user names is a new condition, however they put it (预算可以加到 2500, I can go up to
+  2,500): save it with search_listings.
 - When the user can spend more, is willing to compromise, or asks for better options without
   naming a value, do not ask first and do not save anything. For budget, call explore_budgets;
   for other conditions, preview a search. Say plainly whether the budget is the bottleneck
@@ -218,8 +245,8 @@ Using tools
 - Criteria the user states, including in the first message, are saved: use preview=false and
   copy the user's words that ask for them into user_quote. Use preview=true only for
   hypothetical questions such as 如果预算提高到1500呢. Never loosen a condition on your own.
-- When a saved search has no strict matches, the system appends single-condition relaxation
-  suggestions with checked counts, so do not repeat them. If the user accepts one, for example
+- When a saved search has no strict matches, the system appends the smallest change to each limit
+  that finds a listing, with the count, so do not repeat them. If the user accepts one, for example
   好 or 接受, save its suggested value with the user's words as user_quote.
 - Budgets without a currency, including the generic 元, are SGD; 新币 and 新加坡元 are SGD;
   人民币 and RMB are CNY. A bare $ or ¥ is ambiguous, so ask. Pass non-SGD amounts as budget
@@ -229,7 +256,8 @@ Using tools
   including SGD; never put such an amount in max_price_sgd. 一年的预算是30万人民币 is
   budget {{"amount": 300000, "currency": "CNY", "months": 12}}.
 - Resolve relative move-in dates from today. Set cooking_required only when cooking is
-  required. When the user accepts any room type, clear room_type and set room_type_flexible.
+  required. Only when the user says any room type is fine (不限房型, any room type), clear room_type
+  and set room_type_flexible; asking for a room is rental_scope alone.
 - In search_listings, put only the fields that change in set; never echo saved or empty fields.
   To drop a saved condition (any district, cooking no longer needed, back to balanced ranking),
   name it in clear. To replace a saved value, give only the new one in set or budget; clear is
@@ -268,9 +296,12 @@ Using tools
   the tool says what to ask, and replace_destination=true is only for after they agree.
 - When search_listings says commute times to a place still need working out and gives a question,
   ask exactly that; call again with wait_for_routes=true only after the user agrees to wait.
-- Ranking always weighs MRT walking distance, and rent when there is a budget; the named
-  priorities share 70% of the weight. A listing without MRT data or near a station that is not
-  open yet counts as a 10-minute walk.
+- Stated priorities rank strictly in the order stated, then by rent; a listing that does not state
+  one comes last on it. When the user names several without saying which comes first, they rank in
+  the order named: say that order and that the user can change it. Without any, MRT walking distance
+  and, with a budget, rent are weighed
+  equally, and a listing without MRT data or near a station that is not open yet counts as a
+  10-minute walk.
 - Present listings in the order and numbering the tools give. Changes to this conversation's criteria,
   budget conversions and budget_check notes, shortlist changes, exclusions, relaxation
   suggestions, the rental_scope_mix note (whether the shown listings are rooms or whole
@@ -356,6 +387,8 @@ class AgentState(TypedDict, total=False):
     last_search: dict | None
     # ISO date of the latest turn; a later date means the conversation resumed on another day.
     last_active_date: str | None
+    # Whether this conversation already asked for conditions before searching; it asks only once.
+    asked_for_conditions: bool
     # Long-term memory, used only with a profile store: who is talking, the user's words and date
     # behind each saved field, the budget as stated, the criteria (JSON) this conversation started
     # from or last saved to the long-term profile.
@@ -370,6 +403,7 @@ class AgentState(TypedDict, total=False):
     reply_traces: dict
     # Reset at the start of every turn.
     tool_rounds: int
+    asked_this_turn: bool
     drafts: list[str]
     notes: list[str]
     footers: list[str]
@@ -420,6 +454,7 @@ class SearchArgs(BaseModel):
     preview: bool = Field(False, description="True only for hypothetical what-if questions; saved preferences stay unchanged.")
     replace_destination: bool = Field(False, description="True only after the user agreed to replace the saved other_destination with the new one.")
     wait_for_routes: bool = Field(False, description="True only after the user agreed to wait while commute times to a new place are worked out.")
+    save_only: bool = Field(False, description="True only when the message states conditions plus a wish with several readings: saves the conditions and searches nothing, so you can ask what the wish means.")
     user_quote: str = Field("", description="The user's words from the latest message that ask for the saved change.")
 
 
@@ -705,7 +740,8 @@ def build_agent(
         preview = args.preview and _has_search_criteria(current)
         if changes and not preview and not _quotes(args.user_quote, work["message"]):
             raise ToolError(
-                "Saving preference changes needs user_quote copied from the latest user message. "
+                "Saving preference changes needs user_quote copied from the latest user message, even when "
+                "the change was stated earlier: copy any of its words. "
                 "Use preview=true to only look."
             )
         # A budget missing 万 or 千 is at least ten times too small. A limit under a tenth of the
@@ -750,17 +786,74 @@ def build_agent(
         changes = {field: getattr(preferences, field) for field in changes}
         if preferences.max_other_commute_minutes is not None and preferences.other_destination is None:
             raise ToolError("max_other_commute_minutes needs other_destination: set the place the user named.")
-        if not _has_search_criteria(preferences):
+        # A preference alone has nothing to rank within, so ask first, once in a conversation. A retry
+        # in the same turn is refused too: only the user's next message can lift this. Dropping the
+        # conditions a search had is the user's own choice and goes through.
+        rank_only = (
+            not _narrows_listings(preferences)
+            and not _narrows_listings(current)
+            and (not work["asked_for_conditions"] or work["asked_this_turn"])
+        )
+        if not _has_search_criteria(preferences) or rank_only:
+            work["asked_for_conditions"] = work["asked_this_turn"] = True
             raise ToolError(
                 "The budget was not used: the system already told the user it is far below every rent and "
                 "asked for the correct amount, so do not repeat that; wait for their answer."
                 if budget_check
-                else "There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time."
+                else f"{NOT_SEARCHED}. There are no search criteria yet. Ask for one, such as budget, district, room type or MRT walking time."
+                if not _has_search_criteria(preferences)
+                else _ASK_FOR_CONDITIONS
             )
+
+        def save_changes():
+            if not changes:
+                return
+            language = work["response_language"]
+            work["preferences"] = preferences
+            # The user's words behind each saved field, kept with the profile if they agree.
+            sources = dict(work["preference_sources"])
+            for field in changes:
+                if getattr(preferences, field) == getattr(defaults, field):
+                    sources.pop(field, None)
+                else:
+                    sources[field] = {"quote": args.user_quote, "date": date.today().isoformat()}
+            work["preference_sources"] = sources
+            # Keep the budget as stated so a saved one is converted at that day's rate.
+            if args.budget:
+                work["budget_statement"] = args.budget.model_dump()
+            elif "max_price_sgd" in changes:
+                work["budget_statement"] = None
+            work["notes"].append(render_preference_changes(current, changes, language, saved_automatically(work)))
+            if "lease_months" in changes and (lease_note := render_lease_minimum(preferences.lease_months, language)):
+                work["notes"].append(lease_note)
+
         if conversion and conversion.get("rate_to_sgd"):
             # A budget in another currency: amounts are also shown in it from now on, at this rate.
             work["display_currency"] = conversion["original_currency"]
             work["display_rate"] = _rate_from(conversion)
+
+        if args.save_only and not preview:
+            save_changes()
+            # What an earlier search suggested or found no longer fits the new conditions.
+            work["relaxations"], work["last_search"] = [], None
+            if occupant_note:
+                work["footers"] = [render_occupants(occupant_note, work["response_language"])]
+            if conversion:
+                work["notes"].append(render_budget_conversion(conversion, work["response_language"]))
+            _record_facts(
+                work,
+                "save_criteria",
+                criteria=preferences.model_dump(mode="json", exclude_defaults=True),
+                changed=[field for field in SearchPreferences.model_fields if field in changes],
+            )
+            return {
+                "searched": False,
+                "preferences": preferences.model_dump(mode="json", exclude_defaults=True),
+                "saved_changes": {field: preferences.model_dump(mode="json")[field] for field in changes},
+                "budget_conversion": conversion,
+                "budget_check": budget_check,
+                "next_step": "The conditions are saved and no listing was searched. Ask what the wish means, as the rules say, and mention no listing.",
+            }
 
         excluded = _search_exclusions(work)
         routes_to(work, preferences.other_destination, route_candidates(connection, preferences, excluded), ask=not args.wait_for_routes)
@@ -793,24 +886,7 @@ def build_agent(
 
         relaxations = []
         if not preview:
-            if changes:
-                work["preferences"] = preferences
-                # The user's words behind each saved field, kept with the profile if they agree.
-                sources = dict(work["preference_sources"])
-                for field in changes:
-                    if getattr(preferences, field) == getattr(defaults, field):
-                        sources.pop(field, None)
-                    else:
-                        sources[field] = {"quote": args.user_quote, "date": date.today().isoformat()}
-                work["preference_sources"] = sources
-                # Keep the budget as stated so a saved one is converted at that day's rate.
-                if args.budget:
-                    work["budget_statement"] = args.budget.model_dump()
-                elif "max_price_sgd" in changes:
-                    work["budget_statement"] = None
-                work["notes"].append(render_preference_changes(current, changes, language, saved_automatically(work)))
-                if "lease_months" in changes and (note := render_lease_minimum(preferences.lease_months, language)):
-                    work["notes"].append(note)
+            save_changes()
             # Same single-condition policy as the workflow's relaxation node.
             if not shown:
                 relaxations = analyze_relaxations(connection, preferences, excluded)
@@ -883,7 +959,8 @@ def build_agent(
             strict=len(strict),
             pending=len(pending),
             shown=len(shown) + len(pending_shown),
-            weights=ranking_weights(preferences) if shown or pending_shown else {},
+            order=ranking_order(preferences) if shown or pending_shown else [],
+            weights=ranking_weights(preferences) if (shown or pending_shown) and not preferences.ranking_priority else {},
             # Fewer strict matches than a page: what dropping each condition would give.
             blocked=sorted(
                 ({"field": row["condition"], "count": row["database_matches_without_it"]} for row in context
@@ -1551,6 +1628,8 @@ def build_agent(
             "relaxations": [] if new_day else state.get("relaxations", []),
             "last_search": None if new_day else state.get("last_search"),
             "last_active_date": today.isoformat(),
+            # A question the model asked by itself counts: the user has had the chance to answer.
+            "asked_for_conditions": state.get("asked_for_conditions", False) or _last_reply_asked(state.get("messages", [])),
             "preference_sources": state.get("preference_sources", {}),
             "budget_statement": state.get("budget_statement"),
             "profile_base": state.get("profile_base", {}),
@@ -1559,6 +1638,7 @@ def build_agent(
             "display_rate": state.get("display_rate"),
             "rate_used": None,
             "tool_rounds": 0,
+            "asked_this_turn": False,
             "drafts": [],
             "notes": notes,
             "footers": [],
@@ -1619,6 +1699,8 @@ def build_agent(
                 "cost_assumptions",
                 "display_currency",
                 "display_rate",
+                "asked_for_conditions",
+                "asked_this_turn",
                 "rate_used",
                 "drafts",
                 "notes",
@@ -1671,6 +1753,12 @@ def build_agent(
             state["message"],
             *state["observations"],
             json.dumps(snapshot(state), ensure_ascii=False, default=str),
+            # What the user said and the agent replied earlier; those replies were checked when sent.
+            *(
+                message.text
+                for message in messages[:_turn_start(messages)]
+                if isinstance(message, HumanMessage) or (isinstance(message, AIMessage) and not message.tool_calls)
+            ),
         ]
         problems = _reply_problems(reply, sources, language) if reply.strip() else []
         trace = list(state["trace"])
@@ -1789,6 +1877,29 @@ def destination_changes(work, current: SearchPreferences, given: dict, changes: 
         )
     if not keep_limit:
         changes["max_other_commute_minutes"] = None
+
+
+_ASK_FOR_CONDITIONS = (
+    f"{NOT_SEARCHED} or saved: a ranking preference alone has nothing to rank within. Ask in one message, "
+    "about at most two things: what would narrow the search, such as budget or room or whole unit, and, if "
+    "the user's words could mean several things or name several factors with no order, which they mean. "
+    "Say what the data cannot measure. Show no listings. When the user answers, pass their answer together "
+    "with this preference; if they have nothing to add, call again and it goes through."
+)
+
+
+def _last_reply_asked(messages: list[AnyMessage]) -> bool:
+    """Whether the reply the user is now answering asked them something."""
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and not message.tool_calls:
+            return "?" in message.text or "？" in message.text
+    return False
+
+
+def _narrows_listings(preferences: SearchPreferences) -> bool:
+    """Whether any criterion filters the listings. A ranking preference only orders them, and another
+    destination without a limit only adds its commute times."""
+    return _has_search_criteria(preferences.model_copy(update={"ranking_priority": (), "other_destination": None}))
 
 
 def _record_facts(work: dict, tool: str, **facts) -> None:

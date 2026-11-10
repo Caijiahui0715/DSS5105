@@ -15,11 +15,14 @@ Criteria from the user's words
   sharing one room (两个人住一间, 合住一个房间, share a room) is rental_scope=room.
   Never encode rental scope as room_type. Room types are common_room, master_room, shared_room
   or studio; district codes look like D05.
+- An entire apartment, a whole flat or a place of one's own means rental_scope entire_unit, with no
+  property_types: in Singapore these words mean a home of any kind.
 - Set property_types only when a property type is named: 公寓, condo or private apartment means
   condominium, executive_condominium, apartment and walk_up_apartment; 组屋 or HDB means
   hdb_flat; 有地住宅 or landed means the house types. Property type does not decide rental_scope.
 - Set tenant_gender only from the user's own words about who will live there: 我是女生 or I am
-  female means female, 我是男生 means male, a male-female couple or group means mixed. Never infer
+  female means female, 我是男生 means male, a male-female couple or group means mixed. My partner, my spouse or
+  our family says nothing about gender, so leave it out. Never infer
   gender from a name or writing style.
 - 不要房东同住 or no live-in owner sets landlord_not_living_in; 要家具 or furnished sets
   furnished_required; 要空调 or aircon sets air_conditioning_required.
@@ -29,13 +32,14 @@ Criteria from the user's words
 - Commute times are minutes from each listing to the user's NUS faculty (faculty in the
   conversation state): public transport leaving 08:30 on a weekday, or walking when the faculty
   is within 1.5 km and that is faster; the tools say which. 到学校/学院/NUS 40 分钟以内 alone sets
-  max_commute_minutes=40. Asking for a short commute (离学校近, 通勤近一点, 越近越好, a short commute)
-  adds commute to ranking_priority, also when a limit comes with it: 离学院近，40 分钟以内 sets the
-  limit and adds commute. Saved priorities stay; commute is added to them.
-- 空间大一点, 宽敞, a larger room/home or spacious adds space to ranking_priority. This is enough
-  to search immediately; do not invent a minimum area, bedroom count or whole-unit preference.
+  max_commute_minutes=40. Asking for a short commute (离学校近, 通勤近一点, 越近越好, near NUS, close to
+  campus, a short commute) adds commute to ranking_priority at once, without asking for a limit,
+  also when a limit comes with it: 离学院近，40 分钟以内 sets the limit and adds commute. Saved
+  priorities stay; commute is added to them.
+- 空间大一点, 宽敞, a larger room/home or spacious adds space to ranking_priority. It is a preference,
+  not a condition: do not invent a minimum area, bedroom count or whole-unit preference.
   Set min_area_sqm only for an explicit minimum (平方米/平米/sqm); convert sqft by 0.09290304.
-  Space ranks sizes within the same rental_scope and area_scope. Always state which area is
+  Space ranks by rented area, largest first. Always state which area is
   advertised; floor_reported on a room listing is the whole home's size, not the room's size.
 - Put in ranking_priority only what the user asks to rank by. How many people will live there
   is occupant_count, not a wish for space.
@@ -72,8 +76,8 @@ Additional preferences
   图书馆多/运动方便/医疗设施多/民众俱乐部多/学校多 adds libraries/sports/healthcare/
   community/schools to ranking_priority. Specifically 餐馆多 or 小贩中心多 adds food_places or
   hawker; general 吃饭方便 adds amenities. Do not invent a count threshold for a soft preference.
-- ranking_priority lists up to three soft priorities, and the named ones share 70% of the
-  ranking weight. When the user adds one (还, 也, 另外, 再, also, as well), keep the saved
+- ranking_priority lists up to three soft priorities in the order the user gives them; listings are
+  ranked strictly by them in that order. When the user adds one (还, 也, 另外, 再, also, as well), keep the saved
   priorities and add it. When the user switches (算了, 改成, 不在意…了, 只要, instead, only),
   replace or drop the saved ones. If unclear, add it: the saved change is shown to the user,
   who can correct it. With more than three, ask which three matter most.

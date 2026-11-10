@@ -17,6 +17,9 @@ from faculties import faculty_label
 from tools import AMENITY_FIELDS, EXTRA_CONDITION_LABELS, LINK_CHECK_STALE_DAYS, lease_term, link_check_age_days, mrt_minutes
 
 
+# How search_listings starts its reply when it asks the user first instead of searching.
+NOT_SEARCHED = "Nothing was searched"
+
 _FACTOR_LABELS = {
     "zh": {"price": "价格", "mrt": "MRT", "food": "周边餐饮", "commute": "到学院通勤", "space": "空间大小"},
     "en": {"price": "price", "mrt": "MRT", "food": "nearby food", "commute": "commute to your faculty", "space": "space"},
@@ -335,8 +338,11 @@ def render_response(
         weights = [
             f"{_FACTOR_LABELS[language].get(name, name)} {round(factor['weight'] * 100)}%"
             for name, factor in factors.items()
+            if "weight" in factor
         ]
-        if weights:
+        if item.get("ranking_order"):
+            lines.append(_text(language, f"   排序：{_ranking_order_text(item['ranking_order'], language)}", f"   Ranked by: {_ranking_order_text(item['ranking_order'], language)}"))
+        elif weights:
             lines.append(
                 _text(
                     language,
@@ -791,14 +797,23 @@ def render_decision_context(rows: list[dict], language: ResponseLanguage = "zh")
 def render_listing_explanation(explanation: dict, language: ResponseLanguage = "zh") -> str:
     listing_id = explanation["listing_id"]
     score = _display(explanation["rank_value"], _text(language, "无可计算项", "not computable"))
+    order = explanation.get("ranking_order")
     lines = [
         _text(
+            language,
+            f"房源 {listing_id} 的排序依据：按你说的优先项依次比较，{_ranking_order_text(order, language)}",
+            f"Why listing {listing_id} ranks where it does: your priorities are compared in order, {_ranking_order_text(order, language)}",
+        )
+        if order
+        else _text(
             language,
             f"房源 {listing_id} 的排序依据（综合值越小越靠前）：综合值 {score}",
             f"Why listing {listing_id} ranks where it does (lower scores rank higher): score {score}",
         )
     ]
-    for name, factor in explanation["factors"].items():
+    if order:
+        lines.extend(f"- {_FACTOR_LABELS[language].get(name, name)}：{_ranking_value_text(name, explanation['ranking_values'][name], language)}" for name in order)
+    for name, factor in ({} if order else explanation["factors"]).items():
         weight = round(factor["weight"] * 100)
         value = _NO_DATA_FACTOR[language][name] if factor.get("no_data") else factor["ratio"]
         lines.append(
@@ -956,7 +971,9 @@ def render_steps(trace: list[str], language: ResponseLanguage = "zh") -> list[st
         if kind == "[tool]":
             name, args, failed = _tool_call(rest)
             label = _text(language, *TOOL_LABELS.get(name, (name, name)))
-            if failed:
+            if rest.partition(" -> error: ")[2].startswith(NOT_SEARCHED):
+                steps.append(label + _text(language, "：还没有搜索，先问用户", " - not run yet; asking the user first"))
+            elif failed:
                 steps.append(label + _text(language, "：参数有误，已把原因告诉模型", " - failed; the reason went back to the model"))
             else:
                 steps.append("\n".join([label, *_call_details(name, args, language)]))
@@ -1070,6 +1087,25 @@ _STEP_LEASE_REASONS = {
 }
 
 
+def _ranking_order_text(order: list[str], language: ResponseLanguage) -> str:
+    return " → ".join(_FACTOR_LABELS[language].get(name, name) for name in order)
+
+
+def _ranking_value_text(name: str, value: float | None, language: ResponseLanguage) -> str:
+    """A compared value as the listing states it (tools.ranking_value)."""
+    if value is None:
+        return _text(language, "未注明", "not stated")
+    if name == "price":
+        return _sgd(value)
+    if name in ("commute", "mrt", "school_distance"):
+        return _text(language, f"{value:g} 分钟", f"{value:g} min")
+    if name == "space":
+        return _text(language, f"{-value:g} 平方米", f"{-value:g} sqm")
+    if name == "food":
+        return _text(language, f"排位 {value:g}（0 为选择最多）", f"position {value:g} (0 is the most choice)")
+    return f"{-value:g}"
+
+
 def _guard_problem(problem: str, language: ResponseLanguage) -> str:
     for english, zh, en in _GUARD_PROBLEMS:
         if problem.startswith(english):
@@ -1119,6 +1155,8 @@ def _fact_details(facts: dict, language: ResponseLanguage) -> list[str]:
     tool = facts.get("tool")
     if tool == "search_listings":
         return _search_details(facts, language)
+    if tool == "save_criteria":
+        return [_criteria_line(facts, language), _text(language, "还没有搜索：先问清楚用户的意思", "Not searched yet: asking what the user means first")]
     if tool == "compare_listings":
         return [
             *([_text(language, f"比较了 {_ids(facts['compared'], language)}", f"Compared {_ids(facts['compared'], language)}")] if facts["compared"] else []),
@@ -1167,25 +1205,32 @@ def _fact_details(facts: dict, language: ResponseLanguage) -> list[str]:
     return []
 
 
-def _search_details(facts: dict, language: ResponseLanguage) -> list[str]:
-    """The criteria a search used, what it found and how it ranked, and what kept results few."""
+def _criteria_line(facts: dict, language: ResponseLanguage) -> str:
     separator = "；" if language == "zh" else "; "
     labels = PREFERENCE_LABELS[language]
     criteria = separator.join(f"{item['label'][language]} {item['value'][language]}" for item in criteria_items(facts["criteria"], {}))
     changed = ("、" if language == "zh" else ", ").join(labels.get(field, field) for field in facts["changed"])
-    if facts["preview"]:
+    if facts.get("preview"):
         note = _text(language, f"（预览，没有保存：{changed}）", f" (a preview, not saved: {changed})") if changed else _text(language, "（预览，没有保存）", " (a preview, not saved)")
     else:
         note = _text(language, f"（本轮新加或修改：{changed}）", f" (new or changed now: {changed})") if changed else ""
+    return _text(language, f"条件：{criteria or '还没有设条件'}{note}", f"Criteria: {criteria or 'none yet'}{note}")
+
+
+def _search_details(facts: dict, language: ResponseLanguage) -> list[str]:
+    """The criteria a search used, what it found and how it ranked, and what kept results few."""
+    labels = PREFERENCE_LABELS[language]
     lines = [
-        _text(language, f"条件：{criteria or '还没有设条件'}{note}", f"Criteria: {criteria or 'none yet'}{note}"),
+        _criteria_line(facts, language),
         _text(
             language,
             f"结果：完全符合 {facts['strict']} 套，需确认 {facts['pending']} 套，展示了 {facts['shown']} 套",
             f"Results: {facts['strict']} meet every condition, {facts['pending']} need confirming; {facts['shown']} shown",
         ),
     ]
-    if facts["weights"]:
+    if facts.get("order"):
+        lines.append(_text(language, f"排序：{_ranking_order_text(facts['order'], language)}", f"Ranked by: {_ranking_order_text(facts['order'], language)}"))
+    elif facts["weights"]:
         weights = sorted(facts["weights"].items(), key=lambda pair: -pair[1])
         ranking = ("、" if language == "zh" else ", ").join(f"{_FACTOR_LABELS[language].get(name, name)} {round(share * 100)}%" for name, share in weights)
         lines.append(_text(language, f"排序：{ranking}", f"Ranked by: {ranking}"))
@@ -1571,7 +1616,7 @@ def render_rental_scope_mix(mix: dict, language: ResponseLanguage = "zh") -> str
 
 def _render_relaxations(relaxations: list[RelaxationSuggestion], language: ResponseLanguage) -> str:
     if not relaxations:
-        return _text(language, "当前没有可展示的严格匹配房源，单项小幅放宽预算、MRT、通勤或租期后也没有找到房源。", "There are currently no strict matches to display, and a single small relaxation of the budget, MRT, commute or lease finds none either.")
+        return _text(language, "当前没有可展示的严格匹配房源，单独放宽预算、MRT、通勤或租期也找不到房源。", "There are currently no strict matches to display, and relaxing the budget, MRT, commute or lease alone finds none either.")
 
     lines = [_text(language, "当前没有可展示的严格匹配房源，可以考虑以下单项放宽（原条件尚未修改）：", "There are currently no strict matches to display. You could consider these single-condition relaxations; your original criteria have not changed:")]
     for suggestion in relaxations:
@@ -1582,7 +1627,7 @@ def _render_relaxations(relaxations: list[RelaxationSuggestion], language: Respo
 
 def _relaxation_count_text(suggestion: RelaxationSuggestion, language: ResponseLanguage) -> str:
     count = suggestion["match_count"]
-    return _text(language, f"数据库匹配 {count} 套。", f"{count} listings match in the database.")
+    return _text(language, f"数据库匹配 {count} 套。", f"1 listing matches in the database." if count == 1 else f"{count} listings match in the database.")
 
 
 def _check_summary_text(summary: ListingCheckSummary, language: ResponseLanguage) -> str:
@@ -1594,6 +1639,8 @@ def _relaxation_change(suggestion: RelaxationSuggestion, language: ResponseLangu
     field = suggestion["field"]
     if field == "max_price_sgd":
         return _text(language, f"将最高预算从 {_sgd(suggestion['current'])} 提高到 {_sgd(suggestion['suggested'])}", f"raising the maximum budget from {_sgd(suggestion['current'])} to {_sgd(suggestion['suggested'])}")
+    if field == "max_mrt_distance_m":
+        return _text(language, f"将 MRT 步行上限从 {suggestion['current']:g} 米放宽到 {suggestion['suggested']:g} 米", f"increasing the MRT walking limit from {suggestion['current']:g} m to {suggestion['suggested']:g} m")
     if field == "max_mrt_minutes":
         return _text(language, f"将 MRT 步行上限从 {suggestion['current']} 分钟放宽到 {suggestion['suggested']} 分钟", f"increasing the MRT walking limit from {suggestion['current']} to {suggestion['suggested']} minutes")
     if field in ("max_commute_minutes", "max_other_commute_minutes"):
@@ -1939,8 +1986,8 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
             _stamp_duty_line(costs, language),
             _text(
                 language,
-                f"- 押金：{_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])}（退租时退还）",
-                f"- Security deposit: {_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])} (refunded when you move out)",
+                f"- 押金：{_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])}（通常退租时退还，合同允许的扣款除外）",
+                f"- Security deposit: {_money(rent)} × {costs['deposit_months']} = {_money(costs['deposit_sgd'])} (usually returned when you move out, less any deductions the contract allows)",
             ),
         ]
         if costs["agent_fee_sgd"] is not None:
@@ -1960,8 +2007,8 @@ def render_costs(rows: list[dict], language: ResponseLanguage = "zh", conversion
             _text(language, f"- 签约时预付：{' + '.join(upfront)} = {paid}", f"- Paid at signing: {' + '.join(upfront)} = {paid}"),
             _text(
                 language,
-                f"- 整个租期总花费（不含会退还的押金）：{spent}",
-                f"- Spent over the whole lease (not counting the refundable deposit): {spent}",
+                f"- 整个租期总花费（不含押金）：{spent}",
+                f"- Spent over the whole lease (not counting the deposit): {spent}",
             ),
         ]
         if share := _per_person_costs(row.get("per_person"), language):

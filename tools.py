@@ -1,7 +1,7 @@
 import re
 from datetime import date, datetime, timezone
 from functools import lru_cache
-from math import asin, cos, isfinite, radians, sin, sqrt
+from math import asin, ceil, cos, isfinite, radians, sin, sqrt
 
 from models import (
     AMENITY_FIELDS,
@@ -18,8 +18,6 @@ from group_db import Database
 from onemap import OneMapNotFound, calculate_mrt_walk, geocode_location, load_token
 
 
-# Named ranking priorities share 70% of the weight equally; the other factors share the rest.
-_PRIORITY_WEIGHT = 0.7
 # The ranking factor behind a priority name, where the two differ.
 _PRIORITY_FACTOR = {"amenities": "food"}
 _SOFT_MRT_REFERENCE_MINUTES = 10
@@ -113,16 +111,18 @@ def extra_condition_status(field: str, listing: Listing, preferences: SearchPref
         return "unknown" if minutes is None else "pass" if minutes <= wanted else "fail"
     if field == "lease_months":
         # Whether the user can sign a lease of this many months: a stated term is the shortest the
-        # landlord accepts, and a longer lease fits it. A short-term listing may not take a long lease.
+        # landlord accepts, and a longer lease fits it. Flexible and short-term listings accept any.
         term = lease_term(listing)
-        if term is None or (term == "short_term" and wanted >= 12):
+        if term is None:
             return "unknown"
         return "pass" if term in ("flexible", "short_term") or term <= wanted else "fail"
+    if field == "max_mrt_distance_m":
+        return mrt_limit_status(nearest_mrt_distance_m(listing), wanted, listing)
     if field in _MINIMUM_COLUMNS:
         value = listing.get(_MINIMUM_COLUMNS[field])
         matches = value is not None and value >= wanted
-    elif field in _MAXIMUM_COLUMNS or field == "max_mrt_distance_m":
-        value = mrt_distance_m(listing) if field == "max_mrt_distance_m" else listing.get(_MAXIMUM_COLUMNS[field])
+    elif field in _MAXIMUM_COLUMNS:
+        value = listing.get(_MAXIMUM_COLUMNS[field])
         matches = value is not None and value <= wanted
     elif field == "nearby_location":
         distance = location_distance_m(listing, wanted)
@@ -264,7 +264,7 @@ def search_listings(
         ("lower(district_code) = lower(%s)", _clean(preferences.district_code)),
         (
             "COALESCE(mrt_walk_minutes, mrt_minutes_reported) <= %s "
-            "AND mrt_operation_status <> 'under_construction'",
+            "AND mrt_operation_status = 'operational'",
             preferences.max_mrt_minutes,
         ),
         ("bedrooms >= %s AND rental_scope <> 'room'", preferences.min_bedrooms),
@@ -303,33 +303,20 @@ def search_listings(
         if values:
             clauses.append(f"{column} = ANY(%s)")
             params.append(list(values))
-    # Each named ranking priority needs its data, as in decision.search_with_unknowns().
-    priority_data = {
-        "mrt": "COALESCE(mrt_walk_distance_m, mrt_distance_m) IS NOT NULL "
-        "AND mrt_operation_status <> 'under_construction'",
-        "amenities": f"{_FOOD_RANK} IS NOT NULL",
-        "space": "space_rank IS NOT NULL",
-        **{name: f"{name}_rank IS NOT NULL" for name in AMENITY_FIELDS},
-        "school_distance": "pg_school_nearest_walk_min IS NOT NULL",
-    }
-    clauses.extend(priority_data[name] for name in preferences.ranking_priority if name in priority_data)
 
     candidates = _query(connection, " AND ".join(clauses), params)
     active = [field for field in EXTRA_CONDITION_LABELS if getattr(preferences, field) != SearchPreferences.model_fields[field].default]
     # ponytail: Python filtering is sufficient for this 519-row prototype; use SQL at larger scale.
     candidates = [listing for listing in candidates if all(extra_condition_status(field, listing, preferences) == "pass" for field in active)]
-    # Commutes depend on the user's faculty, so they are checked here rather than in SQL. Ranking by
-    # commute needs the trip to each destination there is (the other destination's limit is an extra
-    # condition above).
-    if own_commute_needed(preferences):
-        limit = preferences.max_commute_minutes
+    # Commutes depend on the user's faculty, so they are checked here rather than in SQL (the other
+    # destination's limit is an extra condition above).
+    limit = preferences.max_commute_minutes
+    if limit is not None:
         candidates = [
             listing
             for listing in candidates
-            if (minutes := commute_minutes(listing, preferences)) is not None and (limit is None or minutes <= limit)
+            if (minutes := commute_minutes(listing, preferences)) is not None and minutes <= limit
         ]
-    if "commute" in preferences.ranking_priority and preferences.other_destination is not None:
-        candidates = [listing for listing in candidates if other_commute_minutes(listing, preferences) is not None]
     return candidates
 
 
@@ -438,53 +425,43 @@ def refresh_mrt_walk_data(
     }
 
 
+# The limits a relaxation may change, each with what a listing needs of it. A walking limit counts
+# only an operating station, since any other would still not be confirmed.
+_RELAXABLE = {
+    "max_price_sgd": lambda listing, preferences: listing.get("rent_monthly_sgd"),
+    "max_mrt_minutes": lambda listing, preferences: nearest_mrt_minutes(listing) if listing.get("mrt_operation_status") == "operational" else None,
+    "max_mrt_distance_m": lambda listing, preferences: nearest_mrt_distance_m(listing) if listing.get("mrt_operation_status") == "operational" else None,
+    "max_commute_minutes": lambda listing, preferences: commute_minutes(listing, preferences),
+    "max_other_commute_minutes": lambda listing, preferences: other_commute_minutes(listing, preferences),
+    "lease_months": lambda listing, preferences: term if isinstance(term := lease_term(listing), int) else None,
+}
+
+
 def analyze_relaxations(
     connection: Database,
     preferences: SearchPreferences,
     excluded_listing_ids: list[str] | None = None,
 ) -> list[RelaxationSuggestion]:
-    # ponytail: fixed steps suit the prototype; product policy can replace them later.
-    candidates = (
-        (
-            "max_price_sgd",
-            None
-            if preferences.max_price_sgd is None
-            else (preferences.max_price_sgd * 11 + 9) // 10,
-        ),
-        (
-            "max_mrt_minutes",
-            None
-            if preferences.max_mrt_minutes is None
-            else preferences.max_mrt_minutes + 5,
-        ),
-        # Ten more minutes to each destination with a limit.
-        *(
-            (field, getattr(preferences, field) + 10)
-            for field in ("max_commute_minutes", "max_other_commute_minutes")
-            if getattr(preferences, field) is not None
-        ),
-        # Signing for longer: a 1-year lease, then a 2-year one, the terms most listings ask for.
-        *(
-            ("lease_months", months)
-            for months in (12, 24)
-            if preferences.lease_months is not None and preferences.lease_months < months
-        ),
-    )
+    """For each limit set, the smallest change that lets a listing meet every condition, if any does."""
     suggestions: list[RelaxationSuggestion] = []
-    for field, suggested in candidates:
-        if suggested is None:
+    for field, needs in _RELAXABLE.items():
+        current = getattr(preferences, field)
+        if current is None:
             continue
+        without_it = search_listings(connection, preferences.model_copy(update={field: None}), excluded_listing_ids)
+        values = [value for listing in without_it if (value := needs(listing, preferences)) is not None and value > current]
+        if not values:
+            continue
+        suggested = ceil(min(values))
         relaxed = preferences.model_copy(update={field: suggested})
-        match_count = len(search_listings(connection, relaxed, excluded_listing_ids))
-        if match_count:
-            suggestions.append(
-                {
-                    "field": field,
-                    "current": getattr(preferences, field),
-                    "suggested": suggested,
-                    "match_count": match_count,
-                }
-            )
+        suggestions.append(
+            {
+                "field": field,
+                "current": current,
+                "suggested": suggested,
+                "match_count": len(search_listings(connection, relaxed, excluded_listing_ids)),
+            }
+        )
     return suggestions
 
 
@@ -512,13 +489,12 @@ def rank_listings(
     listings: list[Listing],
     preferences: SearchPreferences,
 ) -> list[RankingResult]:
-    """Rank matches by normalized use of the user's stated limits.
-
-    Rent and MRT walking distance are always weighed; nearby food and the commute to the
-    user's faculty only when the user asks for them. Named priorities share 70% of the weight.
+    """Rank matches. Stated priorities decide strictly, in the order stated, then rent; a listing
+    that does not state one comes last on it (CONVENTIONS.md section 5). Without any, MRT walking
+    distance and, with a budget, rent are weighed equally.
     """
     names = _ranking_factors(preferences)
-    weights = _factor_weights(names, preferences.ranking_priority)
+    order = ranking_order(preferences)
     ranked: list[RankingResult] = []
     for listing in listings:
         factors = {}
@@ -528,20 +504,17 @@ def rank_listings(
                 factors[name] = {"ratio": _NEUTRAL_RATIO[name], "no_data": True}
             elif ratio is not None:
                 factors[name] = {"ratio": ratio}
-        total_weight = sum(weights[name] for name in factors)
-        rank_value = (
-            round(sum(factor["ratio"] * weights[name] for name, factor in factors.items()) / total_weight, 3)
-            if total_weight
-            else None
-        )
-        for name, factor in factors.items():
+        rank_value = round(sum(factor["ratio"] for factor in factors.values()) / len(factors), 3) if factors and not order else None
+        for factor in factors.values():
             factor["ratio"] = round(factor["ratio"], 3)
-            factor["weight"] = round(weights[name] / total_weight, 2)
+            if not order:
+                factor["weight"] = round(1 / len(factors), 2)
         ranked.append(
             {
                 "listing": listing,
                 "rank_value": rank_value,
                 "factors": factors,
+                "ranking_order": order,
                 "warnings": list(listing.get("review_flags", [])),
                 # For listing cards: the trip to the user's faculty, when one is saved, and to the other destination.
                 "commute": preferences.faculty and {"faculty": preferences.faculty, "minutes": None, "mode": None, **(commute(listing, preferences.faculty) or {})},
@@ -551,24 +524,41 @@ def rank_listings(
                 },
             }
         )
-    ranked.sort(key=_rank_key)
+    ranked.sort(key=(lambda item: _priority_key(item["listing"], preferences, order)) if order else _rank_key)
     return ranked
 
 
-def mrt_distance_m(listing: Listing) -> float | None:
-    """Walking metres to an operating MRT station: a OneMap route first, then the listing card."""
-    if listing.get("mrt_operation_status") == "under_construction":
-        return None
+def nearest_mrt_distance_m(listing: Listing) -> float | None:
+    """Walking metres to the nearest MRT station, open or not: a OneMap route first, then the listing card."""
     walked = listing.get("mrt_walk_distance_m")
     return walked if walked is not None else listing.get("mrt_distance_m") if listing.get("mrt_distance_m") is not None else listing.get("pg_mrt_nearest_walk_m")
 
 
-def mrt_minutes(listing: Listing) -> int | float | None:
-    """Walking minutes to an operating MRT station: a OneMap route first, then the listing card."""
-    if listing.get("mrt_operation_status") == "under_construction":
-        return None
+def mrt_distance_m(listing: Listing) -> float | None:
+    """Walking metres to an operating MRT station."""
+    return None if listing.get("mrt_operation_status") == "under_construction" else nearest_mrt_distance_m(listing)
+
+
+def nearest_mrt_minutes(listing: Listing) -> int | float | None:
+    """Walking minutes to the nearest MRT station, open or not: a OneMap route first, then the listing card."""
     walked = listing.get("mrt_walk_minutes")
     return walked if walked is not None else listing.get("mrt_minutes_reported")
+
+
+def mrt_minutes(listing: Listing) -> int | float | None:
+    """Walking minutes to an operating MRT station."""
+    return None if listing.get("mrt_operation_status") == "under_construction" else nearest_mrt_minutes(listing)
+
+
+def mrt_limit_status(value: float | None, limit: float, listing: Listing) -> str:
+    """Pass, fail or unknown for a walking limit to an operating station. The data gives the nearest
+    station of any status: when that one is not known to operate, the nearest operating one is at
+    least as far, so a value above the limit fails and any other is unknown."""
+    if value is None:
+        return "unknown"
+    if value > limit:
+        return "fail"
+    return "pass" if listing.get("mrt_operation_status") == "operational" else "unknown"
 
 
 # A link check older than this many days is too old to lean on: the reply says so.
@@ -656,10 +646,41 @@ def rental_area_sqm(listing: Listing) -> float | None:
 
 
 def ranking_weights(preferences: SearchPreferences) -> dict[str, float]:
-    """Each ranking factor's share of the weight, as rank_listings() weighs a listing with data for all."""
-    weights = _factor_weights(_ranking_factors(preferences), preferences.ranking_priority)
-    total = sum(weights.values())
-    return {name: round(weight / total, 2) for name, weight in weights.items()}
+    """Without stated priorities, each ranking factor's share, for a listing with data for all."""
+    names = _ranking_factors(preferences)
+    return {name: round(1 / len(names), 2) for name in names}
+
+
+def ranking_order(preferences: SearchPreferences) -> list[str]:
+    """What stated priorities compare, in order, ending with rent; empty without any."""
+    order = [_PRIORITY_FACTOR.get(name, name) for name in preferences.ranking_priority]
+    return [*order, *([] if "price" in order else ["price"])] if order else []
+
+
+def ranking_value(name: str, listing: Listing, preferences: SearchPreferences) -> float | None:
+    """What a stated priority compares, smaller first; None when the listing does not state it."""
+    if name == "price":
+        return listing.get("rent_monthly_sgd")
+    if name == "mrt":
+        return mrt_minutes(listing)
+    if name == "commute":
+        trips = []
+        if preferences.faculty is not None or preferences.other_destination is None:
+            trips.append(commute_minutes(listing, preferences))
+        if preferences.other_destination is not None:
+            trips.append(other_commute_minutes(listing, preferences))
+        return None if None in trips else max(trips)
+    if name == "food":
+        return listing.get(_FOOD_RANK)
+    if name == "school_distance":
+        return listing.get("pg_school_nearest_walk_min")
+    more = rental_area_sqm(listing) if name == "space" else listing.get(AMENITY_FIELDS[name])
+    return None if more is None else -more
+
+
+def _priority_key(listing: Listing, preferences: SearchPreferences, order: list[str]) -> tuple:
+    values = (ranking_value(name, listing, preferences) for name in order)
+    return (*((value is None, value or 0) for value in values), listing["listing_id"])
 
 
 def _ranking_factors(preferences: SearchPreferences) -> list[str]:
@@ -673,17 +694,6 @@ def _ranking_factors(preferences: SearchPreferences) -> list[str]:
     }
     asked.update({name: name in priorities for name in (*AMENITY_FIELDS, "school_distance")})
     return [name for name in _RANKING_CRITERIA if asked[name]]
-
-
-def _factor_weights(names: list[str], priorities: tuple[str, ...]) -> dict[str, float]:
-    named = {_PRIORITY_FACTOR.get(priority, priority) for priority in priorities} & set(names)
-    if not named or len(named) == len(names):
-        return {name: 1.0 for name in names}
-    each = _PRIORITY_WEIGHT / len(named)
-    # The rest share 30% but never outweigh a named priority, e.g. three named and one other.
-    # rank_listings() rescales the weights to sum to 1.
-    rest = min((1 - _PRIORITY_WEIGHT) / (len(names) - len(named)), each)
-    return {name: each if name in named else rest for name in names}
 
 
 def _mrt_reference_m(preferences: SearchPreferences) -> float:

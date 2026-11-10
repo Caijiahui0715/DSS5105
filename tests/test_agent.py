@@ -14,13 +14,13 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 import tempfile
 from pathlib import Path
 
-from agent import build_agent, opening_state, save_to_profile
+from agent import _narrows_listings, build_agent, opening_state, save_to_profile
 from mock_db import DEFAULT_FIXTURE, create_database, create_mock_database, empty_storage, set_listing
 from exchange import CurrencyConversionError, UnknownCurrencyError
 from models import SearchPreferences
 from onemap import OneMapError
 from profiles import UserProfiles, merged
-from response import render_steps
+from response import NOT_SEARCHED, render_steps
 from sessions import STATE_MODULES
 from tools import get_listings_by_ids, rank_listings
 
@@ -300,7 +300,7 @@ class AgentTest(unittest.TestCase):
         self.assertIn("放开「做饭政策」", result["response"])
 
     def test_first_search_is_saved_and_empty_results_list_relaxations(self):
-        # The cheapest listing that allows cooking is S$800, so S$750 plus about 10% reaches it.
+        # The cheapest listing that allows cooking is S$800, so that is the budget to suggest.
         request = "我的预算是750，我想要能做饭的房子，有什么推荐吗"
         model = ScriptedModel(
             tool_calls(
@@ -319,10 +319,10 @@ class AgentTest(unittest.TestCase):
         self.assertFalse(observation["preview"])
         self.assertEqual(first["preferences"].max_price_sgd, 750)
         self.assertTrue(first["preferences"].cooking_required)
-        self.assertEqual(observation["relaxation_suggestions"][0]["suggested"], 825)
+        self.assertEqual(observation["relaxation_suggestions"][0]["suggested"], 800)
         self.assertTrue(first["response"].startswith("已更新本次对话的条件"))
-        self.assertIn("将最高预算从 S$750 提高到 S$825", first["response"].split("下面几套需要确认。")[1])
-        self.assertIn('"suggested": 825', model.calls[2][0].content)
+        self.assertIn("将最高预算从 S$750 提高到 S$800", first["response"].split("下面几套需要确认。")[1])
+        self.assertIn('"suggested": 800', model.calls[2][0].content)
 
     def test_food_request_ranks_by_nearby_amenities(self):
         request = "我预算5000，我想要周围能吃饭的地方多一点"
@@ -345,9 +345,9 @@ class AgentTest(unittest.TestCase):
         self.assertIn("排序偏好 均衡 → 吃饭方便", result["response"])
         self.assertIn("周边餐饮 70%", result["response"])
 
-    def test_space_request_or_minimum_area_can_start_a_search(self):
+    def test_a_space_preference_with_a_condition_or_a_minimum_area_starts_a_search(self):
         cases = (
-            ("我想要空间大一点的房子", {"ranking_priority": "space"}),
+            ("预算9000，我想要空间大一点的房子", {"max_price_sgd": 9000, "ranking_priority": "space"}),
             ("我要至少80平米", {"min_area_sqm": 80}),
         )
         for request, changes in cases:
@@ -360,21 +360,21 @@ class AgentTest(unittest.TestCase):
                 shown = json.loads(result["observations"][0])["strict_matches"]["listings"]
                 self.assertEqual(len(shown), 3)
                 self.assertEqual(result["preferences"].rental_scope, None)
-                self.assertEqual(result["preferences"].max_price_sgd, None)
+                self.assertEqual(result["preferences"].max_price_sgd, changes.get("max_price_sgd"))
                 self.assertEqual(result["preferences"].min_bedrooms, None)
                 self.assertTrue(all(item["area_scope"] in {"floor_reported", "room_reported"} for item in shown))
                 self.assertIn("广告", result["response"])
                 self.assertNotIn("There are no search criteria", " ".join(result["trace"]))
                 if "ranking_priority" in changes:
                     self.assertEqual(result["preferences"].min_area_sqm, None)
-                    self.assertIn("空间大小 70%", result["response"])
+                    self.assertIn("排序：空间大小 → 价格", result["response"])
                 else:
                     self.assertTrue(all(item["area_sqm"] >= 80 for item in shown))
 
     def test_a_second_priority_is_added_to_the_saved_one(self):
-        first, second = "我想要空间大一点的房子", "也想要周边餐厅多一点"
+        first, second = "预算9000，我想要空间大一点的房子", "也想要周边餐厅多一点"
         model = ScriptedModel(
-            tool_calls(("search_listings", {"set": {"ranking_priority": ["space"]}, "user_quote": first})),
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 9000, "ranking_priority": ["space"]}, "user_quote": first})),
             AIMessage(content=""),
             tool_calls(("search_listings", {"set": {"ranking_priority": ["space", "food_places"]}, "user_quote": second})),
             AIMessage(content=""),
@@ -384,8 +384,101 @@ class AgentTest(unittest.TestCase):
 
         self.assertEqual(result["preferences"].ranking_priority, ("space", "food_places"))
         self.assertIn("排序偏好 空间大优先 → 空间大优先、餐饮点优先", result["response"])
-        # Without a budget: space and food share 70%, MRT keeps 30%.
-        self.assertIn("MRT 30%，空间大小 35%，餐饮点 35%", result["response"])
+        self.assertIn("排序：空间大小 → 餐饮点 → 价格", result["response"])
+
+    def test_a_preference_alone_asks_first_once_and_saves_nothing(self):
+        request, insists = "我想要空间大一点的房子", "没别的要求，直接给我看"
+        search = ("search_listings", {"set": {"ranking_priority": ["space"]}, "user_quote": request})
+        model = ScriptedModel(
+            tool_calls(search),
+            # Calling again in the same turn does not get round asking the user.
+            tool_calls(search),
+            AIMessage(content="预算多少？想要单间还是整套？"),
+            tool_calls(("search_listings", {"set": {"ranking_priority": ["space"]}, "user_quote": insists})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            asked, shown = run_agent(connection, model, request, insists)
+
+        for observation in asked["observations"]:
+            self.assertTrue(json.loads(observation)["error"].startswith(NOT_SEARCHED))
+        self.assertEqual(asked["preferences"], SearchPreferences())
+        self.assertFalse(asked["recommendations"])
+        self.assertEqual(render_steps(asked["trace"], "en")[0], "Searching listings - not run yet; asking the user first")
+        self.assertEqual(shown["preferences"].ranking_priority, ("space",))
+        self.assertEqual(len(json.loads(shown["observations"][0])["strict_matches"]["listings"]), 3)
+
+    def test_asking_for_criteria_counts_as_the_one_time(self):
+        model = ScriptedModel(
+            tool_calls(("search_listings", {})),
+            AIMessage(content="想要什么条件？"),
+            tool_calls(("search_listings", {"set": {"ranking_priority": ["price"]}, "user_quote": "便宜的"})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            asked, shown = run_agent(connection, model, "随便看看", "便宜的")
+
+        self.assertIn("There are no search criteria", json.loads(asked["observations"][0])["error"])
+        self.assertEqual(len(json.loads(shown["observations"][0])["strict_matches"]["listings"]), 3)
+
+    def test_a_question_the_model_asked_itself_counts_as_the_one_time(self):
+        search = ("search_listings", {"set": {"ranking_priority": ["price"]}, "user_quote": "直接给我看"})
+        for first_reply, goes_through in (("预算多少？", True), ("你好，我可以帮你找房。", False)):
+            model = ScriptedModel(
+                AIMessage(content=first_reply),
+                tool_calls(search),
+                AIMessage(content="好的。"),
+            )
+            with self.subTest(first_reply=first_reply), closing(create_database()) as connection:
+                _, result = run_agent(connection, model, "最便宜的", "直接给我看")
+                self.assertEqual("strict_matches" in json.loads(result["observations"][0]), goes_through)
+
+    def test_dropping_the_conditions_keeps_the_preference_and_searches(self):
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 9000, "ranking_priority": ["space"]}, "user_quote": "预算9000，要大的"})),
+            AIMessage(content=""),
+            tool_calls(("search_listings", {"clear": ["max_price_sgd"], "user_quote": "预算不限了"})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            _, result = run_agent(connection, model, "预算9000，要大的", "预算不限了")
+
+        self.assertEqual(result["preferences"].max_price_sgd, None)
+        self.assertEqual(result["preferences"].ranking_priority, ("space",))
+        self.assertEqual(len(json.loads(result["observations"][0])["strict_matches"]["listings"]), 3)
+
+    def test_what_narrows_the_listings(self):
+        place = {"query": "NUS Business School", "faculty": "NUS Business School", "latitude": 1.2933, "longitude": 103.7741}
+        for preferences, narrows in (
+            ({"ranking_priority": ("space",)}, False),
+            ({"ranking_priority": ("commute",), "other_destination": place}, False),
+            ({"ranking_priority": ("commute",), "faculty": "School of Computing"}, False),
+            ({"other_destination": place, "max_other_commute_minutes": 30}, True),
+            ({"occupant_count": 2}, True),
+            ({"max_price_sgd": 2000, "ranking_priority": ("space",)}, True),
+        ):
+            with self.subTest(preferences=preferences):
+                self.assertEqual(_narrows_listings(SearchPreferences(**preferences)), narrows)
+
+    def test_save_only_keeps_the_conditions_and_searches_nothing(self):
+        first, second = "预算2000，住得好一点", "整套的"
+        model = ScriptedModel(
+            tool_calls(("search_listings", {"set": {"max_price_sgd": 2000}, "save_only": True, "user_quote": "预算2000"})),
+            AIMessage(content="住得好一点是指什么？"),
+            tool_calls(("search_listings", {"set": {"rental_scope": "entire_unit"}, "user_quote": second})),
+            AIMessage(content=""),
+        )
+        with closing(create_database()) as connection:
+            asked, searched = run_agent(connection, model, first, second)
+
+        saved = json.loads(asked["observations"][0])
+        self.assertFalse(saved["searched"])
+        self.assertEqual(saved["saved_changes"], {"max_price_sgd": 2000})
+        self.assertFalse(asked["recommendations"])
+        self.assertIn("S$2,000", asked["response"])
+        self.assertIn("Not searched yet", render_steps(asked["trace"], "en")[0])
+        self.assertEqual((searched["preferences"].max_price_sgd, searched["preferences"].rental_scope), (2000, "entire_unit"))
+        self.assertIn("strict_matches", json.loads(searched["observations"][0]))
 
     def test_a_fixable_tool_error_is_explained_traced_and_retried(self):
         def retry_with_iso_code(messages):
@@ -773,7 +866,7 @@ class AgentTest(unittest.TestCase):
             if pax[card["listing_id"]]:
                 self.assertIn(f"广告标注 {pax[card['listing_id']]} pax，能住几个人要问房东", "；".join(card["unknown_condition_labels"]))
         # Relaxing the budget or the MRT walk cannot settle an unstated occupancy.
-        self.assertNotIn("单项小幅放宽预算、MRT、通勤或租期后也没有找到", result["response"])
+        self.assertNotIn("单独放宽预算、MRT、通勤或租期也找不到", result["response"])
 
     def test_bedrooms_set_from_the_number_of_people_follow_it(self):
         turns = [
@@ -848,8 +941,8 @@ class AgentTest(unittest.TestCase):
                 clock.today.return_value = date(2026, 11, 2)
                 later = graph.invoke({"message": "我回来了"}, config=config)
 
-        # Nothing within S$800, so the first turn suggested a higher budget.
-        self.assertEqual(first["relaxations"][0]["suggested"], 880)
+        # Nothing within S$800, so the first turn suggested the next rent.
+        self.assertEqual(first["relaxations"][0]["suggested"], 850)
         self.assertEqual(later["relaxations"], [])
         self.assertIsNone(later["last_search"])
         self.assertEqual(later["last_active_date"], "2026-11-02")
@@ -1384,6 +1477,22 @@ class AgentTest(unittest.TestCase):
 
         self.assertTrue(result["response"].startswith("房源详情"))
 
+    def test_a_figure_from_an_earlier_reply_may_be_quoted_again(self):
+        model = ScriptedModel(
+            tool_calls(("get_listing_details", {"listing_id": "S001"})),
+            AIMessage(content="S001 每月 S$1,200。"),
+            AIMessage(content="我不能联系房东；这套每月 S$1,200，可以自己去问能不能便宜。"),
+            AIMessage(content="这套每月 S$999。"),
+            AIMessage(content="这套可以自己去问。"),
+        )
+        with closing(create_mock_database()) as connection:
+            _, quoted, invented = run_agent(connection, model, "介绍一下 S001", "帮我问房东能不能便宜", "还有吗")
+
+        # No tool ran in the later turns: S$1,200 was already checked; S$999 never was.
+        self.assertFalse([line for line in quoted["trace"] if line.startswith("[guard]")])
+        self.assertIn("S$1,200", quoted["response"])
+        self.assertIn("[guard] reply rejected (it states figures that no tool returned: 999) -> retry", invented["trace"])
+
     def test_processing_steps_say_what_each_tool_found(self):
         today = date.today().isoformat()
         search = {"set": {"max_price_sgd": 900, "district_code": "D05"}, "user_quote": "预算900 D05"}
@@ -1711,13 +1820,13 @@ class OtherDestinationTest(unittest.TestCase):
         self.assertIn("有 1 套房源暂时算不出到「健身房（Tiong Bahru Plaza）」的通勤时间", worked["response"])
         # Kept: the next search asks OneMap only for the one that failed.
         self.assertEqual(routes.calls[4:], ["S010"])
-        # S004 has no route: kept as such, it needs confirmation rather than being asked again, as do
-        # S010 (failed) and the listings without a position (S002, S005, S009).
+        # S004 has no route: kept as such, it ranks last rather than being asked again, as do S010
+        # (failed) and the listings without a position (S002, S005, S009).
         self.assertEqual({row["listing_id"]: row["minutes"] for row in kept}, {"S001": 18, "S004": None, "S006": 12})
-        self.assertEqual(json.loads(worked["observations"][0])["needs_confirmation"]["database_count"], 5)
+        self.assertEqual(json.loads(worked["observations"][0])["needs_confirmation"]["database_count"], 0)
         self.assertIn("S006", [row["listing_id"] for row in json.loads(again["observations"][0])["strict_matches"]["listings"]])
 
-    def test_a_commute_limit_is_suggested_ten_minutes_longer(self):
+    def test_a_commute_limit_is_relaxed_to_the_next_trip(self):
         profiles = UserProfiles(empty_storage())
         profiles.set_faculty("alice", "School of Computing")
         model = ScriptedModel(
@@ -1727,8 +1836,9 @@ class OtherDestinationTest(unittest.TestCase):
         with closing(create_mock_database()) as connection:
             result = say(self.agent(connection, model, profiles), "t", "预算1500，到学校20分钟以内")
 
-        self.assertIn("将到学院的通勤上限从 20 分钟放宽到 30 分钟", result["response"])
-        self.assertEqual([item["suggested"] for item in result["relaxations"] if item["field"] == "max_commute_minutes"], [30])
+        # Mock minutes: S006 25 is the shortest trip.
+        self.assertIn("将到学院的通勤上限从 20 分钟放宽到 25 分钟", result["response"])
+        self.assertEqual([item["suggested"] for item in result["relaxations"] if item["field"] == "max_commute_minutes"], [25])
 
 
 def no_rate_lookup(*_):

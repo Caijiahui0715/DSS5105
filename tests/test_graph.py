@@ -1,3 +1,4 @@
+import re
 import unittest
 from contextlib import closing
 from datetime import date
@@ -41,6 +42,10 @@ class GraphTest(unittest.TestCase):
             ("en", "I've contacted the landlord.", [claims]),
             ("en", "I have already paid the deposit.", [claims]),
             ("en", "I just booked a viewing.", [claims]),
+            # Amounts however they are written.
+            ("zh", "上限是 2万新元。", ["it states figures that no tool returned: 20000"]),
+            ("zh", "上限是两万元。", ["it states figures that no tool returned: 20000"]),
+            ("zh", "押金 3000新元。", ["it states figures that no tool returned: 3000"]),
             # Declining, and what the agent can do, are not offers.
             ("zh", "我不能帮你联系房东，但我可以帮你比较房源。", []),
             ("zh", "我可以帮你估算费用，但不能帮你付定金。", []),
@@ -56,7 +61,10 @@ class GraphTest(unittest.TestCase):
             ("en", "I've arranged them by rent.", []),
         ):
             with self.subTest(reply=reply):
-                self.assertEqual(_reply_problems(reply, [reply], language), expected)
+                # Numbers in the source would vouch for themselves, so they are left out of it.
+                source = re.sub(r"\d|[万两]", "", reply)
+                self.assertEqual(_reply_problems(reply, [source], language), expected)
+        self.assertEqual(_reply_problems("上限是 2万新元。", ["S$20,000"], "zh"), [])
 
     def test_recognizes_real_propertyguru_listing_ids(self):
         self.assertEqual(
@@ -110,7 +118,7 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(preview["preferences"], preferences)
         self.assertEqual(preview["shown_listing_ids"], ["S010"])
         self.assertIn("尚未修改你的原搜索条件", preview["response_draft"])
-        self.assertEqual(accepted["preferences"].max_price_sgd, 1_320)
+        self.assertEqual(accepted["preferences"].max_price_sgd, 1_280)
         self.assertEqual(accepted["shown_listing_ids"], ["S010"])
 
     def test_links_never_checked_are_kept_and_do_not_trigger_relaxation(self):
@@ -445,11 +453,10 @@ class GraphTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in ranking],
             ["S010", "S001"],
         )
-        self.assertEqual([item["rank_value"] for item in ranking], [0.551, 0.738])
-        self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.7)
+        self.assertEqual(ranking[0]["ranking_order"], ["mrt", "price"])
         self.assertIn("找到 2 套符合条件的房源", result["response"])
         self.assertLess(result["response"].index("S010"), result["response"].index("S001"))
-        self.assertIn("排名权重：MRT 70%，价格 30%", result["response"])
+        self.assertIn("排序：MRT → 价格", result["response"])
         self.assertIn("不允许做饭", result["response"])
 
     def test_no_results_returns_only_working_relaxations(self):
@@ -480,13 +487,13 @@ class GraphTest(unittest.TestCase):
                 {
                     "field": "max_price_sgd",
                     "current": 1_100,
-                    "suggested": 1_210,
+                    "suggested": 1_200,
                     "match_count": 1,
                 }
             ],
         )
         self.assertIn("当前没有可展示的严格匹配房源", result["response"])
-        self.assertIn("S$1,100 提高到 S$1,210", result["response"])
+        self.assertIn("S$1,100 提高到 S$1,200", result["response"])
 
     def test_show_results_then_accepts_first_relaxation(self):
         preferences = SearchPreferences(
@@ -513,12 +520,12 @@ class GraphTest(unittest.TestCase):
             second = graph.invoke({"message": "给我看看房源信息"}, config=config)
             third = graph.invoke({"message": "可以"}, config=config)
 
-        self.assertEqual(first["relaxations"][0]["suggested"], 1_210)
+        self.assertEqual(first["relaxations"][0]["suggested"], 1_200)
         self.assertEqual(second["intent"], "show_results")
         self.assertEqual(second["preferences"].max_price_sgd, 1_100)
         self.assertIn("尚未修改你的原搜索条件", second["response"])
         self.assertIn("S001", second["response"])
-        self.assertEqual(third["preferences"].max_price_sgd, 1_210)
+        self.assertEqual(third["preferences"].max_price_sgd, 1_200)
         self.assertEqual(third["preferences"].district_code, "D05")
         self.assertEqual(
             [listing["listing_id"] for listing in third["listings"]],
@@ -881,8 +888,8 @@ class GraphTest(unittest.TestCase):
         self.assertEqual(result["listings"], [])
         self.assertEqual(result["ranked_listings"], [])
         self.assertEqual(result["relaxations"][0]["field"], "max_price_sgd")
-        self.assertEqual(result["relaxations"][0]["suggested"], 1_210)
-        self.assertIn("S$1,100 提高到 S$1,210", result["response"])
+        self.assertEqual(result["relaxations"][0]["suggested"], 1_200)
+        self.assertIn("S$1,100 提高到 S$1,200", result["response"])
 
     def test_show_shortlist_cannot_be_misclassified_as_current_results(self):
         original = SearchPreferences(max_price_sgd=1_100)
@@ -1111,7 +1118,7 @@ class WorkflowParityTest(unittest.TestCase):
         self.assertIn("结果主要被以下条件卡住", draft)
         self.assertIn("放开「做饭政策」", draft)
         # Listings to confirm are shown, so it does not say that nothing would help.
-        self.assertNotIn("单项小幅放宽预算、MRT、通勤或租期后也没有找到", draft)
+        self.assertNotIn("单独放宽预算、MRT、通勤或租期也找不到", draft)
 
     def test_strict_matches_come_first_and_listings_to_confirm_fill_the_rest(self):
         # In D05 only S001 says the landlord does not live there; four more do not say.

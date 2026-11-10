@@ -249,7 +249,7 @@ def _legacy_payload(rows: list[dict]) -> dict:
                 "mrt_station": row.get("mrt_station") or "unknown",
                 "mrt_distance_m": row.get("mrt_distance_m"),
                 "mrt_minutes_reported": row.get("mrt_minutes_reported"),
-                "mrt_operation_status": "unknown",
+                "mrt_operation_status": "operational" if row.get("mrt_station") else None,
                 "listed_date": row["posted_at_text"],
                 "collected_at": row["collected_at"],
                 "tenant_count_reported": None,

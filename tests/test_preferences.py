@@ -72,20 +72,17 @@ class PreferenceIntegrationTest(unittest.TestCase):
                     preferences = SearchPreferences(ranking_priority=priority)
                     strict, pending = search_with_unknowns(db, preferences)
                     self.assertEqual({row["listing_id"] for row in strict}, {row["listing_id"] for row in search_listings(db, preferences)})
-                    self.assertEqual(bool(pending), priority != "food_places")
-                    # Equal MRT distance isolates the requested preference from other trade-offs.
-                    candidates = [{**row, "mrt_walk_distance_m": 425, "mrt_operation_status": "operational"} for row in strict]
-                    ranked = rank_listings(candidates, preferences)
-                    first, last = ranked[0]["listing"], ranked[-1]["listing"]
-                    if priority == "school_distance":
-                        self.assertLess(first[column], last[column])
-                    else:
-                        self.assertGreater(first[column], last[column])
-                    self.assertEqual(ranked[0]["factors"][priority]["weight"], 0.7)
-                    explanation = explain_listing(first, preferences)
-                    self.assertEqual(ranked[0]["rank_value"], explanation["rank_value"])
-                    for language in ("zh", "en"):
-                        self.assertIn("70%", render_listing_explanation(explanation, language))
+                    self.assertEqual(pending, [])
+                    ranked = [item["listing"][column] for item in rank_listings(strict, preferences)]
+                    stated = [value for value in ranked if value is not None]
+                    # Best first, and listings that do not state it last.
+                    self.assertEqual(stated, sorted(stated, reverse=priority != "school_distance"))
+                    self.assertEqual(ranked[len(stated):], [None] * (len(ranked) - len(stated)))
+                    explanation = explain_listing(rank_listings(strict, preferences)[0]["listing"], preferences)
+                    self.assertEqual(explanation["ranking_order"], [priority, "price"])
+                    self.assertIsNone(explanation["rank_value"])
+                    self.assertIn("依次比较", render_listing_explanation(explanation, "zh"))
+                    self.assertIn("compared in order", render_listing_explanation(explanation, "en"))
 
     def test_location_radius_accounts_for_coordinate_error_and_missing_coordinates(self):
         preferences = SearchPreferences(nearby_location={"latitude": 1.3, "longitude": 103.77, "radius_m": 1000})
@@ -260,7 +257,7 @@ class PreferenceIntegrationTest(unittest.TestCase):
         self.assertEqual(condition_status("furnishing_types", {"furnishing": "furnished_unspecified"}, SearchPreferences(furnishing_types=["unfurnished"])), "fail")
         # A different MRT distance source is usable; a station under construction is not.
         prefs = SearchPreferences(max_mrt_distance_m=500)
-        self.assertEqual(condition_status("max_mrt_distance_m", {"pg_mrt_nearest_walk_m": 400}, prefs), "pass")
+        self.assertEqual(condition_status("max_mrt_distance_m", {"pg_mrt_nearest_walk_m": 400, "mrt_operation_status": "operational"}, prefs), "pass")
         self.assertEqual(condition_status("max_mrt_distance_m", {"pg_mrt_nearest_walk_m": 400, "mrt_operation_status": "under_construction"}, prefs), "unknown")
 
 

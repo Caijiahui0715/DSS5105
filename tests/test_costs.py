@@ -69,7 +69,7 @@ class LeaseConditionTest(unittest.TestCase):
             "2 years": ("fail", "fail", "pass"),
             "1 year": ("fail", "pass", "pass"),
             "Flexible": ("pass", "pass", "pass"),
-            "Short Term": ("pass", "unknown", "unknown"),
+            "Short Term": ("pass", "pass", "pass"),
             "Prefer not to say": ("unknown", "unknown", "unknown"),
             None: ("unknown", "unknown", "unknown"),
         }
@@ -99,7 +99,8 @@ class LeaseConditionTest(unittest.TestCase):
             suggestions = analyze_relaxations(connection, preferences)
 
         lease = [(item["suggested"], item["match_count"]) for item in suggestions if item["field"] == "lease_months"]
-        self.assertEqual([months for months, _ in lease], [12, 24])
+        # The smallest lease that finds more: no 1-year listing fits, and flexible ones already match.
+        self.assertEqual([months for months, _ in lease], [24])
         self.assertTrue(all(count for _, count in lease))
 
     def test_the_lease_is_shown_with_each_listing(self):
@@ -137,6 +138,8 @@ class CostTextTest(unittest.TestCase):
         self.assertIn("- 印花税：S$72,000 × 0.4% = S$288（向下取整到元，最少 S$1）", lines)
         self.assertIn("- 签约时预付：押金 S$6,000 + 第一个月租金 S$3,000 + 印花税 S$288 = S$9,288", lines)
         self.assertIn("转为押金，不另外计入", text)
+        # A refund is not certain, so the estimate does not promise one.
+        self.assertIn("通常退租时退还，合同允许的扣款除外", text)
         self.assertEqual(lines[-1], "如果你打算签别的租期、押金月数不同或用了中介，告诉我，我重新算。")
 
     def test_a_listing_asking_for_longer_than_the_user_says(self):

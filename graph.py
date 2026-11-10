@@ -161,9 +161,11 @@ _CURRENCY_WORDS = "|".join(sorted(
 ))
 _CLAIMED_NUMBER = re.compile(
     rf"(?:S\$|SGD|\$|€|£|¥|₹|₩|₱|฿|(?-i:(?<![A-Za-z])(?:{_CURRENCY_CODES})(?![A-Za-z])))\s*({_NUMBER})"
-    rf"|({_NUMBER})\s*(?:新币|新加坡元|SGD|{_CURRENCY_WORDS}|元|分钟|mins?\b|minutes?\b|套|listings?\b|(?-i:(?:{_CURRENCY_CODES})(?![A-Za-z])))",
+    rf"|({_NUMBER})\s*(?:新币|新元|新加坡元|SGD|{_CURRENCY_WORDS}|元|分钟|mins?\b|minutes?\b|套|listings?\b|(?-i:(?:{_CURRENCY_CODES})(?![A-Za-z])))"
+    rf"|({_NUMBER}|[一二两三四五六七八九十])\s*([万千])\s*(?:新币|新元|新加坡元|SGD|{_CURRENCY_WORDS}|元)",
     re.IGNORECASE,
 )
+_HAN_DIGITS = {digit: value for value, digit in enumerate("一二三四五六七八九十", 1)} | {"两": 2}
 
 _REFINEMENT_LABELS = {
     "zh": {
@@ -1275,7 +1277,7 @@ def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) 
     if listing_ids:
         problems.append(f"it names listings that no tool returned: {', '.join(listing_ids)}")
     known = {_number(value) for value in re.findall(_NUMBER, source)}
-    figures = sorted({_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)} - known)
+    figures = sorted(_claimed_figures(reply) - known)
     if figures:
         problems.append(f"it states figures that no tool returned: {', '.join(figures)}")
     if _UNSUPPORTED_ACTION_OFFER.search(reply) or _UNSUPPORTED_OFFER_EN.search(reply):
@@ -1289,8 +1291,19 @@ def _reply_problems(reply: str, sources: list[str], language: ResponseLanguage) 
 
 def _reply_claims(reply: str) -> tuple[int, int]:
     """How many distinct figures and listing IDs a reply states: what _reply_problems checks."""
-    figures = {_number(money or other) for money, other in _CLAIMED_NUMBER.findall(reply)}
-    return len(figures), len(set(_listing_ids_in(reply)))
+    return len(_claimed_figures(reply)), len(set(_listing_ids_in(reply)))
+
+
+def _claimed_figures(reply: str) -> set[str]:
+    """The figures a reply states, as plain numbers: 2万新元 and 两万元 are both 20000."""
+    figures = set()
+    for money, other, scaled, unit in _CLAIMED_NUMBER.findall(reply):
+        if scaled:
+            base = _HAN_DIGITS.get(scaled) or Decimal(scaled.replace(",", ""))
+            figures.add(_number(str(base * (10_000 if unit == "万" else 1_000))))
+        else:
+            figures.add(_number(money or other))
+    return figures
 
 
 def _number(text: str) -> str:

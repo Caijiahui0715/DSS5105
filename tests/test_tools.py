@@ -72,11 +72,9 @@ class ToolsTest(unittest.TestCase):
         with closing(create_database()) as connection:
             listings = search_listings(connection, preferences)
             ranked = rank_listings(listings, preferences)
-            balanced = rank_listings(listings, preferences.model_copy(update={"ranking_priority": "balanced"}))
+            balanced = rank_listings(listings, preferences.model_copy(update={"ranking_priority": ()}))
 
-        self.assertEqual(ranked[0]["factors"]["food"]["weight"], 0.7)
-        self.assertEqual(ranked[0]["factors"]["price"]["weight"], 0.15)
-        self.assertEqual(ranked[0]["factors"]["mrt"]["weight"], 0.15)
+        self.assertEqual(ranked[0]["ranking_order"], ["food", "price"])
         # The top three all sit in the busiest tenth for nearby food.
         self.assertTrue(all(item["listing"]["food_rank"] <= 0.1 for item in ranked[:3]))
         self.assertNotEqual(
@@ -96,40 +94,37 @@ class ToolsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "ask the user which matter most"):
             SearchPreferences(ranking_priority=["space", "food_places", "mrt", "price"])
 
-    def test_named_priorities_share_seventy_percent(self):
-        listing = {
-            "listing_id": "a", "rent_monthly_sgd": 1_000, "mrt_distance_m": 425,
-            "mrt_operation_status": "operational", "space_rank": 0.2, "food_places_rank": 0.1,
-        }
-        cases = (
-            ({"max_price_sgd": 2_000, "ranking_priority": "space"}, {"mrt": 0.15, "space": 0.7, "price": 0.15}),
-            ({"ranking_priority": ["space", "food_places"]}, {"mrt": 0.3, "space": 0.35, "food_places": 0.35}),
-            # The one other factor would get 30% against 23% for each named one, so all are equal.
-            (
-                {"max_price_sgd": 2_000, "ranking_priority": ["space", "food_places", "mrt"]},
-                {"mrt": 0.25, "space": 0.25, "price": 0.25, "food_places": 0.25},
-            ),
+    def test_stated_priorities_rank_strictly_in_order(self):
+        def listing(listing_id, **fields):
+            return {"listing_id": listing_id, "mrt_operation_status": "operational", **fields}
+
+        def order(listings, **preferences):
+            return [item["listing"]["listing_id"] for item in rank_listings(listings, SearchPreferences(**preferences))]
+
+        # "Cheaper first": the cheapest leads even with the longest walk, as it did not when weighed.
+        rooms = [
+            listing("near", rent_monthly_sgd=1_050, mrt_minutes_reported=3, mrt_distance_m=255),
+            listing("cheap", rent_monthly_sgd=750, mrt_minutes_reported=20, mrt_distance_m=1_700),
+        ]
+        self.assertEqual(order(rooms, max_price_sgd=1_200, ranking_priority="price"), ["cheap", "near"])
+        # Without a stated priority, MRT and rent are still weighed.
+        self.assertEqual(order(rooms, max_price_sgd=1_200), ["near", "cheap"])
+        ranked = rank_listings(rooms, SearchPreferences(max_price_sgd=1_200))[0]
+        self.assertEqual(ranked["ranking_order"], [])
+        self.assertEqual({name: factor["weight"] for name, factor in ranked["factors"].items()}, {"mrt": 0.5, "price": 0.5})
+        # A later priority only breaks ties; rent comes last, and a listing not stating one last on it.
+        homes = [
+            listing("small", rental_scope="room", area_scope="room_reported", area_sqm=10, poi_fnb_1km=99, rent_monthly_sgd=900),
+            listing("few", rental_scope="room", area_scope="room_reported", area_sqm=20, poi_fnb_1km=5, rent_monthly_sgd=900),
+            listing("many", rental_scope="room", area_scope="room_reported", area_sqm=20, poi_fnb_1km=9, rent_monthly_sgd=1_000),
+            listing("many-cheap", rental_scope="room", area_scope="room_reported", area_sqm=20, poi_fnb_1km=9, rent_monthly_sgd=800),
+            listing("unstated", rental_scope="room", area_scope="unknown", area_sqm=None, poi_fnb_1km=99, rent_monthly_sgd=700),
+        ]
+        self.assertEqual(
+            order(homes, ranking_priority=["space", "food_places"]),
+            ["many-cheap", "many", "few", "small", "unstated"],
         )
-        for preferences, weights in cases:
-            with self.subTest(preferences=preferences):
-                factors = rank_listings([listing], SearchPreferences(**preferences))[0]["factors"]
-                self.assertEqual({name: factor["weight"] for name, factor in factors.items()}, weights)
-
-    def test_an_added_priority_keeps_the_earlier_one_in_the_ranking(self):
-        # 空间大 followed by 也想要餐厅多: space stays in the ranking instead of being replaced.
-        preferences = SearchPreferences(max_price_sgd=3_000, ranking_priority=["space", "food_places"])
-        with closing(create_database()) as connection:
-            listings = search_listings(connection, preferences)
-
-        def top_three(priorities, rank):
-            ranked = rank_listings(listings, preferences.model_copy(update={"ranking_priority": priorities}))
-            return sum(item["listing"][rank] for item in ranked[:3]) / 3
-
-        # Search keeps only listings with data for every named priority.
-        self.assertTrue(all(row["space_rank"] is not None and row["food_places_rank"] is not None for row in listings))
-        # Ranks are 0 for the largest or busiest; both priorities beat ranking on either one alone.
-        self.assertLess(top_three(("space", "food_places"), "space_rank"), top_three(("food_places",), "space_rank"))
-        self.assertLess(top_three(("space", "food_places"), "food_places_rank"), top_three(("space",), "food_places_rank"))
+        self.assertEqual(rank_listings(homes, SearchPreferences(ranking_priority=["space", "food_places"]))[0]["ranking_order"], ["space", "food_places", "price"])
 
     def test_priority_changes_show_what_is_kept(self):
         self.assertEqual(
@@ -300,16 +295,19 @@ class ToolsTest(unittest.TestCase):
             suggestions = analyze_relaxations(connection, preferences)
             response = render_response(relaxations=suggestions)
 
-        self.assertEqual([(item["field"], item["suggested"], item["match_count"]) for item in suggestions], [("max_price_sgd", 1_320, 2)])
+        self.assertEqual([(item["field"], item["suggested"], item["match_count"]) for item in suggestions], [("max_price_sgd", 1_280, 2)])
         self.assertIn("数据库匹配 2 套", response)
 
-    def test_relaxations_leave_out_listings_the_data_refresh_took_down(self):
+    def test_relaxations_stop_at_the_smallest_change_that_finds_a_listing(self):
         preferences = SearchPreferences(max_price_sgd=1_100, room_type="common_room", district_code="D05")
         with closing(create_mock_database()) as connection:
+            cheapest = analyze_relaxations(connection, preferences)
+            # S001 is S$1,200; once the data refresh takes it down, S010 at S$1,280 is the next.
             set_listing(connection, "S001", scrape_status="removed")
-            suggestions = analyze_relaxations(connection, preferences)
+            next_one = analyze_relaxations(connection, preferences)
 
-        self.assertEqual(suggestions, [])
+        self.assertEqual([(item["suggested"], item["match_count"]) for item in cheapest], [(1_200, 1)])
+        self.assertEqual([(item["suggested"], item["match_count"]) for item in next_one], [(1_280, 1)])
 
     def test_whole_dollar_rents_show_without_decimals(self):
         # Rents read from the delivery files and the database are decimals such as 2999.0.
@@ -351,7 +349,6 @@ class ToolsTest(unittest.TestCase):
     def test_uses_850_metres_for_a_soft_mrt_preference(self):
         preferences = SearchPreferences(
             max_price_sgd=1_500,
-            ranking_priority="mrt",
         )
         with closing(create_mock_database()) as connection:
             by_id = {
@@ -365,10 +362,10 @@ class ToolsTest(unittest.TestCase):
             [item["listing"]["listing_id"] for item in ranking],
             ["S010", "S001"],
         )
+        self.assertEqual([item["rank_value"] for item in ranking], [0.609, 0.729])
         # S010 walks 310 m: 310 / 850 = 0.365.
-        self.assertEqual([item["rank_value"] for item in ranking], [0.511, 0.701])
         self.assertEqual(ranking[0]["factors"]["mrt"]["ratio"], 0.365)
-        self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.7)
+        self.assertEqual(ranking[0]["factors"]["mrt"]["weight"], 0.5)
 
     def test_sqlite_search_and_restriction_extraction(self):
         with closing(create_mock_database()) as connection:
@@ -415,8 +412,8 @@ class ToolsTest(unittest.TestCase):
 
             cheaper = preferences.model_copy(update={"max_price_sgd": 1_100})
             self.assertEqual(
-                analyze_relaxations(connection, cheaper, ["S001"]),
-                [],
+                [(item["field"], item["suggested"]) for item in analyze_relaxations(connection, cheaper, ["S001"])],
+                [("max_price_sgd", 1_280)],
             )
 
             # A OneMap walking route replaces the card distance.

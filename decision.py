@@ -27,10 +27,13 @@ from tools import (
     destination_trip,
     destination_view,
     extra_condition_status,
+    extract_restrictions,
     mrt_distance_m,
+    mrt_limit_status,
+    nearest_mrt_minutes,
+    ranking_value,
     mrt_minutes,
     other_commute_minutes,
-    own_commute_needed,
     rank_listings,
     rental_area_sqm,
     resolve_search_location,
@@ -73,17 +76,8 @@ _SPARSE = (
     "air_conditioning_required",
     "max_commute_minutes",
 )
-# A stated ranking priority also needs data; without it a listing cannot be ranked on it.
-_PRIORITY_DATA = {
-    "amenities": ("nearby_food", lambda listing, preferences: listing.get("food_rank")),
-    "mrt": ("max_mrt_minutes", lambda listing, preferences: mrt_distance_m(listing)),
-    "commute": ("max_commute_minutes", commute_minutes),
-    "space": ("min_area_sqm", lambda listing, preferences: rental_area_sqm(listing)),
-}
 _NEUTRAL.update({field: SearchPreferences.model_fields[field].default for field in EXTRA_CONDITION_LABELS})
 _SPARSE += tuple(EXTRA_CONDITION_LABELS)
-_PRIORITY_DATA.update({name: (name, lambda listing, preferences, name=name: listing.get(f"{name}_rank")) for name in AMENITY_FIELDS})
-_PRIORITY_DATA["school_distance"] = ("max_school_walk_minutes", lambda listing, preferences: listing.get("pg_school_nearest_walk_min"))
 _EVIDENCE_FIELDS = (
     "headline",
     "card_text",
@@ -133,7 +127,7 @@ def condition_status(
         scope = listing.get("rental_scope")
         return _check(None if scope == "unknown" else scope, lambda value: value == wanted)
     if field == "max_mrt_minutes":
-        return _check(mrt_minutes(listing), lambda minutes: minutes <= wanted)
+        return mrt_limit_status(nearest_mrt_minutes(listing), wanted, listing)
     if field == "min_bedrooms":
         if listing.get("rental_scope") == "room":
             return "fail"
@@ -170,11 +164,9 @@ def search_with_unknowns(
 ) -> tuple[list[Listing], list[Listing]]:
     """Split candidates into strict matches and listings blocked only by unstated data."""
     preferences = resolve_search_location(preferences)
-    # SQL keeps only listings stating every sparse condition and each priority's data; drop those
-    # filters here and sort listings by each condition's status instead.
-    base = preferences.model_copy(
-        update={**{field: _NEUTRAL[field] for field in _SPARSE}, "ranking_priority": ()}
-    )
+    # SQL keeps only listings stating every sparse condition; drop those filters here and sort
+    # listings by each condition's status instead.
+    base = preferences.model_copy(update={field: _NEUTRAL[field] for field in _SPARSE})
     active = [field for field in active_conditions(preferences) if field in _SPARSE]
     strict, needs_confirmation = [], []
     for listing in search_listings(connection, base, excluded_listing_ids):
@@ -182,24 +174,11 @@ def search_with_unknowns(
         if "fail" in statuses.values():
             continue
         unknown = [field for field, status in statuses.items() if status == "unknown"]
-        unknown += [label for label in _unranked_priority(listing, preferences) if label not in unknown]
         if unknown:
             needs_confirmation.append({**listing, "unknown_conditions": unknown})
         else:
             strict.append(listing)
     return strict, needs_confirmation
-
-
-def _unranked_priority(listing: Listing, preferences: SearchPreferences) -> list[str]:
-    """Name each stated ranking priority this listing has no data for; ranking by commute needs the
-    trip to each destination there is."""
-    checks = [_PRIORITY_DATA[name] for name in preferences.ranking_priority if name in _PRIORITY_DATA and name != "commute"]
-    if "commute" in preferences.ranking_priority:
-        if own_commute_needed(preferences):
-            checks.append(_PRIORITY_DATA["commute"])
-        if preferences.other_destination is not None:
-            checks.append(("max_other_commute_minutes", other_commute_minutes))
-    return [label for label, data in checks if data(listing, preferences) is None]
 
 
 def route_candidates(
@@ -329,6 +308,11 @@ def explain_listing(
         "listing_id": listing["listing_id"],
         "rank_value": ranked["rank_value"],
         "rank_value_lower_is_better": True,
+        "ranking_order": ranked["ranking_order"],
+        "ranking_values": {name: ranking_value(name, listing, preferences) for name in ranked["ranking_order"]},
+        # What the data states about the home, whatever the advert's words below happen to mention.
+        "known_conditions": {key: value for key, value in extract_restrictions(listing).items() if value != "unknown"},
+        "link_last_checked": (listing.get("live_checked_at") or "")[:10] or None,
         "factors": ranked["factors"],
         "factor_formulas": {
             "price": "rent_monthly_sgd / max_price_sgd",

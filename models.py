@@ -67,7 +67,7 @@ RankingPriority = Literal[
     "price", "mrt", "amenities", "commute", "space",
     "food_places", "hawker", "libraries", "sports", "healthcare", "community", "schools", "school_distance",
 ]
-# Named priorities share 70% of the ranking weight, so more than three would leave each very little.
+# Priorities rank strictly in order, so a fourth would rarely decide anything.
 MAX_RANKING_PRIORITIES = 3
 
 
@@ -241,7 +241,7 @@ class SearchPreferences(BaseModel):
             "the longer of the two trips counts), space for more "
             "rental area, food_places/hawker/libraries/sports/healthcare/community/schools for more of "
             "that facility, school_distance for a shorter walk to the nearest reported school (not "
-            "specifically NUS). The named priorities share 70% of the ranking weight equally."
+            "specifically NUS). Listings are ranked strictly by these in order, then by rent."
         ),
     )
     # The faculty the commute fields refer to. The system copies it from the user's account each

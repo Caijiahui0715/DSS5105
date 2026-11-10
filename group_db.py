@@ -35,7 +35,7 @@ _V1_LABELS = {
     "pets_policy": {"no_pets": "not_allowed", "pets_allowed": "allowed"},
 }
 _TEXT = (
-    "listing_id", "title", "listing_url", "rent_price_type", "rental_scope", "room_type", "property_type",
+    "listing_id", "title", "listing_url", "rent_price_type", "rental_scope", "room_type",
     "area_scope", "district_code", "address", "mrt_station", "mrt_operation_status", "tenant_gender_label",
     "gender_restriction", "gender_preference", "furnishing", "landlord_lives_in", "private_bathroom",
     "air_conditioning", "scrape_status", "lease_term",
@@ -89,6 +89,8 @@ space AS (
 )
 SELECT
     {', '.join(f'a.{field}' for field in _TEXT if field not in _V1_LABELS)},
+    -- Newer rows spell it as displayed (Condominium, HDB Flat); searches use the V2 names.
+    regexp_replace(lower(a.property_type), '[^a-z0-9]+', '_', 'g') AS property_type,
     {_labels('cooking_policy')},
     {_labels('pets_policy')},
     {', '.join(f'a.{field}::int AS {field}' for field in _INTEGER)},

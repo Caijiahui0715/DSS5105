@@ -145,11 +145,8 @@ def claims(reply: str) -> list[tuple[str, float | str]]:
     return found
 
 
-def main() -> None:
-    sys.stdout.reconfigure(encoding="utf-8")
-    if len(sys.argv) != 2:
-        raise SystemExit(__doc__)
-    label = sys.argv[1]
+def compute(label: str) -> dict:
+    """Every automatic metric of one result file, by category; compare_systems.py reads this too."""
     rows = [json.loads(line) for line in (RESULTS / f"{label}.jsonl").read_text(encoding="utf-8").splitlines()]
     meta = rows[0].get("meta", {})
     versions = [row["meta"] for row in rows if "meta" in row]
@@ -299,6 +296,16 @@ def main() -> None:
     for stat in stats.values():
         for key, value in stat.items():
             total[key] += value
+    return {"rows": rows, "meta": meta, "versions": versions, "stats": stats, "total": total, "review": review}
+
+
+def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")
+    if len(sys.argv) != 2:
+        raise SystemExit(__doc__)
+    label = sys.argv[1]
+    result = compute(label)
+    rows, meta, versions, stats, total, review = (result[k] for k in ("rows", "meta", "versions", "stats", "total", "review"))
     print(f"{label}  commit {meta.get('commit')}  model {meta.get('model')}  split {meta.get('split')}  turns {int(total['turns'])}")
     if len(code := {(version.get("commit"), version.get("uncommitted_py_sha256")) for version in versions}) > 1:
         print(f"注意：这些结果来自 {len(code)} 个代码版本，不能当最终结果")

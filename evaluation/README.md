@@ -17,7 +17,6 @@
 | `human_ranking/form.csv` | 按冻结数据重做的 17 题排序表，没有整份发给评审；替换题的候选取自这里 |
 | `human_ranking/key.csv` | 上一行排序表的答案表：房源 ID、抽样来源、标准答案名次。**不要给评审看** |
 | `human_ranking/v6_replacement/` | V6 问卷 A08、A09、B01、G04 的替换题：对比图、表单设置（`questions.md`）、答案表（`key.csv`，不要给评审看）。由 `v6_replacement.py` 生成 |
-| `human_ranking/form_v7/` | 中文版 Google 表单（V7）：15 张对比图、建表单的 Apps Script（`build_form.gs`）、答案表（`key.csv`，不要给评审看）。由 `form_v7.py` 生成，用法见该目录的 `README.md`。**暂停中：现有图片按"全部商学院"画的，已过时，恢复后要按各题学院重新生成** |
 | `build_cases.py` | 原始文件 → `cases.json`，同时划分留出集 |
 | `gold.py` | 冻结数据 + 通勤缓存 → 标准答案。只用 pandas，不 import 系统代码 |
 | `human_ranking.py` | 标准答案 → 人工排序表 |
@@ -25,6 +24,11 @@
 | `check_search.py` | 不调用模型：把开发集每轮的 `gold_profile` 直接交给系统的搜索和排序，和标准答案比较。不花钱，改完搜索或排序就能复测 |
 | `run_eval.py` | 用真实模型跑系统（B5 agent），每轮存一行到 `results/<标签>.jsonl`，开头记下代码版本、模型和数据的哈希。要花钱。默认只跑开发集，加 `--holdout` 才跑留出集 |
 | `score.py` | 从 `results/<标签>.jsonl` 算指标，并写出逐轮的 `_review.md` 给人看。只用标准答案和冻结数据，不 import 系统代码。行为分不在里面，要人工打 |
+| `baselines.py` | 基线 B1（平台式筛选 + 租金排序）、B2（加权打分）的规则，以及四个基线各是什么。B1、B2 直接用每轮的 `gold_profile`，不经过模型 |
+| `run_baselines.py` | 跑 B1、B2、B3（LLM 直接看房源表推荐，不给工具，要花钱），结果格式和 `run_eval.py` 一样，`score.py` 可以直接打分。B4（固定 workflow）用 `run_eval.py --system workflow` |
+| `compare_systems.py` | 把 B1–B5 放在同一张表里，写到 `results/baseline_comparison.md`；解读和注意事项在 `results/baseline_report.md` |
+| `behaviour_scoring_guide.md` | 行为打分（指标 5）说明：给评分人看的步骤、各类题怎么判、开打前要统一的几种情况 |
+| `merge_behaviour.py` | 合并两位评分人的行为打分表，算一致率和 Cohen's κ，列出分歧；讨论后用 `--final` 算最终行为正确率 |
 | `failure_log.md` | 失败案例记录，按评估方案第 6 节的模板写，给 Evaluation.pdf 用。前面是开发集（写了怎么修），最后一节是留出集（只记录，不修） |
 | `ranking_summary.md` | 排序评估总结：自动的顺序检查（开发集、留出集）、人工排序问卷（指标 7），以及各种排序不一致怎么归类 |
 | `boundary/` | 边界测试：无关问题、租房常识、法律和准证、注入、拒绝过头。不属于这 59 题，也不动 `cases.json`；只用开发集的题，不碰留出集。见该目录的 `README.md` |
@@ -79,7 +83,7 @@
 ## 还需要小组处理的事
 
 1. ~~确认 `CONVENTIONS.md` 里的待定条目~~：2026-11-05 已确认。下一步把 `cases/holdout_manifest.json` 里的 `holdout_sha256` 发到组群，作为封存记录。之后题目或 G 类条件一改，hash 就会变。
-2. **A07 怎么处理**：留作"条件太严、结果为空"的题（改到 C 类，或保留在 A 类并在报告中说明），还是换一道题。
+2. ~~A07 怎么处理~~：2026-11-11 决定不改，保留在 A 类，报告中说明：冻结数据下结果为空，这题实际测的是"结果为空时条件理解得对不对、会不会乱给房源"。它在开发集，不影响测试集成绩。
 3. ~~留出集里有题已经用 agent 跑过~~：2026-11-05 已重分，见上面第 8 条。**留出集的 20 题在 11/9 冻结系统之前不要在 agent 上跑**，包括 xlsx 里"Run Instructions"说要复制进 agent 的那 8 题。
 4. **人工核验 20%**：另一位组员在 Excel 里手动筛几题，和 `gold_answers.json` 对照，并填 `cases.json` 里的 `verified_by`。我已经用另外写的 pandas 筛选核对了 A01、A03、A08、B01、B03、G03、G05 第 2 轮，结果完全一致，但这不能代替组员核验。
 5. **填 `author`**：写明每题是谁出的。

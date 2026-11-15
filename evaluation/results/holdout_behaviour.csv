@@ -1,4 +1,4 @@
-﻿题号,轮,期望行为,用户说的,决策分,解释分,打分人,备注
+﻿case_id,turn,expected_behaviour,user_message,decision_score,explanation_score,rater,note
 A11,1,answer,"Find me an entire unit in D21 with at least 2 bedrooms and a monthly rent of no more than SGD 5,000. Rank all eligible listings by lower rent first.",,,,
 A12,1,answer,"I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.",,,,
 A13,1,answer,"Find me a room for no more than SGD 2,200 per month with air-conditioning. It must be within a 10-minute walk of an operating MRT station. Rank the eligible rooms by shorter MRT walk first, then lower rent.",,,,

@@ -159,10 +159,10 @@ def main():
     df, commute = load()
     idx = df.set_index("listing_id")
     active = set(df["listing_id"])
-    md = ["# V6 问卷替换题（A08、A09、B01、G04）", "",
-          "这 4 题原来的候选里各有 1 套 11/02 前已下架的房源。下面的候选来自 `human_ranking/key.csv`，全部在冻结数据里。",
-          "", "每题在表单里的设置和 V6 其他题一致：一段题目文字、一张对比图、每个候选一道单选题、一道选填说明。",
-          "候选多于 3 个的题，名次选项要改成 1 到候选数，再加 \"Cannot judge\"。", ""]
+    md = ["# V6 questionnaire: replacement cases (A08, A09, B01, G04)", "",
+          "Each of these 4 cases originally had one candidate that was taken down before 11/02. The candidates below come from `human_ranking/key.csv` and are all in the frozen data.",
+          "", "Each case is set up in the form like the other V6 cases: the question text, one comparison image, one single-choice question per candidate, and one optional comment.",
+          "For cases with more than 3 candidates, the rank options run from 1 to the number of candidates, plus \"Cannot judge\".", ""]
     for cid in REPLACE:
         picks = [(r["Label"], r["Listing ID"]) for r in key if r["Case ID"] == cid]
         assert all(lid in active for _, lid in picks), cid
@@ -174,11 +174,11 @@ def main():
                         (OUT / f"{cid}.html").as_uri()], check=True, capture_output=True)
         n = len(picks)
         opts = ", ".join(str(i) for i in range(1, n + 1)) + ", Cannot judge"
-        md += [f"## {cid}", "", f"- 题目文字：{gold[cid]['turns'][-1]['user']}",
-               "- 题目说明：Candidates were preliminarily screened; rank only.",
-               f"- 图片：`{cid}.png`",
-               f"- 名次题：{n} 道（{', '.join(f'{cid} | Candidate {lab} rank' for lab, _ in picks)}），选项 {opts}",
-               f"- 选填：{cid} | Ranking rationale / ties / missing information (optional)", ""]
+        md += [f"## {cid}", "", f"- Question text: {gold[cid]['turns'][-1]['user']}",
+               "- Description: Candidates were preliminarily screened; rank only.",
+               f"- Image: `{cid}.png`",
+               f"- Rank questions: {n} ({', '.join(f'{cid} | Candidate {lab} rank' for lab, _ in picks)}), options {opts}",
+               f"- Optional: {cid} | Ranking rationale / ties / missing information (optional)", ""]
     with (OUT / "key.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         w = csv.DictWriter(fh, fieldnames=list(key[0].keys()))
         w.writeheader()

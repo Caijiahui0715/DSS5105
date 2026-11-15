@@ -1,67 +1,67 @@
-# 排序评估总结
+# Ranking evaluation summary
 
-排序从两方面评：
+Ranking is evaluated in two ways:
 
-1. **自动**：用户说了优先项的题，系统的前 3 名顺序要和标准答案一致（`CONVENTIONS.md` 第 5 节）。没说优先项的题不检查顺序。
-2. **人工（指标 7）**：5 位评审给候选房源排序，和标准答案、agent 对照。
+1. **Automatic**: where the user states priorities, the system's top 3 must be in the gold order (`CONVENTIONS.md` section 5). The order is not checked where no priority is stated.
+2. **Human (metric 7)**: 5 reviewers rank candidate listings, and their ranks are compared with the gold answer and the agent.
 
-## 1. 自动：说了优先项的题（14 题、18 轮）
+## 1. Automatic: cases with stated priorities (13 cases, 18 turns)
 
-| 题 | 集合 | 轮 | 优先项 | 结果 |
+| Case | Set | Turns | Priorities | Result |
 |---|---|---|---|---|
-| A01 | 开发 | 1 | 租金 | dev5 ✓ |
-| A04 | 开发 | 1 | 通勤 → 租金 | dev5 ✓ |
-| A08 | 开发 | 1 | 面积 → MRT → 租金 | dev5 ✓ |
-| A09 | 开发 | 1 | 餐饮 → MRT | dev5 ✓ |
-| A10 | 开发 | 1 | 通勤 → 租金 | dev5 ✓ |
-| G01 | 开发 | 1、2 | 通勤 | dev5 ✓ ✓ |
-| G02 | 开发 | 1、2 | 租金；通勤 → 租金 | dev5 ✓ ✓ |
-| G05 | 开发 | 1、2 | 通勤 | dev5 ✓ ✓ |
-| A11 | 留出 | 1 | 租金 | 3/3 ✓ |
-| A13 | 留出 | 1 | MRT → 租金 | 3/3 ✓ |
-| A14 | 留出 | 1 | 通勤 → 租金 | 3/3 ✓ |
-| G06 | 留出 | 1、2 | 租金 | 3/3 ✓ |
-| G09 | 留出 | 1、2 | 租金；面积 → 租金 | 3/3 ✓ |
+| A01 | Dev | 1 | Rent | dev5 ✓ |
+| A04 | Dev | 1 | Commute → rent | dev5 ✓ |
+| A08 | Dev | 1 | Area → MRT → rent | dev5 ✓ |
+| A09 | Dev | 1 | Food places → MRT | dev5 ✓ |
+| A10 | Dev | 1 | Commute → rent | dev5 ✓ |
+| G01 | Dev | 1, 2 | Commute | dev5 ✓ ✓ |
+| G02 | Dev | 1, 2 | Rent; commute → rent | dev5 ✓ ✓ |
+| G05 | Dev | 1, 2 | Commute | dev5 ✓ ✓ |
+| A11 | Holdout | 1 | Rent | 3/3 ✓ |
+| A13 | Holdout | 1 | MRT → rent | 3/3 ✓ |
+| A14 | Holdout | 1 | Commute → rent | 3/3 ✓ |
+| G06 | Holdout | 1, 2 | Rent | 3/3 ✓ |
+| G09 | Holdout | 1, 2 | Rent; area → rent | 3/3 ✓ |
 
-开发集 dev5：11/11。留出集：3 遍合计 21/21。修复前（提交 `38c529e`），`check_search.py` 里 11 轮只有 2 轮一致；原因是当时按权重打分，不是依次比较（`failure_log.md` 的 A01、G02）。
+Dev set (dev5): 11/11. Holdout: 21/21 over the 3 runs. Before the fix (commit `38c529e`), only 2 of the 11 turns agreed in `check_search.py`, because ranking then used a weighted score instead of comparing priorities one after another (A01 and G02 in `failure_log.md`).
 
-开发集的数字是看着这些题改出来的，偏乐观；留出集的 21/21 才是最终成绩。
+The dev figures come from cases the system was tuned on and are optimistic; the holdout's 21/21 is the final result.
 
-## 2. 人工排序问卷（指标 7）
+## 2. Human-ranking questionnaire (metric 7)
 
-完整问卷、每题的图和每个人的名次见 `human_ranking/v6_final/DSS5105_V6_human_ranking.pdf`，数字见同目录的 `analysis.md`。
+The full questionnaire, each case's image and every reviewer's ranks are in `human_ranking/v6_final/DSS5105_V6_human_ranking.pdf`; the figures are in `analysis.md` in the same folder.
 
-- 15 题，都是开发集；5 位评审（组员），2026-11-05 至 11-08 填写。
-- 11 道原题的候选是 agent 11/05 一次运行推荐的前 3 名。那次用的是 11/02 复查前的数据，排序也还没修。
-- A08、A09、B01、G04 的原候选里有下架房源，换成了从标准答案中抽取的候选。agent 只展示前 3 名，没有给这些候选完整排过序，所以这 4 题对照的是现在冻结的系统给这些候选的排序（不经过模型）。
-- 问卷的标准答案按图上显示的数值算（500203570 月租 1,050）；排序依据完全相同的候选算并列。
+- 15 cases, all from the dev set; 5 reviewers (team members), filled in from 2026-11-05 to 11-08.
+- The candidates of the 11 original cases are the top 3 recommended by one agent run on 11/05. That run used the data before the 11/02 recheck, and the ranking had not yet been fixed.
+- A08, A09, B01 and G04 had a listing among their original candidates that was later taken down, so they were replaced with candidates drawn from the gold answer. The agent shows only its top 3 and never ranked all of these candidates, so for these 4 cases the comparison is with how the frozen system ranks the candidates (computed without the model).
+- The questionnaire's gold answer uses the values shown in the images (listing 500203570 at SGD 1,050 a month); candidates with exactly the same ranking values count as tied.
 
-| 分组 | 题目 | 评审之间（W） | 评审 vs 标准答案 | 评审 vs 11/05 agent | 11/05 agent vs 标准答案 |
+| Group | Cases | Between reviewers (W) | Reviewers vs gold | Reviewers vs 11/05 agent | 11/05 agent vs gold |
 |---|---|---|---|---|---|
-| 用户说了排序 | A01、A04、A08、A09、G01、G02、G05 | 0.40 | 0.49 | 0.22 | 0.16 |
-| 用户没说排序 | A02、A05、B01、B02、B03、B06、G03、G04 | 0.39 | 0.34 | 0.03 | 0.36 |
+| User stated a ranking | A01, A04, A08, A09, G01, G02, G05 | 0.40 | 0.49 | 0.22 | 0.16 |
+| User stated no ranking | A02, A05, B01, B02, B03, B06, G03, G04 | 0.39 | 0.34 | 0.03 | 0.36 |
 
-数字是 τ-b 的平均值（1 完全一致，−1 完全相反）。后两列只含 11 道原题。
+The figures are mean τ-b (1 complete agreement, −1 completely reversed). The last two columns cover only the 11 original cases.
 
-现在冻结的系统给 4 道替换题候选排出的名次：A08、A09、B01 每个候选都和标准答案相同（τ-b 1.00），包括排在第 57、59 名的房源；G04 用户没说排序，系统和标准答案的一致度是 0.11，和评审的一致度是 0.20。
+How the frozen system ranks the candidates of the 4 replacement cases: in A08, A09 and B01, every candidate's rank equals the gold answer (τ-b 1.00), including listings ranked 57th and 59th; in G04, where the user stated no ranking, the system agrees with the gold answer at 0.11 and with the reviewers at 0.20.
 
-## 3. 不一致的情况，各算什么
+## 3. Kinds of disagreement and how each counts
 
-| 哪种不一致 | 例子 | 算不算系统失败 | 写在哪里 |
+| Disagreement | Example | A system failure? | Where it is recorded |
 |---|---|---|---|
-| 用户说了排序，系统没按它排 | G01（−1.00）、G02（−0.82），都是 11/05 的 agent | 算。都在开发集上修好了 | `failure_log.md` 的 G01、G02 |
-| 用户没说排序，系统的默认排法和人不一样 | B02：5 人都把最贵的 C 排最后，11/05 agent 排第一；G04：现在的系统 vs 评审 0.20 | 不算（约定只检查说了排序的题），作为已知限制 | `failure_log.md` 的"还没有解决" |
-| 评审和标准答案不一致 | A09 一致度 0.48；没说排序的题平均 0.34 | 不是系统的问题，而是在检验标准答案的规则 | 本文第 2 节 |
+| The user stated a ranking and the system did not follow it | G01 (−1.00) and G02 (−0.82), both the 11/05 agent | Yes. Both were fixed on the dev set | G01 and G02 in `failure_log.md` |
+| The user stated no ranking and the system's default order differs from people's | B02: all 5 reviewers put the most expensive candidate, C, last, while the 11/05 agent put it first; G04: frozen system vs reviewers 0.20 | No (by the conventions only stated rankings are checked); recorded as a known limitation | "Not yet resolved" in `failure_log.md` |
+| Reviewers disagree with the gold answer | A09 at 0.48; cases with no stated ranking 0.34 on average | Not a system problem: it tests the gold answer's rules | Section 2 of this page |
 
-## 4. 结论
+## 4. Conclusions
 
-1. **冻结系统的排序符合规则**：说了优先项的题，开发集和留出集全部一致；替换题中说了优先项的 A08、A09 也逐个一致。
-2. **标准答案的规则在用户说清楚时站得住**：评审和标准答案的一致度，说了排序的题（0.49）高于没说的（0.34）。单轮、要求明确的 A01、A04、A08，5 人的第 1 名都和标准答案相同。
-3. **用户没说排序时没有唯一正确的顺序**：评审会考虑家具、合住、MRT、卫浴，"按租金低"并不是共识。这支持只在说了排序时检查顺序；但系统的默认排法（MRT 和租金平衡）也不一定贴近人的判断，可以作为改进方向。
-4. **多轮题评审之间一致度很低**（G01、G02、G05 的 W 只有 0.04 到 0.16）。G01 的图上排序重点写的是"综合适合程度"，评审不一定知道要按通勤排。
+1. **The frozen system ranks by the rules**: where priorities are stated, every turn agrees on both the dev set and the holdout; among the replacement cases, A08 and A09, which state priorities, also agree candidate by candidate.
+2. **The gold rules hold up when the user is explicit**: reviewers agree with the gold answer more where a ranking is stated (0.49) than where it is not (0.34). In A01, A04 and A08, single-turn cases with explicit requirements, all 5 reviewers' first choice is the gold answer's first.
+3. **With no stated ranking there is no single right order**: reviewers weigh furnishing, flatmates, MRT and bathrooms, and "lowest rent" is not a consensus. This supports checking the order only where a ranking is stated; but the system's default order (balancing MRT and rent) does not necessarily match people's judgement either, which is a direction for improvement.
+4. **Reviewers agree very little on multi-turn cases** (W of only 0.04 to 0.16 for G01, G02 and G05). G01's image states the ranking focus as "overall suitability", so reviewers may not have known to rank by commute.
 
-## 5. 局限
+## 5. Limitations
 
-- 评审只有 5 人，都是组员；每题 3 到 5 个候选；人工排序只覆盖开发集。
-- 11 道原题对照的是 11/05 的 agent（旧数据、修复前），不能当成冻结系统的成绩。冻结系统的排序成绩看第 1 节。
-- 4 道替换题的图是英文的，其余是中文的。
+- Only 5 reviewers, all team members; 3 to 5 candidates per case; the human ranking covers only the dev set.
+- The 11 original cases are compared with the 11/05 agent (old data, before the fix), which is not the frozen system's result. For the frozen system's ranking, see section 1.
+- The images of the 4 replacement cases are in English; the rest are in Chinese.

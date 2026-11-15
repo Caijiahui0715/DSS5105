@@ -25,16 +25,16 @@ sys.path.insert(0, str(HERE))
 import score  # noqa: E402
 
 SYSTEMS = [
-    ("B1", "平台式筛选 + 租金排序（条件由标准答案提供）", "b1"),
-    ("B2", "加权打分（条件由标准答案提供）", "b2"),
-    ("B3", "LLM，不给工具", "b3"),
-    ("B4", "固定 workflow（graph.py）", "b4"),
-    ("B5", "agent（冻结版）", None),
+    ("B1", "Portal-style filters + rent order (given the gold conditions)", "b1"),
+    ("B2", "Weighted score (given the gold conditions)", "b2"),
+    ("B3", "LLM without tools", "b3"),
+    ("B4", "Fixed workflow (graph.py)", "b4"),
+    ("B5", "Agent (frozen)", None),
 ]
 LABELS = {"dev": {"b1": "b1-dev", "b2": "b2-dev", "b3": "b3-dev", "b4": "b4-dev", None: "dev5"},
           "holdout": {"b1": "b1-holdout", "b2": "b2-holdout", "b3": "b3-holdout", "b4": "b4-holdout", None: "holdout"}}
 # B1 and B2 are handed the gold conditions; B3 gives no structured conditions to check.
-NO_PARSE = {"B1": "直接用标准条件", "B2": "直接用标准条件", "B3": "不输出条件"}
+NO_PARSE = {"B1": "given gold conditions", "B2": "given gold conditions", "B3": "no conditions output"}
 GOLD = {a["case_id"]: a for a in json.loads((HERE / "gold" / "gold_answers.json").read_text(encoding="utf-8"))["answers"]}
 
 UNKNOWN_WORDS = re.compile(r"confirm|not stated|unstated|unknown|not specified|does not state|doesn't state|需确认|需要确认|未写明|没写|未注明|不明|未知", re.I)
@@ -120,46 +120,46 @@ def row(code: str, name: str, label: str) -> tuple[str, dict] | None:
     return line, extra
 
 
-HEAD = ("| 系统 | 遍数 | 展示正确 | 违反硬条件 | 未知说成符合 | 漏报 | 说了排序的顺序 | B 类：列出需确认的 | C 类：最小放宽对 | "
-        "改通勤优先后 | 总数说错 | 查不到出处的数字 | 理解条件（整轮） | 秒/轮 |\n"
+HEAD = ("| System | Runs | Display correct | Hard violations | Unknown as confirmed | Missed | Stated-priority order | B: lists pending | C: minimum relaxation | "
+        "After commute first | Wrong total | Untraced numbers | Conditions parsed (whole turn) | Seconds/turn |\n"
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 
-NOTES = """指标（只算 A、B、C、G 类有标准条件的轮）：
+NOTES = """Metrics (only turns of categories A, B, C and G that have gold conditions):
 
-- **展示正确**：展示的房源里，确定符合且标为符合、或者缺数据且标为需确认的比例。
-- **违反硬条件**：展示了明确不符合条件的房源。目标 0%。
-- **未知说成符合**：数据没写明的条件，系统当成已满足。
-- **漏报**：标准答案有符合的房源，系统一套也没展示。
-- **说了排序的顺序**：用户说了优先项的轮，前几名顺序和标准答案一致的轮数。
-- **B 类：列出需确认的**：标准答案里有"数据没写明、需要确认"的房源时，系统有没有把它们单独标出来，或者说出有多少套。只给确定符合的房源、对缺数据的只字不提，算没做到。
-- **C 类：最小放宽对**：没有符合的房源时，回复里有没有给出标准答案的最小改动（例如预算放到 2,205、通勤放到 29 分钟）；标准答案说"只改这一项解决不了"的，回复要说明这一点。
-- **改通勤优先后**：改成通勤优先后，前几名的平均通勤没有变长。
-- **总数说错**：回复里说的"N 套符合"和标准答案不一致。
-- **查不到出处的数字**：回复里的数字在数据和标准答案里找不到，是编造的候选，要人工核对。
-- **理解条件**：系统理解出的条件和标准条件完全一致的轮数。
+- **Display correct**: share of shown listings that are confirmed and marked as matches, or have missing data and are marked as needing confirmation.
+- **Hard violations**: listings shown that clearly fail a condition. Target 0%.
+- **Unknown as confirmed**: a condition the data does not state, treated by the system as met.
+- **Missed**: the gold answer has matching listings, but the system showed none.
+- **Stated-priority order**: turns where the user stated priorities and the top listings are in the gold order.
+- **B: lists pending**: when the gold answer has listings whose data does not state a condition, whether the system marks them separately or says how many there are. Showing only the confirmed listings and saying nothing about the missing data counts as not done.
+- **C: minimum relaxation**: when nothing matches, whether the reply gives the gold answer's smallest change (for example budget up to 2,205, or commute up to 29 minutes); where the gold answer says changing that one condition alone cannot help, the reply has to say so.
+- **After commute first**: after switching to commute first, the average commute of the top listings does not grow.
+- **Wrong total**: the "N matches" stated in the reply differs from the gold answer.
+- **Untraced numbers**: numbers in the reply that cannot be found in the data or the gold answer; candidates for fabrication, to be checked by hand.
+- **Conditions parsed**: turns where the conditions the system understood are exactly the gold conditions.
 
-**B1、B2 的条件由标准答案直接提供**，等于替它们把"理解用户"和"记住多轮里改了什么"做对了；它们判断字段用的也是生成标准答案的同一套规则，所以"违反硬条件""展示正确"这几列对它们几乎必然好看。真正测它们的是"说了排序的顺序"和 B、C 两列。
+**B1 and B2 are given the gold conditions directly**, which does "understanding the user" and "remembering what changed across turns" for them; they also judge fields with the same rules that generate the gold answer, so the "Hard violations" and "Display correct" columns are almost bound to look good for them. What really tests them is "Stated-priority order" and the B and C columns.
 
-B、C 两列是从回复文字里自动判断的，是近似值，逐题结果用 `compare_systems.py --detail` 查看。
+The B and C columns are judged automatically from the reply text and are approximate; `compare_systems.py --detail` shows the result for every case.
 
-D、E、F、H 类（追问、说不知道、拒绝、说出处）看行为，要人工打分，不在这张表里。B1、B2 只会按条件搜索，这几类都做不到。"""
+Categories D, E, F and H (asking first, saying the data does not know, declining, citing sources) are about behaviour, which people score; they are not in this table. B1 and B2 can only search by conditions and can do none of these."""
 
 
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     detail = "--detail" in sys.argv
-    out = ["# 基线对比", "", "由 `compare_systems.py` 生成。系统说明见 `baselines.py`，解读见 `baseline_report.md`。", ""]
-    for split, title in (("holdout", "测试集（20 题）"), ("dev", "开发集（39 题）")):
+    out = ["# Baseline comparison", "", "Generated by `compare_systems.py`. The systems are described in `baselines.py`; the interpretation is in `baseline_report.md`.", ""]
+    for split, title in (("holdout", "Holdout (20 cases)"), ("dev", "Dev set (39 cases)")):
         made = [(code, row(code, name, LABELS[split][key])) for code, name, key in SYSTEMS]
         made = [(code, m) for code, m in made if m]
         if not made:
             continue
         out += [f"## {title}", "", HEAD, *(m[0] for _, m in made), ""]
         if split == "dev":
-            out += ["开发集上 B5 是看着这些题改出来的（dev5，冻结版代码），数字偏乐观；基线没有针对任何一题调过。", ""]
+            out += ["On the dev set, B5 was tuned on these very cases (dev5, the frozen code), so its figures are optimistic; the baselines were not tuned on any case.", ""]
         if detail:
             for code, (_, extra) in made:
-                print(f"{split} {code}: B 没做到 {extra['B'][2]}；C 没做到 {extra['C'][2]}")
+                print(f"{split} {code}: B not done {extra['B'][2]}; C not done {extra['C'][2]}")
     out += [NOTES, ""]
     text = "\n".join(out)
     (score.RESULTS / "baseline_comparison.md").write_text(text, encoding="utf-8")

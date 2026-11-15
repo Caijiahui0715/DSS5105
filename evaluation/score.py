@@ -22,6 +22,8 @@ sys.path.insert(0, str(ROOT / "evaluation"))
 import gold as gold_rules
 
 RESULTS = ROOT / "evaluation" / "results"
+# The behaviour sheet that people fill in; merge_behaviour.py reads the same columns.
+SHEET_COLUMNS = ["case_id", "turn", "expected_behaviour", "user_message", "decision_score", "explanation_score", "rater", "note"]
 ROOM_TYPES = {"common_room", "master_room", "shared_room", "room_unspecified"}
 
 MONEY = re.compile(r"(?:S\$|SGD\s*|\$)\s*(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(万)?\s*(?:新元|新币|新加坡元|元)|(\d[\d,]*(?:\.\d+)?)\s*(?:SGD|dollars?)\b", re.IGNORECASE)
@@ -160,7 +162,7 @@ def compute(label: str) -> dict:
     frame, commutes = gold_rules.load()
 
     stats = defaultdict(lambda: defaultdict(float))
-    review = [f"# {label}", "", *(f"版本：{json.dumps(version, ensure_ascii=False)}" for version in versions), ""]
+    review = [f"# {label}", "", *(f"Version: {json.dumps(version, ensure_ascii=False)}" for version in versions), ""]
     conversation = defaultdict(list)
     tops = {}
     for row in rows:
@@ -173,7 +175,7 @@ def compute(label: str) -> dict:
         stat["turns"] += 1
         if "error" in row:
             stat["errors"] += 1
-            review += [f"## {row['id']} 第 {row['turn']} 轮：出错", "", row["error"], ""]
+            review += [f"## {row['id']} turn {row['turn']}: error", "", row["error"], ""]
             continue
         answer = gold[row["id"]]["turns"][row["turn"] - 1] if gold[row["id"]]["turns"] else None
         profile = answer.get("gold_profile") if answer else None
@@ -192,7 +194,7 @@ def compute(label: str) -> dict:
             stat["parse_turns"] += 1
             stat["parse_turns_right"] += not wrong and not extra
             if wrong or extra:
-                notes.append(f"解析不一致：标准 {json.dumps({field: profile[field] for field in wrong}, ensure_ascii=False)}，系统 {json.dumps(wrong, ensure_ascii=False)}；多出 {json.dumps(extra, ensure_ascii=False)}")
+                notes.append(f"Parsing differs: gold {json.dumps({field: profile[field] for field in wrong}, ensure_ascii=False)}, system {json.dumps(wrong, ensure_ascii=False)}; extra {json.dumps(extra, ensure_ascii=False)}")
         # Metrics 2 and 3: what was shown.
         # A preview shows what relaxed conditions would find, so it is not held to the original ones.
         if answer and "confirmed_ids_ranked" in answer and profile and not row.get("preview"):
@@ -203,7 +205,7 @@ def compute(label: str) -> dict:
                 stat["totals"] += 1
                 if number(stated) != len(confirmed):
                     stat["totals_wrong"] += 1
-                    notes.append(f"说错了总数：回复说 {stated} 套，标准答案 {len(confirmed)} 套")
+                    notes.append(f"Wrong total: the reply says {stated}, the gold answer has {len(confirmed)}")
             for item in shown:
                 stat["shown"] += 1
                 if item["listing_id"] in confirmed:
@@ -214,15 +216,15 @@ def compute(label: str) -> dict:
                     if item["status"] == "needs_confirmation":
                         stat["unknown_labelled"] += 1
                     else:
-                        notes.append(f"未知的房源说成了符合：{item['listing_id']}")
+                        notes.append(f"Listing with unknown fields presented as a match: {item['listing_id']}")
                 else:
                     stat["shown_fail"] += 1
-                    notes.append(f"展示了不符合条件的房源：{item['listing_id']}")
+                    notes.append(f"Listing that fails a condition was shown: {item['listing_id']}")
             if confirmed:
                 stat["answerable"] += 1
                 if not [item for item in shown if item["status"] == "match"]:
                     stat["missed"] += 1
-                    notes.append(f"标准答案有 {len(confirmed)} 套符合，系统没有展示符合的房源")
+                    notes.append(f"The gold answer has {len(confirmed)} matches; the system showed none as a match")
             # The order counts only when the user stated priorities (CONVENTIONS.md section 5).
             if profile.get("ranking_priority") and confirmed:
                 stat["ordered"] += 1
@@ -230,7 +232,7 @@ def compute(label: str) -> dict:
                 expected = answer["confirmed_ids_ranked"][:len(system)]
                 stat["order_right"] += bool(system) and system == expected
                 if system != expected:
-                    notes.append(f"顺序不一致：系统 {system}，标准 {expected}")
+                    notes.append(f"Order differs: system {system}, gold {expected}")
             # Metric 6: a change to commute first must not lengthen the commute.
             if faculty and system_top(shown):
                 minutes = [commutes[item, faculty] for item in system_top(shown) if (item, faculty) in commutes]
@@ -242,7 +244,7 @@ def compute(label: str) -> dict:
                     if average <= tops[case_key] + 1e-9:
                         stat["adapted_right"] += 1
                     else:
-                        notes.append(f"改成通勤优先后，前几套的平均通勤从 {tops[case_key]:.1f} 变成 {average:.1f} 分钟")
+                        notes.append(f"After switching to commute first, the average commute of the top listings went from {tops[case_key]:.1f} to {average:.1f} minutes")
                 tops[case_key] = average
         # Metric 4: figures that cannot be traced. Cost estimates are worked out by a tool, so they are read by hand.
         allowed = traceable_numbers(row, answer if answer and "counts" in answer else None, listings, commutes, faculty, conversation[case_key])
@@ -259,33 +261,33 @@ def compute(label: str) -> dict:
         stat["claims"] += len(found)
         stat["untraced"] += len(untraced)
         if untraced:
-            notes.append("查不到来源的数字（要人工看）：" + "、".join(f"{kind} {value:g}" if isinstance(value, float) else f"{kind} {value}" for kind, value in untraced))
+            notes.append("Numbers with no traceable source (check by hand): " + ", ".join(f"{kind} {value:g}" if isinstance(value, float) else f"{kind} {value}" for kind, value in untraced))
         # Metric 8.
         stat["seconds"] += row.get("seconds", 0)
         stat["tool_calls"] += len(row["tools"])
         stat["tool_errors"] += row["tool_errors"]
         stat["guard"] += len(row["guard"])
         if row["guard"]:
-            notes.append("守卫：" + "；".join(row["guard"]))
+            notes.append("Guard: " + "; ".join(row["guard"]))
         mentioned = LISTING_ID.findall(" ".join(conversation[case_key]) + row["reply"])
         about = dict.fromkeys([*(item["listing_id"] for item in row["shown"]), *mentioned])
         facts = [listing_facts(listing_id, listings, commutes, faculty) for listing_id in about if listing_id in listings]
         review += [
-            f"## {row['id']} 第 {row['turn']} 轮 · 第 {row['run']} 遍 · 期望 {case['expected_behavior']}",
+            f"## {row['id']} turn {row['turn']} · run {row['run']} · expected {case['expected_behavior']}",
             "",
-            *([f"**前面说过**：{case['preconditions']['prior_turns']}", ""] if case["preconditions"].get("prior_turns") else []),
-            f"**用户**：{row['user']}",
+            *([f"**Said earlier**: {case['preconditions']['prior_turns']}", ""] if case["preconditions"].get("prior_turns") else []),
+            f"**User**: {row['user']}",
             "",
-            *([f"**应该怎么做**：{gold[row['id']]['gold_answer']}"] if isinstance(gold[row["id"]].get("gold_answer"), str) else []),
+            *([f"**What should happen**: {gold[row['id']]['gold_answer']}"] if isinstance(gold[row["id"]].get("gold_answer"), str) else []),
             "",
-            f"**工具**：{row['tools']}；**展示**：{[item['listing_id'] + ('' if item['status'] == 'match' else '?') for item in row['shown']]}",
+            f"**Tools**: {row['tools']}; **Shown**: {[item['listing_id'] + ('' if item['status'] == 'match' else '?') for item in row['shown']]}",
             "",
-            f"**must**：{gold[row['id']].get('must')}  ",
-            f"**must_not**：{gold[row['id']].get('must_not')}",
+            f"**must**: {gold[row['id']].get('must')}  ",
+            f"**must_not**: {gold[row['id']].get('must_not')}",
             "",
             *[f"- ⚠ {note}" for note in notes],
             "",
-            *(["**数据里的事实**（冻结数据，租金取最新值）：", *[f"- {fact}" for fact in facts], ""] if facts else []),
+            *(["**Facts in the data** (frozen data, latest rent):", *[f"- {fact}" for fact in facts], ""] if facts else []),
             "```text",
             row["reply"],
             "```",
@@ -296,7 +298,7 @@ def compute(label: str) -> dict:
     for stat in stats.values():
         for key, value in stat.items():
             total[key] += value
-    return {"rows": rows, "meta": meta, "versions": versions, "stats": stats, "total": total, "review": review}
+    return {"rows": rows, "meta": meta, "versions": versions, "stats": stats, "total": total, "review": review, "cases": cases}
 
 
 def main() -> None:
@@ -305,12 +307,13 @@ def main() -> None:
         raise SystemExit(__doc__)
     label = sys.argv[1]
     result = compute(label)
-    rows, meta, versions, stats, total, review = (result[k] for k in ("rows", "meta", "versions", "stats", "total", "review"))
+    rows, meta, versions, stats, total, review, cases = (result[k] for k in ("rows", "meta", "versions", "stats", "total", "review", "cases"))
     print(f"{label}  commit {meta.get('commit')}  model {meta.get('model')}  split {meta.get('split')}  turns {int(total['turns'])}")
     if len(code := {(version.get("commit"), version.get("uncommitted_py_sha256")) for version in versions}) > 1:
-        print(f"注意：这些结果来自 {len(code)} 个代码版本，不能当最终结果")
+        print(f"Note: these results come from {len(code)} code versions and cannot count as final results")
     print()
-    head = f"{'类':<4}{'轮':>4}{'解析字段':>9}{'解析整轮':>9}{'展示符合':>9}{'违规':>7}{'漏报':>7}{'未知标注':>9}{'顺序':>8}{'查不到':>9}{'守卫':>5}{'秒/轮':>7}"
+    head = (f"{'Cat':<4}{'Turns':>6}{'Fields':>8}{'Parsed':>8}{'Matched':>9}{'Violate':>9}{'Missed':>8}{'UnkLbl':>8}"
+            f"{'Order':>8}{'Untraced':>10}{'Guard':>6}{'Sec':>6}")
     print(head)
 
     def line(name, stat):
@@ -321,60 +324,64 @@ def main() -> None:
             return f"{int(stat[top])}/{int(stat[bottom])}" if stat[bottom] else "-"
 
         answered = stat["turns"] - stat["errors"]
-        return (f"{name:<4}{int(stat['turns']):>4}{share('parse_right', 'parse_fields'):>9}{pair('parse_turns_right', 'parse_turns'):>9}"
-                f"{share('shown_pass', 'shown'):>9}{share('shown_fail', 'shown'):>7}{pair('missed', 'answerable'):>7}{share('unknown_labelled', 'shown_unknown'):>9}"
-                f"{pair('order_right', 'ordered'):>8}{pair('untraced', 'claims'):>9}{int(stat['guard']):>5}{(stat['seconds'] / answered if answered else 0):>7.1f}")
+        return (f"{name:<4}{int(stat['turns']):>6}{share('parse_right', 'parse_fields'):>8}{pair('parse_turns_right', 'parse_turns'):>8}"
+                f"{share('shown_pass', 'shown'):>9}{share('shown_fail', 'shown'):>9}{pair('missed', 'answerable'):>8}{share('unknown_labelled', 'shown_unknown'):>8}"
+                f"{pair('order_right', 'ordered'):>8}{pair('untraced', 'claims'):>10}{int(stat['guard']):>6}{(stat['seconds'] / answered if answered else 0):>6.1f}")
 
     for name in sorted(stats):
         print(line(name, stats[name]))
-    print(line("全部", total))
-    print(f"\n出错 {int(total['errors'])} 轮；工具调用 {int(total['tool_calls'])} 次，参数出错 {int(total['tool_errors'])} 次；守卫拦截 {int(total['guard'])} 次")
-    print(f"适应性（改成通勤优先后平均通勤不变长）：{int(total['adapted_right'])}/{int(total['adapted'])}")
-    print(f"回复里说的符合总数，说错的：{int(total['totals_wrong'])}/{int(total['totals'])}")
-    print("目标：违规率 0%，编造率低于 2%，未知标注率不低于 90%，行为正确率不低于 85%（行为要人工打分）")
-    print("注意：'查不到'只是待人工核对的候选，不等于编造。")
+    print(line("All", total))
+    print("\nFields: share of gold fields parsed right. Parsed: turns parsed fully right. Matched: shown listings that are confirmed. "
+          "Violate: shown listings that fail a condition. Missed: answerable turns with no match shown. UnkLbl: shown listings with "
+          "unknown fields marked as needing confirmation. Order: turns with stated priorities in the gold order. Untraced: numbers "
+          "with no traceable source. Sec: seconds per turn.")
+    print(f"\nErrors {int(total['errors'])} turns; tool calls {int(total['tool_calls'])}, with argument errors {int(total['tool_errors'])}; guard interventions {int(total['guard'])}")
+    print(f"Adaptation (the average commute does not grow after switching to commute first): {int(total['adapted_right'])}/{int(total['adapted'])}")
+    print(f"Totals of matches stated in replies that were wrong: {int(total['totals_wrong'])}/{int(total['totals'])}")
+    print("Targets: violation rate 0%, fabrication rate under 2%, unknown-labelling rate at least 90%, behaviour correctness at least 85% (behaviour is scored by people)")
+    print("Note: 'Untraced' numbers are candidates to check by hand, not proven fabrications.")
     if len(runs := {row["run"] for row in rows}) > 1:
         outcomes = defaultdict(set)
         for row in rows:
             if row["turn"] and "error" not in row:
                 outcomes[row["id"], row["turn"]].add(json.dumps([row["preferences"], [item["listing_id"] for item in row["shown"]]], sort_keys=True))
         differ = sorted(key for key, seen in outcomes.items() if len(seen) > 1)
-        print(f"\n跑了 {len(runs)} 遍，上面是合计。结果不一致的轮（理解的条件或展示的房源不同）：{len(differ)}/{len(outcomes)}")
+        print(f"\n{len(runs)} runs; the figures above are their total. Turns whose outcome differed between runs (conditions understood or listings shown): {len(differ)}/{len(outcomes)}")
         if differ:
-            print("  " + "、".join(f"{case_id} 第 {turn} 轮" for case_id, turn in differ))
+            print("  " + ", ".join(f"{case_id} turn {turn}" for case_id, turn in differ))
     output = RESULTS / f"{label}_review.md"
     output.write_text("\n".join(review), encoding="utf-8")
-    print(f"\n逐轮记录：{output}")
+    print(f"\nTurn-by-turn record: {output}")
     # People fill this in, so it is never written over. The plan scores one run of each system.
     sheet = RESULTS / f"{label}_behaviour.csv"
     if sheet.exists():
-        print(f"打分表已经有了，没有覆盖：{sheet}")
+        print(f"Behaviour sheet already exists, not overwritten: {sheet}")
     else:
         first_run = min(row["run"] for row in rows)
         with open(sheet, "w", encoding="utf-8-sig", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["题号", "轮", "期望行为", "用户说的", "决策分", "解释分", "打分人", "备注"])
+            writer.writerow(SHEET_COLUMNS)
             for row in rows:
                 if row["turn"] and row["run"] == first_run:
                     writer.writerow([row["id"], row["turn"], cases[row["id"]]["expected_behavior"], row["user"], "", "", "", row.get("error", "")])
-        print(f"行为打分表（第 {first_run} 遍，每轮一行）：{sheet}")
+        print(f"Behaviour sheet (run {first_run}, one row per turn): {sheet}")
 
 
 def listing_facts(listing_id: str, listings: dict, commutes: dict, faculty: str | None) -> str:
     """What the data says about a listing, to hold a reply's reasons against."""
     listing = listings[listing_id]
     parts = [
-        f"S${listing['rent_monthly_sgd_now'] or listing['rent_monthly_sgd']}（{listing['rent_price_type']}）",
+        f"S${listing['rent_monthly_sgd_now'] or listing['rent_monthly_sgd']} ({listing['rent_price_type']})",
         listing["room_type"] or listing["rental_scope"],
         listing["property_type"],
         f"{listing['area_sqm'] or '?'} sqm",
-        f"{listing['mrt_station'] or '?'} 步行 {listing['mrt_minutes_reported'] or '?'} 分钟、{listing['mrt_distance_m'] or '?'} 米",
+        f"{listing['mrt_station'] or '?'}, {listing['mrt_minutes_reported'] or '?'} min walk, {listing['mrt_distance_m'] or '?'} m",
     ]
     if (listing_id, faculty) in commutes:
-        parts.append(f"到 {faculty} {commutes[listing_id, faculty]:g} 分钟")
-    for name, column in (("家具", "furnishing"), ("做饭", "cooking_policy"), ("空调", "air_conditioning"), ("性别", "gender_restriction"), ("房东同住", "landlord_lives_in"), ("宠物", "pets_policy")):
-        parts.append(f"{name} {listing[column] or '未知'}")
-    return f"{listing_id}：" + "；".join(str(part) for part in parts)
+        parts.append(f"{commutes[listing_id, faculty]:g} min to {faculty}")
+    for name, column in (("furnishing", "furnishing"), ("cooking", "cooking_policy"), ("air-con", "air_conditioning"), ("gender", "gender_restriction"), ("landlord lives in", "landlord_lives_in"), ("pets", "pets_policy")):
+        parts.append(f"{name} {listing[column] or 'unknown'}")
+    return f"{listing_id}: " + "; ".join(str(part) for part in parts)
 
 
 def system_top(shown: list[dict]) -> list[str]:

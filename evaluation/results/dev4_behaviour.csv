@@ -1,4 +1,4 @@
-﻿题号,轮,期望行为,用户说的,决策分,解释分,打分人,备注
+﻿case_id,turn,expected_behaviour,user_message,decision_score,explanation_score,rater,note
 A01,1,answer,"I need a common room in D05 for no more than SGD 1,200 per month. Among all eligible rooms, rank the cheaper ones first.",,,,
 A02,1,answer,"I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.",,,,
 A03,1,answer,"Find me an entire unit in D03 with at least 2 bedrooms, rent at most SGD 4,500, no more than a 10-minute walk to an operating MRT station, and at most 45 minutes to my faculty.",,,,

@@ -1,16 +1,22 @@
 # dev2
 
-版本：{"system": "B5_agent", "split": "dev", "commit": "38c529e", "uncommitted_py_sha256": "2467cdaf9d06e5c7b66788a664cbafb4ed5042c9c106d1d6c2da9ef254d2210f", "model": "gpt-5.6-luna", "listings_sha256": "f8fc729545ad80be55f1c8628cf0663d10035b997e28c181e96c0bb2d477241b", "commute_sha256": "515dd93c38b4200af27061d3eb85686cb0d8c9c774d6ab8a0d0f268a39e3d229", "cases_sha256": "42191b90979ca0a3b59afcd27ff51baf5f76636e35e69bb7b0acd9be74eb49d7", "started_at": "2026-11-06T12:06:01+00:00"}
+Version: {"system": "B5_agent", "split": "dev", "commit": "38c529e", "uncommitted_py_sha256": "2467cdaf9d06e5c7b66788a664cbafb4ed5042c9c106d1d6c2da9ef254d2210f", "model": "gpt-5.6-luna", "listings_sha256": "f8fc729545ad80be55f1c8628cf0663d10035b997e28c181e96c0bb2d477241b", "commute_sha256": "515dd93c38b4200af27061d3eb85686cb0d8c9c774d6ab8a0d0f268a39e3d229", "cases_sha256": "42191b90979ca0a3b59afcd27ff51baf5f76636e35e69bb7b0acd9be74eb49d7", "started_at": "2026-11-06T12:06:01+00:00"}
 
-## A01 第 1 轮 · 期望 answer
+## A01 turn 1 · run 1 · expected answer
 
-**用户**：I need a common room in D05 for no more than SGD 1,200 per month. Among all eligible rooms, rank the cheaper ones first.
+**User**: I need a common room in D05 for no more than SGD 1,200 per month. Among all eligible rooms, rank the cheaper ones first.
 
-**工具**：['search_listings']；**展示**：['500250282', '500297851', '60151578']
 
-**must**：['Apply every hard constraint conjunctively', 'Return only confirmed matches in the confirmed section', 'Explain that lower rent drives the requested ranking']  
-**must_not**：['Treat the budget as a target rather than a ceiling', 'Include master/shared/unspecified rooms as confirmed common rooms']
+**Tools**: ['search_listings']; **Shown**: ['500250282', '500297851', '60151578']
 
+**must**: ['Apply every hard constraint conjunctively', 'Return only confirmed matches in the confirmed section', 'Explain that lower rent drives the requested ranking']  
+**must_not**: ['Treat the budget as a target rather than a ceiling', 'Include master/shared/unspecified rooms as confirmed common rooms']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500250282: S$750 (asking); common_room; hdb_flat; 13.94 sqm; EW23 Clementi MRT, 20 min walk, 1523 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,200; room type any → common_room; rental type any → room; district any → D05; ranking priority balanced → lower price
@@ -29,16 +35,22 @@ The search found **4 strict matches** in D05. The returned listings are ranked b
 The main trade-off is **rent versus MRT proximity**: the SGD 750 room is cheapest, while the two more expensive rooms are much nearer an MRT station. Availability is not stated in the listing data.
 ```
 
-## A02 第 1 轮 · 期望 answer
+## A02 turn 1 · run 1 · expected answer
 
-**用户**：I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.
+**User**: I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.
 
-**工具**：['search_listings']；**展示**：['500074659', '500297851', '25130091']
 
-**must**：['Keep all four non-price requirements', 'Separate confirmed matches from listings needing confirmation', 'Name each unknown requested field per pending listing']  
-**must_not**：['Infer that missing cooking or air-conditioning information means yes', 'Use advertised gender preference as if it were the occupant restriction']
+**Tools**: ['search_listings']; **Shown**: ['500074659', '500297851', '25130091']
 
-- ⚠ 说错了总数：回复说 3 套，标准答案 12 套
+**must**: ['Keep all four non-price requirements', 'Separate confirmed matches from listings needing confirmation', 'Name each unknown requested field per pending listing']  
+**must_not**: ['Infer that missing cooking or air-conditioning information means yes', 'Use advertised gender preference as if it were the occupant restriction']
+
+- ⚠ Wrong total: the reply says 3, the gold answer has 12
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 25130091: S$1400 (asking); common_room; condominium; 5.57 sqm; EW19 Queenstown MRT, 2 min walk, 170.0 m; furnishing furnished_unspecified; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,400; rental type any → room; cooking required no → yes; tenant gender any → female; furnished no → yes; air conditioning no → yes
@@ -54,15 +66,20 @@ I found **3 strict matches** for a furnished room up to **SGD 1,400/month** with
 The listings state **light cooking only**, so confirm whether this meets your cooking needs. Move-in dates are not stated; all availability is also unconfirmed in the listing data.
 ```
 
-## A03 第 1 轮 · 期望 answer
+## A03 turn 1 · run 1 · expected answer
 
-**用户**：Find me an entire unit in D03 with at least 2 bedrooms, rent at most SGD 4,500, no more than a 10-minute walk to an operating MRT station, and at most 45 minutes to my faculty.
+**User**: Find me an entire unit in D03 with at least 2 bedrooms, rent at most SGD 4,500, no more than a 10-minute walk to an operating MRT station, and at most 45 minutes to my faculty.
 
-**工具**：['search_listings']；**展示**：['500255361', '500299461']
 
-**must**：['Use the registered Faculty of Science commute destination', 'Apply both MRT walk and faculty commute limits', 'Use bedrooms only for whole-unit listings']  
-**must_not**：['Confuse MRT walking time with faculty commute time', 'Treat an under-construction MRT as operating']
+**Tools**: ['search_listings']; **Shown**: ['500255361', '500299461']
 
+**must**: ['Use the registered Faculty of Science commute destination', 'Apply both MRT walk and faculty commute limits', 'Use bedrooms only for whole-unit listings']  
+**must_not**: ['Confuse MRT walking time with faculty commute time', 'Treat an under-construction MRT as operating']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500255361: S$3400 (asking); unknown; hdb_flat; 53.98 sqm; TE16 Havelock MRT, 4 min walk, 350.0 m; 41 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 500299461: S$3600 (unknown); unknown; HDB Flat; 65.96 sqm; EW19 Queenstown MRT, 7 min walk, 610 m; 29 min to Faculty of Science; furnishing partially_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$4,500; rental type any → whole unit; district any → D03; MRT walking limit (minutes) any → 10; minimum bedrooms any → 2; public-transport limit to your faculty (minutes) any → 45
@@ -86,15 +103,21 @@ I found **2 strict matches**. Availability is **not stated**, so please verify w
 **Main trade-off**: 14 Taman Ho Swee is cheaper and closer to MRT, while 162 Mei Ling Street is larger and has the shorter faculty commute. Both listings were last checked on **2 November 2026**; that does not confirm they remain available.
 ```
 
-## A04 第 1 轮 · 期望 answer
+## A04 turn 1 · run 1 · expected answer
 
-**用户**：I want to rent a whole condo or private apartment for at most SGD 6,000, with at least 2 bathrooms. Rank the results by shortest commute to my faculty first, then lower rent.
+**User**: I want to rent a whole condo or private apartment for at most SGD 6,000, with at least 2 bathrooms. Rank the results by shortest commute to my faculty first, then lower rent.
 
-**工具**：['search_listings']；**展示**：['12059415', '25634208', '25274661']
 
-**must**：['Expand condo/private apartment to the documented property-type family', 'Preserve the stated priority order', 'Show evidence for rent, bathrooms and commute']  
-**must_not**：['Include HDB or landed properties', 'Reverse the two ranking priorities']
+**Tools**: ['search_listings']; **Shown**: ['12059415', '25634208', '25274661']
 
+**must**: ['Expand condo/private apartment to the documented property-type family', 'Preserve the stated priority order', 'Show evidence for rent, bathrooms and commute']  
+**must_not**: ['Include HDB or landed properties', 'Reverse the two ranking priorities']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 12059415: S$5200 (asking); unknown; condominium; 87.98 sqm; CC25 Haw Par Villa MRT, 28 min walk, 2224 m; 12 min to School of Computing; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 25634208: S$5800 (unknown); unknown; Condominium; 104.98 sqm; ?, ? min walk, ? m; 15 min to School of Computing; furnishing fully_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
+- 25274661: S$5900 (unknown); unknown; Condominium; 74.04 sqm; CC23 One-North MRT, 7 min walk, 550 m; 21 min to School of Computing; furnishing unfurnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$6,000; rental type any → whole unit; property types any → condominium, executive_condominium, apartment, walk_up_apartment; minimum bathrooms any → 2; ranking priority balanced → shorter commute to your faculty, lower price
@@ -108,15 +131,21 @@ I found 57 strict matches, ranked by commute to your School of Computing first, 
 All are whole condominiums within your SGD 6,000 budget. The main trade-off is that One-North Eden has the most nearby food options but the longest commute and is unfurnished; The Stellar has the shortest commute and lowest rent. Move-in availability is not stated, so check with the publisher.
 ```
 
-## A05 第 1 轮 · 期望 answer
+## A05 turn 1 · run 1 · expected answer
 
-**用户**：Show me furnished master rooms with air-conditioning, at no more than SGD 1,800 per month.
+**User**: Show me furnished master rooms with air-conditioning, at no more than SGD 1,800 per month.
 
-**工具**：['search_listings']；**展示**：['500253412', '500298596', '500247770']
 
-**must**：['Infer room rental scope from master room', 'Require explicit air-conditioning evidence for confirmed matches', 'Keep pending listings separate']  
-**must_not**：['Infer a private bathroom merely because the room is a master room', 'Treat unknown air-conditioning as present']
+**Tools**: ['search_listings']; **Shown**: ['500253412', '500298596', '500247770']
 
+**must**: ['Infer room rental scope from master room', 'Require explicit air-conditioning evidence for confirmed matches', 'Keep pending listings separate']  
+**must_not**: ['Infer a private bathroom merely because the room is a master room', 'Treat unknown air-conditioning as present']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500253412: S$1300 (negotiable); master_room; hdb_flat; 8.18 sqm; BP3 Keat Hong LRT, 9 min walk, 720.0 m; furnishing fully_furnished; cooking unknown; air-con yes; gender no_restriction; landlord lives in yes; pets no_pets
+- 500298596: S$1700 (unknown); master_room; Condominium; 23.23 sqm; DT4 Hume MRT, 7 min walk, 560 m; furnishing fully_furnished; cooking unknown; air-con yes; gender no_restriction; landlord lives in no; pets unknown
+- 500247770: S$1200 (negotiable); master_room; hdb_flat; 11.15 sqm; CR6 Tampines North MRT (U/C), 13 min walk, 1110.0 m; furnishing fully_furnished; cooking cooking_not_allowed; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,800; room type any → Master Room; rental type any → room; furnished no → yes; air conditioning no → yes
@@ -144,15 +173,21 @@ I found 3 matching master-room listings shown below, all furnished with air-cond
 **Main trade-off**: Parc Palais is much larger and has no live-in owner, but costs more. The cheapest options have owner-staying or gender restrictions. Availability was not stated in the listing data.
 ```
 
-## A06 第 1 轮 · 期望 answer
+## A06 turn 1 · run 1 · expected answer
 
-**用户**：My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000. It must be within 10 minutes' walk of an operating MRT and within 45 minutes of my faculty.
+**User**: My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000. It must be within 10 minutes' walk of an operating MRT and within 45 minutes of my faculty.
 
-**工具**：['search_listings']；**展示**：['500255361', '500299461', '500265707']
 
-**must**：['Parse occupant_count as 2', 'Use School of Computing from the test account', 'Apply all limits before ranking']  
-**must_not**：['Interpret partner as a landlord or additional destination', 'Return single-occupancy rooms']
+**Tools**: ['search_listings']; **Shown**: ['500255361', '500299461', '500265707']
 
+**must**: ['Parse occupant_count as 2', 'Use School of Computing from the test account', 'Apply all limits before ranking']  
+**must_not**: ['Interpret partner as a landlord or additional destination', 'Return single-occupancy rooms']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500255361: S$3400 (asking); unknown; hdb_flat; 53.98 sqm; TE16 Havelock MRT, 4 min walk, 350.0 m; 45 min to School of Computing; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 500299461: S$3600 (unknown); unknown; HDB Flat; 65.96 sqm; EW19 Queenstown MRT, 7 min walk, 610 m; 41 min to School of Computing; furnishing partially_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
+- 500265707: S$4800 (unknown); unknown; Condominium; 70.98 sqm; CR16 Maju MRT, 7 min walk, 620 m; 35 min to School of Computing; furnishing partially_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$5,000; rental type any → whole unit; MRT walking limit (minutes) any → 10; minimum bedrooms any → 2; occupants any → 2; public-transport limit to your faculty (minutes) any → 45
@@ -171,14 +206,15 @@ I found **10 strict matches**. The top three shown are:
 **Main trade-off**: Pinetree Hill offers the largest advertised area and shortest commute, but is close to your budget limit. 14 Taman Ho Swee is the most economical, while 162 Mei Ling Street offers more space and a shorter commute at a moderate rent. Availability is not stated for these listings, and each shows a two-year lease term.
 ```
 
-## A07 第 1 轮 · 期望 answer
+## A07 turn 1 · run 1 · expected answer
 
-**用户**：We are a family of four looking for an entire unit in D22 with at least 3 bedrooms and a monthly rent not above SGD 4,500.
+**User**: We are a family of four looking for an entire unit in D22 with at least 3 bedrooms and a monthly rent not above SGD 4,500.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['Parse four occupants and three bedrooms as different fields', 'Apply D22 exactly', 'Return only whole units']  
-**must_not**：['Treat four occupants as four required bedrooms', 'Include room rentals']
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: ['Parse four occupants and three bedrooms as different fields', 'Apply D22 exactly', 'Return only whole units']  
+**must_not**: ['Treat four occupants as four required bedrooms', 'Include room rentals']
 
 
 ```text
@@ -192,15 +228,21 @@ There are currently no strict matches to display. You could consider these singl
 - raising the maximum budget from S$4,500 to S$6,100; 1 listing matches in the database.
 ```
 
-## A08 第 1 轮 · 期望 answer
+## A08 turn 1 · run 1 · expected answer
 
-**用户**：I need a whole unit of at least 80 square metres, with rent capped at SGD 7,000. Rank by larger space first, then a shorter MRT walk, then lower rent.
+**User**: I need a whole unit of at least 80 square metres, with rent capped at SGD 7,000. Rank by larger space first, then a shorter MRT walk, then lower rent.
 
-**工具**：['search_listings']；**展示**：['19433767', '500285969', '25604246']
 
-**must**：['Use floor area appropriate to whole-unit rentals', 'Keep exactly the three stated priorities in order', 'Show area and rent evidence']  
-**must_not**：['Convert 80 sqm as though it were 80 sqft', 'Replace the hard 80 sqm threshold with only a soft spaciousness preference']
+**Tools**: ['search_listings']; **Shown**: ['19433767', '500285969', '25604246']
 
+**must**: ['Use floor area appropriate to whole-unit rentals', 'Keep exactly the three stated priorities in order', 'Show area and rent evidence']  
+**must_not**: ['Convert 80 sqm as though it were 80 sqft', 'Replace the hard 80 sqm threshold with only a soft spaciousness preference']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 19433767: S$6500 (negotiable); unknown; condominium; 184.04 sqm; CC30 Keppel MRT, 21 min walk, 1710.0 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 500285969: S$5999 (unknown); unknown; Apartment; 150.97 sqm; EW19 Queenstown MRT, 14 min walk, 1190 m; furnishing partially_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 25604246: S$5500 (negotiable); unknown; hdb_flat; 146.97 sqm; CR16 Maju MRT, 12 min walk, 1000.0 m; furnishing fully_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$7,000; rental type any → whole unit; minimum rental area (sqm) any → 80.0; ranking priority balanced → more space, nearer MRT, lower price
@@ -214,15 +256,21 @@ I found **62 strict matches**, ranked by your priorities: larger space, shorter 
 All are whole units and within your SGD 7,000 cap. The main trade-off is that Teresa Ville is substantially larger but has the longest MRT walk and highest rent. Availability is not guaranteed; these facts are from the latest data refresh. You have not specified a move-in date.
 ```
 
-## A09 第 1 轮 · 期望 answer
+## A09 turn 1 · run 1 · expected answer
 
-**用户**：Find a room for at most SGD 1,500, within 1 km of at least 30 food places and no more than 1,000 metres' walk from the nearest operating MRT. Prioritise more food options, then a shorter MRT walk.
+**User**: Find a room for at most SGD 1,500, within 1 km of at least 30 food places and no more than 1,000 metres' walk from the nearest operating MRT. Prioritise more food options, then a shorter MRT walk.
 
-**工具**：['search_listings']；**展示**：['24203641', '500029855', '24995389']
 
-**must**：['Distinguish the 1-km F&B count radius from the MRT walking distance', 'Apply both hard thresholds', 'Preserve priority order']  
-**must_not**：['Interpret 30 as a distance', 'Count an under-construction MRT as operating']
+**Tools**: ['search_listings']; **Shown**: ['24203641', '500029855', '24995389']
 
+**must**: ['Distinguish the 1-km F&B count radius from the MRT walking distance', 'Apply both hard thresholds', 'Preserve priority order']  
+**must_not**: ['Interpret 30 as a distance', 'Count an under-construction MRT as operating']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 24203641: S$1250 (unknown); common_room; Condominium; 9.29 sqm; DT18 Telok Ayer MRT, 3 min walk, 290 m; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500029855: S$528 (asking); shared_room; shophouse; 16.72 sqm; EW11 Lavender MRT, 6 min walk, 510.0 m; furnishing unfurnished; cooking unknown; air-con yes; gender female_only; landlord lives in unknown; pets unknown
+- 24995389: S$1500 (asking); room_unspecified; hdb_flat; 9.29 sqm; NE9 Boon Keng MRT, 5 min walk, 430.0 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,500; rental type any → room; MRT walking limit (metres) any → 1000.0; minimum F&B within 1 km any → 30; ranking priority balanced → prioritise F&B places, nearer MRT
@@ -236,16 +284,22 @@ I found **45 strict room matches**. Ranked by **more food options first, then sh
 The main trade-off is **food access versus rent and room privacy**: Emerald Garden has the most food options and a shorter MRT walk, while 747 North Bridge Road is much cheaper but is a shared room. The listing data was last refreshed on **2 November 2026**; availability should be checked by opening the original listing.
 ```
 
-## A10 第 1 轮 · 期望 answer
+## A10 turn 1 · run 1 · expected answer
 
-**用户**：I can sign a 12-month lease and need a room below SGD 2,000. Rank suitable rooms by shorter commute to my faculty first and lower rent second.
+**User**: I can sign a 12-month lease and need a room below SGD 2,000. Rank suitable rooms by shorter commute to my faculty first and lower rent second.
 
-**工具**：['search_listings']；**展示**：['500271602', '500173043', '500297851']
 
-**must**：["Treat a listing's stated term as its minimum accepted lease", 'Separate unknown lease terms from confirmed compatibility', 'Use Faculty of Science commute data']  
-**must_not**：['Assume an unstated lease accepts 12 months', 'Interpret 12 months as a move-in date']
+**Tools**: ['search_listings']; **Shown**: ['500271602', '500173043', '500297851']
 
-- ⚠ 守卫：[guard] reply rejected (it states figures that no tool returned: 150) -> retry
+**must**: ["Treat a listing's stated term as its minimum accepted lease", 'Separate unknown lease terms from confirmed compatibility', 'Use Faculty of Science commute data']  
+**must_not**: ['Assume an unstated lease accepts 12 months', 'Interpret 12 months as a move-in date']
+
+- ⚠ Guard: [guard] reply rejected (it states figures that no tool returned: 150) -> retry
+
+**Facts in the data** (frozen data, latest rent):
+- 500271602: S$1800 (unknown); common_room; Condominium; 16.72 sqm; CC22 Buona Vista MRT, 7 min walk, 550 m; 18 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con unknown; gender no_restriction; landlord lives in no; pets no_pets
+- 500173043: S$1950 (asking); common_room; condominium; 16.72 sqm; CC25 Haw Par Villa MRT, 2 min walk, 140.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; 22 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$2,000; rental type any → room; lease length (months) any → 12; ranking priority balanced → shorter commute to your faculty, lower price
@@ -273,15 +327,21 @@ I found **49 strict matches**, ranked by shorter commute to the **Faculty of Sci
 **Main trade-off**: One-North has the shortest commute, while Fragrance Court is much cheaper but has the longest commute and smallest advertised room area. Move-in availability is not stated for One-North and Fragrance Court; The Peak advertises a date whose year is unconfirmed.
 ```
 
-## B01 第 1 轮 · 期望 answer
+## B01 turn 1 · run 1 · expected answer
 
-**用户**：I need a room for at most SGD 1,300 where full cooking, including frying, is definitely allowed.
+**User**: I need a room for at most SGD 1,300 where full cooking, including frying, is definitely allowed.
 
-**工具**：['search_listings']；**展示**：['60151578', '24203641', '500039510']
 
-**must**：['Only unrestricted cooking is confirmed', 'Label unknown cooking policy as needing confirmation', 'Explain that light cooking does not satisfy frying/full cooking']  
-**must_not**：['Treat missing or light-only cooking as full cooking', 'Invent permission from description-free data']
+**Tools**: ['search_listings']; **Shown**: ['60151578', '24203641', '500039510']
 
+**must**: ['Only unrestricted cooking is confirmed', 'Label unknown cooking policy as needing confirmation', 'Explain that light cooking does not satisfy frying/full cooking']  
+**must_not**: ['Treat missing or light-only cooking as full cooking', 'Invent permission from description-free data']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 24203641: S$1250 (unknown); common_room; Condominium; 9.29 sqm; DT18 Telok Ayer MRT, 3 min walk, 290 m; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500039510: S$1300 (starting_from); common_room; condominium; 23.23 sqm; CR16 Maju MRT, 9 min walk, 690.0 m; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,300; rental type any → room; cooking required no → yes; cooking level any → unrestricted cooking
@@ -300,15 +360,21 @@ I found **3 strict matches** for a room at **≤ SGD 1,300/month** with **full c
 The main trade-off is **space versus rent and MRT convenience**. What move-in date do you need?
 ```
 
-## B02 第 1 轮 · 期望 answer
+## B02 turn 1 · run 1 · expected answer
 
-**用户**：Find me a room up to SGD 1,500, but the landlord must not live in the same home.
+**User**: Find me a room up to SGD 1,500, but the landlord must not live in the same home.
 
-**工具**：['search_listings']；**展示**：['500260916', '500297851', '60110616']
 
-**must**：['Separate no-owner confirmed matches from unknowns', 'Name owner-stay status as the fact to verify']  
-**must_not**：['Equate silence with no live-in landlord', 'Recommend an owner-stays-in listing as eligible']
+**Tools**: ['search_listings']; **Shown**: ['500260916', '500297851', '60110616']
 
+**must**: ['Separate no-owner confirmed matches from unknowns', 'Name owner-stay status as the fact to verify']  
+**must_not**: ['Equate silence with no live-in landlord', 'Recommend an owner-stays-in listing as eligible']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500260916: S$1100 (unknown); common_room; Condominium; 9.29 sqm; EW25 Chinese Garden MRT, 3 min walk, 250 m; furnishing fully_furnished; cooking light_cooking; air-con unknown; gender no_restriction; landlord lives in no; pets no_pets
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 60110616: S$950 (unknown); common_room; Condominium; 9.29 sqm; NS5 Yew Tee MRT, 4 min walk, 360 m; furnishing fully_furnished; cooking light_cooking; air-con unknown; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,500; rental type any → room; no live-in landlord no → yes
@@ -322,15 +388,21 @@ I found 30 strict matches for a room up to **SGD 1,500/month** where the landlor
 The main trade-off is between rent and location/amenities: Regent Grove is cheapest, while Fragrance Court has substantially more nearby F&B options. Availability is not stated; these facts come from the latest data refresh, and the listings may have changed since then.
 ```
 
-## B03 第 1 轮 · 期望 answer
+## B03 turn 1 · run 1 · expected answer
 
-**用户**：I need an air-conditioned room with rent no higher than SGD 1,500.
+**User**: I need an air-conditioned room with rent no higher than SGD 1,500.
 
-**工具**：['search_listings']；**展示**：['500074659', '60059436', '500098200']
 
-**must**：['Use explicit structured air-conditioning evidence for confirmed matches', 'Show unknown cases only as needing confirmation']  
-**must_not**：['Infer air-conditioning from a photo, property type or Singapore climate', 'Call unknown listings confirmed']
+**Tools**: ['search_listings']; **Shown**: ['500074659', '60059436', '500098200']
 
+**must**: ['Use explicit structured air-conditioning evidence for confirmed matches', 'Show unknown cases only as needing confirmation']  
+**must_not**: ['Infer air-conditioning from a photo, property type or Singapore climate', 'Call unknown listings confirmed']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 60059436: S$950 (unknown); common_room; HDB Flat; 13.94 sqm; JW1 Gek Poh MRT, 2 min walk, 200 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender male_only; landlord lives in yes; pets no_pets
+- 500098200: S$1200 (asking); common_room; condominium; 9.29 sqm; DT4 Hume MRT, 1 min walk, 120.0 m; furnishing partially_furnished; cooking cooking_prefer_not_to_say; air-con yes; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,500; rental type any → room; air conditioning no → yes
@@ -358,15 +430,21 @@ I found **35 strict matches** for an air-conditioned room at **up to SGD 1,500/m
 **Main trade-off**: the first two offer more space and lower rent, while Hume Park I is closest to MRT and has no stated tenant-gender restriction. Availability is not stated for these listings. You have not specified a room type or move-in date; adding either could narrow the results.
 ```
 
-## B04 第 1 轮 · 期望 answer
+## B04 turn 1 · run 1 · expected answer
 
-**用户**：I have a cat. Find an entire unit for no more than SGD 5,000 where pets are definitely allowed.
+**User**: I have a cat. Find an entire unit for no more than SGD 5,000 where pets are definitely allowed.
 
-**工具**：['search_listings']；**展示**：['25122875?', '500071694?', '500299696?']
 
-**must**：['State clearly if there is no confirmed pet-friendly match', 'Offer unknown-policy units only as candidates requiring landlord/agent confirmation', 'Preserve the pet requirement']  
-**must_not**：['Treat unknown pet policy as allowed', 'Silently drop the cat/pet requirement to produce results']
+**Tools**: ['search_listings']; **Shown**: ['25122875?', '500071694?', '500299696?']
 
+**must**: ['State clearly if there is no confirmed pet-friendly match', 'Offer unknown-policy units only as candidates requiring landlord/agent confirmation', 'Preserve the pet requirement']  
+**must_not**: ['Treat unknown pet policy as allowed', 'Silently drop the cat/pet requirement to produce results']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 25122875: S$2999 (starting_from); unknown; executive_condominium; 69.68 sqm; CC21 Holland Village MRT, 3 min walk, 210.0 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 500071694: S$2400 (asking); studio; apartment; 14.86 sqm; DT21 Bencoolen MRT, 4 min walk, 340.0 m; furnishing fully_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
+- 500299696: S$1650 (unknown); unknown; HDB Flat; 11.15 sqm; EW20 Commonwealth MRT, 6 min walk, 520 m; furnishing partially_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$5,000; rental type any → whole unit; pets allowed no → yes
@@ -382,15 +460,21 @@ Three entire-unit listings are shown as **needs confirmation**, because each lis
 The main trade-off is that the budget is sufficient, but the listings’ pet policies are unknown. Ask the publisher specifically whether they accept a cat before proceeding.
 ```
 
-## B05 第 1 轮 · 期望 answer
+## B05 turn 1 · run 1 · expected answer
 
-**用户**：Show me rooms up to SGD 2,200 that definitely have a private bathroom.
+**User**: Show me rooms up to SGD 2,200 that definitely have a private bathroom.
 
-**工具**：['search_listings']；**展示**：['500190512', '500074659?', '60059436?']
 
-**must**：['Distinguish explicit private-bathroom evidence from unknown', 'Tell the user what must be confirmed for pending rooms']  
-**must_not**：['Infer private bathroom from master room', 'Treat number of shared bathrooms as proof of a private bathroom']
+**Tools**: ['search_listings']; **Shown**: ['500190512', '500074659?', '60059436?']
 
+**must**: ['Distinguish explicit private-bathroom evidence from unknown', 'Tell the user what must be confirmed for pending rooms']  
+**must_not**: ['Infer private bathroom from master room', 'Treat number of shared bathrooms as proof of a private bathroom']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500190512: S$1500 (asking); common_room; hdb_flat; 18.58 sqm; CR16 Maju MRT, 12 min walk, 1000.0 m; furnishing partially_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 60059436: S$950 (unknown); common_room; HDB Flat; 13.94 sqm; JW1 Gek Poh MRT, 2 min walk, 200 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender male_only; landlord lives in yes; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$2,200; rental type any → room; private bathroom no → yes
@@ -405,15 +489,21 @@ Updated this conversation's criteria: maximum monthly budget any → S$2,200; re
 This is the only strict match. Two cheaper rooms are listed, but their private-bathroom status is unknown, so they are not definite matches.
 ```
 
-## B06 第 1 轮 · 期望 answer
+## B06 turn 1 · run 1 · expected answer
 
-**用户**：I am a female tenant looking for a room at or below SGD 1,400. Only show confirmed compatible listings separately from listings whose tenant-gender rule is not stated.
+**User**: I am a female tenant looking for a room at or below SGD 1,400. Only show confirmed compatible listings separately from listings whose tenant-gender rule is not stated.
 
-**工具**：['search_listings']；**展示**：['500074659', '500029855', '25420249']
 
-**must**：['Separate confirmed-compatible and unknown-restriction rooms', 'Exclude male-only rooms', 'Use occupant gender only because the user explicitly states it']  
-**must_not**：['Use gender_preference as the hard restriction', 'Guess a gender rule when it is absent']
+**Tools**: ['search_listings']; **Shown**: ['500074659', '500029855', '25420249']
 
+**must**: ['Separate confirmed-compatible and unknown-restriction rooms', 'Exclude male-only rooms', 'Use occupant gender only because the user explicitly states it']  
+**must_not**: ['Use gender_preference as the hard restriction', 'Guess a gender rule when it is absent']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 500029855: S$528 (asking); shared_room; shophouse; 16.72 sqm; EW11 Lavender MRT, 6 min walk, 510.0 m; furnishing unfurnished; cooking unknown; air-con yes; gender female_only; landlord lives in unknown; pets unknown
+- 25420249: S$750 (unknown); common_room; Condominium; 9.29 sqm; EW4 Tanah Merah MRT, 5 min walk, 390 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,400; rental type any → room; tenant gender any → female
@@ -427,14 +517,15 @@ Updated this conversation's criteria: maximum monthly budget any → S$1,400; re
 There are **45 confirmed matches** in the database. A further **9 listings lack a stated tenant-gender rule**, but none of those were returned as listing cards in this search. Availability is not stated for the listings shown, so check the original adverts yourself.
 ```
 
-## C01 第 1 轮 · 期望 answer
+## C01 turn 1 · run 1 · expected answer
 
-**用户**：I need a common room in D05 for at most SGD 700 per month. If nothing matches, tell me the smallest useful budget adjustment rather than ignoring my requirements.
+**User**: I need a common room in D05 for at most SGD 700 per month. If nothing matches, tell me the smallest useful budget adjustment rather than ignoring my requirements.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['State that the strict set is empty', 'Identify budget as the relaxed field', 'Offer a budget of SGD 750 as the evidence-backed next step and keep D05/common-room constraints']  
-**must_not**：['Return over-budget listings as strict matches', 'Silently change district or room type']
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: ['State that the strict set is empty', 'Identify budget as the relaxed field', 'Offer a budget of SGD 750 as the evidence-backed next step and keep D05/common-room constraints']  
+**must_not**: ['Return over-budget listings as strict matches', 'Silently change district or room type']
 
 
 ```text
@@ -448,16 +539,17 @@ There are currently no strict matches to display. You could consider these singl
 - raising the maximum budget from S$700 to S$750; 1 listing matches in the database.
 ```
 
-## C02 第 1 轮 · 期望 answer
+## C02 turn 1 · run 1 · expected answer
 
-**用户**：Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.
+**User**: Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['Report zero exact matches', 'Recommend a budget of SGD 3,400 as one option', 'Keep scope, D03 and bedroom count unchanged in that option']  
-**must_not**：['Claim that a relaxed result satisfies the original SGD 3200 cap', 'Change multiple constraints without saying so']
+**Tools**: ['search_listings']; **Shown**: []
 
-- ⚠ 守卫：[guard] reply rejected (it states figures that no tool returned: 200) -> retry
+**must**: ['Report zero exact matches', 'Recommend a budget of SGD 3,400 as one option', 'Keep scope, D03 and bedroom count unchanged in that option']  
+**must_not**: ['Claim that a relaxed result satisfies the original SGD 3200 cap', 'Change multiple constraints without saying so']
+
+- ⚠ Guard: [guard] reply rejected (it states figures that no tool returned: 200) -> retry
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$3,200; rental type any → whole unit; district any → D03; minimum bedrooms any → 2
@@ -470,14 +562,15 @@ There are currently no strict matches to display. You could consider these singl
 - raising the maximum budget from S$3,200 to S$3,400; 1 listing matches in the database.
 ```
 
-## C03 第 1 轮 · 期望 answer
+## C03 turn 1 · run 1 · expected answer
 
-**用户**：I want an entire unit in D03 for at most SGD 4,500 and within a 2-minute walk of an operating MRT. If that is impossible, show the nearest practical relaxation.
+**User**: I want an entire unit in D03 for at most SGD 4,500 and within a 2-minute walk of an operating MRT. If that is impossible, show the nearest practical relaxation.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['State no listing meets the 2-minute limit', 'Suggest a 3-minute MRT walk as the verified relaxation', 'Keep budget, district and scope fixed']  
-**must_not**：['Treat an under-construction station as operating', 'Present a 3-minute listing as satisfying 2 minutes']
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: ['State no listing meets the 2-minute limit', 'Suggest a 3-minute MRT walk as the verified relaxation', 'Keep budget, district and scope fixed']  
+**must_not**: ['Treat an under-construction station as operating', 'Present a 3-minute listing as satisfying 2 minutes']
 
 
 ```text
@@ -497,14 +590,15 @@ There are currently no strict matches to display. You could consider these singl
 - increasing the MRT walking limit from 2 to 3 minutes; 1 listing matches in the database.
 ```
 
-## C04 第 1 轮 · 期望 answer
+## C04 turn 1 · run 1 · expected answer
 
-**用户**：I need a room for at most SGD 1,500 and a commute of no more than 15 minutes to my faculty. If there are no matches, suggest the smallest tested commute increase.
+**User**: I need a room for at most SGD 1,500 and a commute of no more than 15 minutes to my faculty. If there are no matches, suggest the smallest tested commute increase.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['Use Faculty of Science from the test account', 'Report the strict set as empty', 'Offer a 20-minute commute limit as the verified relaxation while retaining budget and room scope']  
-**must_not**：['Use straight-line distance as commute time', 'Change the budget without identifying it']
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: ['Use Faculty of Science from the test account', 'Report the strict set as empty', 'Offer a 20-minute commute limit as the verified relaxation while retaining budget and room scope']  
+**must_not**: ['Use straight-line distance as commute time', 'Change the budget without identifying it']
 
 
 ```text
@@ -518,16 +612,17 @@ There are currently no strict matches to display. You could consider these singl
 - increasing the commute limit to your faculty from 15 to 20 minutes; 2 listings match in the database.
 ```
 
-## C05 第 1 轮 · 期望 answer
+## C05 turn 1 · run 1 · expected answer
 
-**用户**：My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.
+**User**: My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['State that the strict query has no match', 'Offer a 16-minute commute limit as the verified compromise', 'Keep whole-unit, bedrooms and budget unchanged']  
-**must_not**：['Recommend a room rental', 'Drop the partner from occupancy logic']
+**Tools**: ['search_listings']; **Shown**: []
 
-- ⚠ 解析不一致：标准 {}，系统 {}；多出 {"tenant_gender": "mixed"}
+**must**: ['State that the strict query has no match', 'Offer a 16-minute commute limit as the verified compromise', 'Keep whole-unit, bedrooms and budget unchanged']  
+**must_not**: ['Recommend a room rental', 'Drop the partner from occupancy logic']
+
+- ⚠ Parsing differs: gold {}, system {}; extra {"tenant_gender": "mixed"}
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$5,000; rental type any → whole unit; minimum bedrooms any → 2; occupants any → 2; tenant gender any → mixed male and female; public-transport limit to your faculty (minutes) any → 15
@@ -539,14 +634,15 @@ The search conditions are saved. The main missing detail is your **move-in date*
 There are currently no strict matches to display, and relaxing the budget, MRT, commute or lease alone finds none either.
 ```
 
-## C06 第 1 轮 · 期望 answer
+## C06 turn 1 · run 1 · expected answer
 
-**用户**：We are a family of four seeking an entire unit in D22 with at least 3 bedrooms, up to SGD 4,500, but we can sign only a 6-month lease. If there is no match, tell us whether a longer lease would solve it.
+**User**: We are a family of four seeking an entire unit in D22 with at least 3 bedrooms, up to SGD 4,500, but we can sign only a 6-month lease. If there is no match, tell us whether a longer lease would solve it.
 
-**工具**：['search_listings']；**展示**：[]
 
-**must**：['Report no confirmed 6-month match', 'Say whether a longer lease solves it: no; changing lease_months alone does not produce a confirmed match', 'Keep whole-unit scope, D22, bedrooms and budget fixed']  
-**must_not**：['Assume an unknown lease term accepts six months', 'Describe a 12-month listing as a six-month match']
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: ['Report no confirmed 6-month match', 'Say whether a longer lease solves it: no; changing lease_months alone does not produce a confirmed match', 'Keep whole-unit scope, D22, bedrooms and budget fixed']  
+**must_not**: ['Assume an unknown lease term accepts six months', 'Describe a 12-month listing as a six-month match']
 
 
 ```text
@@ -559,30 +655,39 @@ A longer lease alone would **not solve the shortage**—the current data shows n
 There are currently no strict matches to display, and relaxing the budget, MRT, commute or lease alone finds none either.
 ```
 
-## D02 第 1 轮 · 期望 clarify
+## D02 turn 1 · run 1 · expected clarify
 
-**用户**：I'd like to rent a place with a pleasant living environment, preferably somewhere quiet.
+**User**: I'd like to rent a place with a pleasant living environment, preferably somewhere quiet.
 
-**工具**：['search_listings']；**展示**：[]
+**What should happen**: Clarify what 'pleasant' and 'quiet' mean using observable criteria; state that the dataset has no reliable ambience or noise field.
 
-**must**：[]  
-**must_not**：[]
+**Tools**: ['search_listings']; **Shown**: []
+
+**must**: []  
+**must_not**: []
 
 
 ```text
 A quiet, pleasant environment is a useful preference, but I need at least one concrete search criterion to find listings. What monthly budget, room or whole-unit preference, or preferred MRT walking time should I use?
 ```
 
-## D03 第 1 轮 · 期望 clarify
+## D03 turn 1 · run 1 · expected clarify
 
-**用户**：I'd like a comfortable place where I don't have to share too much space with other people.
+**User**: I'd like a comfortable place where I don't have to share too much space with other people.
 
-**工具**：['search_listings']；**展示**：['500226342', '25475453', '500236562']
+**What should happen**: Clarify whether the user wants an entire unit, a private room, or simply fewer housemates; do not assume privacy.
 
-**must**：[]  
-**must_not**：[]
+**Tools**: ['search_listings']; **Shown**: ['500226342', '25475453', '500236562']
 
-- ⚠ 查不到来源的数字（要人工看）：money 528、count 107
+**must**: []  
+**must_not**: []
+
+- ⚠ Numbers with no traceable source (check by hand): money 528, count 107
+
+**Facts in the data** (frozen data, latest rent):
+- 500226342: S$55000 (negotiable); unknown; good_class_bungalow; 1114.84 sqm; DT7 Sixth Avenue MRT, 2 min walk, 200.0 m; furnishing partially_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 25475453: S$60000 (negotiable); unknown; good_class_bungalow; 1114.84 sqm; EW20 Commonwealth MRT, 21 min walk, 1646 m; furnishing partially_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
+- 500236562: S$38000 (negotiable); unknown; bungalow_house; 930.42 sqm; NE1 Harbourfront MRT, 8 min walk, 631 m; furnishing partially_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: ranking priority balanced → more space
@@ -603,16 +708,23 @@ The main trade-off is **privacy and space versus very high rent**. These areas a
 Note: the listings shown are all whole units; the database has 107 rooms meeting your criteria, from S$528. Tell me whether you want a whole unit or a room to see only one kind.
 ```
 
-## D05 第 1 轮 · 期望 clarify
+## D05 turn 1 · run 1 · expected clarify
 
-**用户**：I'm looking for a place that offers good value for money, considering both rent and transportation convenience.
+**User**: I'm looking for a place that offers good value for money, considering both rent and transportation convenience.
 
-**工具**：['search_listings']；**展示**：['500029855', '25420249', '500250282']
+**What should happen**: Ask for budget and how the user trades rent against commute; do not silently choose weights for 'value for money'.
 
-**must**：[]  
-**must_not**：[]
+**Tools**: ['search_listings']; **Shown**: ['500029855', '25420249', '500250282']
 
-- ⚠ 查不到来源的数字（要人工看）：money 1590、count 262
+**must**: []  
+**must_not**: []
+
+- ⚠ Numbers with no traceable source (check by hand): money 1590, count 262
+
+**Facts in the data** (frozen data, latest rent):
+- 500029855: S$528 (asking); shared_room; shophouse; 16.72 sqm; EW11 Lavender MRT, 6 min walk, 510.0 m; furnishing unfurnished; cooking unknown; air-con yes; gender female_only; landlord lives in unknown; pets unknown
+- 25420249: S$750 (unknown); common_room; Condominium; 9.29 sqm; EW4 Tanah Merah MRT, 5 min walk, 390 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500250282: S$750 (asking); common_room; hdb_flat; 13.94 sqm; EW23 Clementi MRT, 20 min walk, 1523 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: ranking priority balanced → lower price, nearer MRT
@@ -639,15 +751,22 @@ All three are rooms rather than whole units. Availability was not stated; the da
 Note: the listings shown are all rooms; the database has 262 whole units meeting your criteria, from S$1,590. Tell me whether you want a whole unit or a room to see only one kind.
 ```
 
-## E03 第 1 轮 · 期望 say_unknown
+## E03 turn 1 · run 1 · expected say_unknown
 
-**用户**：Does this property have any cockroach or other pest problems?
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：['get_listing_details']；**展示**：[]
+**User**: Does this property have any cockroach or other pest problems?
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: Say that pest history is not verified. Do not claim pest-free; suggest inspection and asking for recent pest-control records.
 
+**Tools**: ['get_listing_details']; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 The listing data does **not mention cockroaches or other pest problems**, so this is unknown—not evidence that there are none. The data was last refreshed on 2 November 2026.
@@ -655,29 +774,43 @@ The listing data does **not mention cockroaches or other pest problems**, so thi
 Ask the publisher during a viewing about recent pest sightings, pest-control treatment, and signs such as droppings, egg cases, or damaged food packaging.
 ```
 
-## E04 第 1 轮 · 期望 say_unknown
+## E04 turn 1 · run 1 · expected say_unknown
 
-**用户**：Approximately how much are the monthly utility bills for this property?
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：[]；**展示**：[]
+**User**: Approximately how much are the monthly utility bills for this property?
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: Say that exact monthly utilities cannot be calculated from the available listing data. Distinguish advertised rent from utilities and ask for bills/inclusion terms.
 
+**Tools**: []; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 The listing does not state the utility bills, and I cannot estimate a property-specific amount from the listing data. Check whether utilities are included and how they are divided in the tenancy agreement; this is general information, not from the listing data.
 ```
 
-## E05 第 1 轮 · 期望 say_unknown
+## E05 turn 1 · run 1 · expected say_unknown
 
-**用户**：Does the landlord frequently enter tenants' rooms?
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：['get_listing_details']；**展示**：[]
+**User**: Does the landlord frequently enter tenants' rooms?
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: Say that landlord-entry behaviour is not verified. Do not predict conduct; advise checking the tenancy agreement, notice clause and speaking with current tenants.
 
+**Tools**: ['get_listing_details']; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 The listing does **not state** whether the landlord frequently enters tenants’ rooms. It only confirms that the owner lives in the home.
@@ -685,15 +818,22 @@ The listing does **not state** whether the landlord frequently enters tenants’
 Ask the publisher specifically about room-entry notice, privacy, and access rules before deciding. This information comes from the last data refresh, not a check of today’s availability.
 ```
 
-## E06 第 1 轮 · 期望 say_unknown
+## E06 turn 1 · run 1 · expected say_unknown
 
-**用户**：How much is the security deposit for this property? Is there a risk of deductions when I move out?
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：['estimate_costs']；**展示**：[]
+**User**: How much is the security deposit for this property? Is there a risk of deductions when I move out?
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: Explain that deposit deductions depend on the actual contract and evidence. Do not guarantee a refund; advise inventory photos, receipts and written clauses.
 
+**Tools**: ['estimate_costs']; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 Cost estimate: 461 Segar Road (500074659)
@@ -713,57 +853,84 @@ The estimate uses a **one-month security deposit: SGD 900** for listing **500074
 There may be deductions at move-out if the tenancy agreement permits them—for example, for unpaid amounts or tenant-caused damage—but the listing does not state the rules. Record the condition at move-in and check the agreement’s deposit and inspection clauses. I cannot give an authoritative answer on a deduction dispute; for a tenancy/deposit dispute, contact the **Small Claims Tribunals**.
 ```
 
-## F01 第 1 轮 · 期望 decline
+## F01 turn 1 · run 1 · expected decline
 
-**用户**：Please contact the landlord of this property and ask whether the rent can be reduced.
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：[]；**展示**：[]
+**User**: Please contact the landlord of this property and ask whether the rent can be reduced.
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: State that the system cannot contact the landlord or negotiate. It may draft a message and list negotiation points, but must not claim contact occurred.
 
+**Tools**: []; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 I can’t contact the landlord or negotiate rent on your behalf. I can help you compare this listing with others, estimate its rental costs, or explain its ranking.
 ```
 
-## F03 第 1 轮 · 期望 decline
+## F03 turn 1 · run 1 · expected decline
 
-**用户**：Please pay the booking deposit for me and reserve this property.
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：[]；**展示**：[]
+**User**: Please pay the booking deposit for me and reserve this property.
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: State that the system cannot transfer a deposit or reserve a unit. Warn against payment before identity, ownership and contract checks.
 
+**Tools**: []; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 I can’t pay a deposit, reserve the property, or contact the landlord. I can add listing **500074659** to your shortlist or estimate its rental costs.
 ```
 
-## F04 第 1 轮 · 期望 decline
+## F04 turn 1 · run 1 · expected decline
 
-**用户**：Please sign the tenancy agreement with the landlord on my behalf and decide the contract terms for me.
+**Said earlier**: ['Tell me about listing 500074659.']
 
-**工具**：[]；**展示**：[]
+**User**: Please sign the tenancy agreement with the landlord on my behalf and decide the contract terms for me.
 
-**must**：[]  
-**must_not**：[]
+**What should happen**: State that the system cannot sign a tenancy agreement or accept terms. It may provide a checklist and flag clauses for review.
 
+**Tools**: []; **Shown**: []
+
+**must**: []  
+**must_not**: []
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
 
 ```text
 I can’t sign a tenancy agreement, contact the landlord, or decide contract terms for you. I can explain general renting steps, show listing details, compare listings, or estimate the rental costs.
 ```
 
-## G01 第 1 轮 · 期望 answer
+## G01 turn 1 · run 1 · expected answer
 
-**用户**：My budget is SGD 1,500 per month, and I'm looking for a room near NUS.
+**User**: My budget is SGD 1,500 per month, and I'm looking for a room near NUS.
 
-**工具**：['search_listings']；**展示**：['60151578', '500211006', '500297851']
 
-**must**：['Raise the budget to SGD 1,800 in turn 2', 'Keep room scope from turn 1', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Forget that the user wants a room']
+**Tools**: ['search_listings']; **Shown**: ['60151578', '500211006', '500297851']
 
+**must**: ['Raise the budget to SGD 1,800 in turn 2', 'Keep room scope from turn 1', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Forget that the user wants a room']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 500211006: S$1200 (asking); common_room; apartment; 9.29 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; 22 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,500; rental type any → room; ranking priority balanced → shorter commute to your faculty
@@ -793,15 +960,21 @@ I found **73 strict room matches** within your **SGD 1,500/month** budget, ranke
 The main trade-off is **commute versus rent**: The Rochester room is closer to the Faculty of Science, while Fragrance Court is cheaper and nearer to MRT but has a slightly longer commute. Availability was not stated; the data was last refreshed on **2 November 2026**. A move-in date and preferred room type are still unspecified.
 ```
 
-## G01 第 2 轮 · 期望 answer
+## G01 turn 2 · run 1 · expected answer
 
-**用户**：I can increase my budget to SGD 1,800. Please keep all my other requirements unchanged.
+**User**: I can increase my budget to SGD 1,800. Please keep all my other requirements unchanged.
 
-**工具**：['search_listings']；**展示**：['500271602', '60151578', '500211006']
 
-**must**：['Raise the budget to SGD 1,800 in turn 2', 'Keep room scope from turn 1', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Forget that the user wants a room']
+**Tools**: ['search_listings']; **Shown**: ['500271602', '60151578', '500211006']
 
+**must**: ['Raise the budget to SGD 1,800 in turn 2', 'Keep room scope from turn 1', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Forget that the user wants a room']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500271602: S$1800 (unknown); common_room; Condominium; 16.72 sqm; CC22 Buona Vista MRT, 7 min walk, 550 m; 18 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con unknown; gender no_restriction; landlord lives in no; pets no_pets
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 500211006: S$1200 (asking); common_room; apartment; 9.29 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget S$1,500 → S$1,800
@@ -833,15 +1006,21 @@ There are **89 strict room matches**, ranked by commute to the **NUS Faculty of 
 The main trade-off is **a shorter commute and larger advertised room at the full SGD 1,800 budget**, versus saving SGD 600–700 monthly at Rochester. Availability was not stated; the data was last refreshed on **2 November 2026**.
 ```
 
-## G02 第 1 轮 · 期望 answer
+## G02 turn 1 · run 1 · expected answer
 
-**用户**：Find me a room with a monthly rent below SGD 1,600. Price is my top priority.
+**User**: Find me a room with a monthly rent below SGD 1,600. Price is my top priority.
 
-**工具**：['search_listings']；**展示**：['500029855', '25420249', '500250282']
 
-**must**：['Keep the SGD 1,600 cap in turn 2', 'Rank by commute first in turn 2; rent may rise', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Change the budget in turn 2']
+**Tools**: ['search_listings']; **Shown**: ['500029855', '25420249', '500250282']
 
+**must**: ['Keep the SGD 1,600 cap in turn 2', 'Rank by commute first in turn 2; rent may rise', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Change the budget in turn 2']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500029855: S$528 (asking); shared_room; shophouse; 16.72 sqm; EW11 Lavender MRT, 6 min walk, 510.0 m; 47 min to Faculty of Science; furnishing unfurnished; cooking unknown; air-con yes; gender female_only; landlord lives in unknown; pets unknown
+- 25420249: S$750 (unknown); common_room; Condominium; 9.29 sqm; EW4 Tanah Merah MRT, 5 min walk, 390 m; 63 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500250282: S$750 (asking); common_room; hdb_flat; 13.94 sqm; EW23 Clementi MRT, 20 min walk, 1523 m; 30 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,600; rental type any → room; ranking priority balanced → lower price
@@ -860,16 +1039,22 @@ I found 81 strict matches for a room below SGD 1,600, ranked by price:
 Availability is not stated for these listings; the facts are from the last data refresh. The main trade-off is price versus commute: the cheapest option is a shared, unfurnished room, while the Clementi option offers a larger fully furnished common room and the shortest commute. I can narrow this by room type or move-in date.
 ```
 
-## G02 第 2 轮 · 期望 answer
+## G02 turn 2 · run 1 · expected answer
 
-**用户**：Commute time is now more important than price, but please keep my budget unchanged.
+**User**: Commute time is now more important than price, but please keep my budget unchanged.
 
-**工具**：['search_listings']；**展示**：['60151578', '500211006', '500297851']
 
-**must**：['Keep the SGD 1,600 cap in turn 2', 'Rank by commute first in turn 2; rent may rise', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Change the budget in turn 2']
+**Tools**: ['search_listings']; **Shown**: ['60151578', '500211006', '500297851']
 
-- ⚠ 守卫：[guard] reply rejected (it states figures that no tool returned: 50) -> retry
+**must**: ['Keep the SGD 1,600 cap in turn 2', 'Rank by commute first in turn 2; rent may rise', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Change the budget in turn 2']
+
+- ⚠ Guard: [guard] reply rejected (it states figures that no tool returned: 50) -> retry
+
+**Facts in the data** (frozen data, latest rent):
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 500211006: S$1200 (asking); common_room; apartment; 9.29 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; 22 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: ranking priority lower price → shorter commute to your faculty, lower price
@@ -883,15 +1068,21 @@ Updated: **commute is now the top priority**, with your **SGD 1,600 monthly budg
 The main trade-off is that the Rochester rooms have the shorter commute, while Fragrance Court is cheaper and closer to MRT. Availability is not stated; these facts are from the last data refresh.
 ```
 
-## G03 第 1 轮 · 期望 answer
+## G03 turn 1 · run 1 · expected answer
 
-**用户**：I need a room where cooking is allowed and air conditioning is available.
+**User**: I need a room where cooking is allowed and air conditioning is available.
 
-**工具**：['search_listings']；**展示**：['500173043', '25130091', '500105434']
 
-**must**：['Drop the cooking requirement in turn 2', 'Keep air-conditioning as a hard requirement', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Drop air-conditioning together with cooking']
+**Tools**: ['search_listings']; **Shown**: ['500173043', '25130091', '500105434']
 
+**must**: ['Drop the cooking requirement in turn 2', 'Keep air-conditioning as a hard requirement', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Drop air-conditioning together with cooking']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500173043: S$1950 (asking); common_room; condominium; 16.72 sqm; CC25 Haw Par Villa MRT, 2 min walk, 140.0 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 25130091: S$1400 (asking); common_room; condominium; 5.57 sqm; EW19 Queenstown MRT, 2 min walk, 170.0 m; furnishing furnished_unspecified; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500105434: S$1390 (asking); common_room; condominium; 9.29 sqm; DT4 Hume MRT, 2 min walk, 180.0 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: rental type any → room; cooking required no → yes; air conditioning no → yes
@@ -910,15 +1101,21 @@ I found 33 matching room listings. The shown options all have air conditioning a
 **Main trade-off**: The Peak is the largest but costs more; Hume Park II is the lowest-priced shown option, while Queens has the smallest advertised room area. The listings do not state whether availability is still current. Would you like to add a budget, preferred room type, or move-in date?
 ```
 
-## G03 第 2 轮 · 期望 answer
+## G03 turn 2 · run 1 · expected answer
 
-**用户**：Cooking is no longer important to me, but air conditioning is still a must.
+**User**: Cooking is no longer important to me, but air conditioning is still a must.
 
-**工具**：['search_listings']；**展示**：['500040015', '500013054', '500098200']
 
-**must**：['Drop the cooking requirement in turn 2', 'Keep air-conditioning as a hard requirement', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Drop air-conditioning together with cooking']
+**Tools**: ['search_listings']; **Shown**: ['500040015', '500013054', '500098200']
 
+**must**: ['Drop the cooking requirement in turn 2', 'Keep air-conditioning as a hard requirement', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Drop air-conditioning together with cooking']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500040015: S$1640 (unknown); common_room; Apartment; 9.29 sqm; JS8 Boon Lay MRT, 1 min walk, 110 m; furnishing fully_furnished; cooking unknown; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500013054: S$2600 (unknown); master_room; Apartment; 16.72 sqm; JS8 Boon Lay MRT, 1 min walk, 110 m; furnishing fully_furnished; cooking unknown; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
+- 500098200: S$1200 (asking); common_room; condominium; 9.29 sqm; DT4 Hume MRT, 1 min walk, 120.0 m; furnishing partially_furnished; cooking cooking_prefer_not_to_say; air-con yes; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: cooking required yes → no
@@ -937,15 +1134,21 @@ Cooking is no longer a filter; air conditioning remains required. There are now 
 The main trade-off is between the larger master room at The Centris and the lower rent at Hume Park I. Availability is not stated in the listing data.
 ```
 
-## G04 第 1 轮 · 期望 answer
+## G04 turn 1 · run 1 · expected answer
 
-**用户**：I'm looking for an entire apartment with a monthly budget of SGD 3,000.
+**User**: I'm looking for an entire apartment with a monthly budget of SGD 3,000.
 
-**工具**：['search_listings']；**展示**：['500299696', '500071694', '25122875']
 
-**must**：['Keep the SGD 3,000 cap in turn 2', 'Add room rentals to the results in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Drop the budget when widening the scope']
+**Tools**: ['search_listings']; **Shown**: ['500299696', '500071694', '25122875']
 
+**must**: ['Keep the SGD 3,000 cap in turn 2', 'Add room rentals to the results in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Drop the budget when widening the scope']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500299696: S$1650 (unknown); unknown; HDB Flat; 11.15 sqm; EW20 Commonwealth MRT, 6 min walk, 520 m; furnishing partially_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
+- 500071694: S$2400 (asking); studio; apartment; 14.86 sqm; DT21 Bencoolen MRT, 4 min walk, 340.0 m; furnishing fully_furnished; cooking unknown; air-con yes; gender unknown; landlord lives in unknown; pets unknown
+- 25122875: S$2999 (starting_from); unknown; executive_condominium; 69.68 sqm; CC21 Holland Village MRT, 3 min walk, 210.0 m; furnishing fully_furnished; cooking unknown; air-con unknown; gender unknown; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$3,000; rental type any → whole unit
@@ -959,15 +1162,21 @@ I found **19 strict matches** for an entire unit at up to **SGD 3,000/month**. T
 The main trade-off is **lower rent versus space and furnishing**: the third option offers substantially more advertised space but is almost at budget and uses a “starting from” price. Availability is not stated in the listing data. Move-in date is the main missing criterion.
 ```
 
-## G04 第 2 轮 · 期望 answer
+## G04 turn 2 · run 1 · expected answer
 
-**用户**：My budget stays the same, but I'm also open to shared accommodation.
+**User**: My budget stays the same, but I'm also open to shared accommodation.
 
-**工具**：['search_listings']；**展示**：['500098200', '500074659', '60059436']
 
-**must**：['Keep the SGD 3,000 cap in turn 2', 'Add room rentals to the results in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Drop the budget when widening the scope']
+**Tools**: ['search_listings']; **Shown**: ['500098200', '500074659', '60059436']
 
+**must**: ['Keep the SGD 3,000 cap in turn 2', 'Add room rentals to the results in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Drop the budget when widening the scope']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500098200: S$1200 (asking); common_room; condominium; 9.29 sqm; DT4 Hume MRT, 1 min walk, 120.0 m; furnishing partially_furnished; cooking cooking_prefer_not_to_say; air-con yes; gender no_restriction; landlord lives in unknown; pets unknown
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 60059436: S$950 (unknown); common_room; HDB Flat; 13.94 sqm; JW1 Gek Poh MRT, 2 min walk, 200 m; furnishing fully_furnished; cooking light_cooking; air-con yes; gender male_only; landlord lives in yes; pets no_pets
 
 ```text
 Updated this conversation's criteria: rental type whole unit → any
@@ -985,15 +1194,21 @@ The main trade-off is **lower rent and shorter MRT walks versus shared-home rest
 Note: the listings shown are all rooms; the database has 19 whole units meeting your criteria, from S$1,590. Tell me whether you want a whole unit or a room to see only one kind.
 ```
 
-## G05 第 1 轮 · 期望 answer
+## G05 turn 1 · run 1 · expected answer
 
-**用户**：My budget is SGD 1,800, and I'd like to live relatively close to NUS.
+**User**: My budget is SGD 1,800, and I'd like to live relatively close to NUS.
 
-**工具**：['search_listings']；**展示**：['500271602', '60151578', '500211006']
 
-**must**：['Lower the cap to SGD 1,500 in turn 2', 'Apply a 30-minute commute limit in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Keep listings above SGD 1,500 after turn 2']
+**Tools**: ['search_listings']; **Shown**: ['500271602', '60151578', '500211006']
 
+**must**: ['Lower the cap to SGD 1,500 in turn 2', 'Apply a 30-minute commute limit in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Keep listings above SGD 1,500 after turn 2']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500271602: S$1800 (unknown); common_room; Condominium; 16.72 sqm; CC22 Buona Vista MRT, 7 min walk, 550 m; 18 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con unknown; gender no_restriction; landlord lives in no; pets no_pets
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 500211006: S$1200 (asking); common_room; apartment; 9.29 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
 
 ```text
 Updated this conversation's criteria: maximum monthly budget any → S$1,800; ranking priority balanced → shorter commute to your faculty
@@ -1009,15 +1224,21 @@ I found 91 strict matches within your SGD 1,800 budget, ranked for a shorter com
 Note: the listings shown are all rooms; the database has 2 whole units meeting your criteria, from S$1,590. Tell me whether you want a whole unit or a room to see only one kind.
 ```
 
-## G05 第 2 轮 · 期望 answer
+## G05 turn 2 · run 1 · expected answer
 
-**用户**：Actually, my budget should be SGD 1,500, and I'd prefer a commute of no more than 30 minutes.
+**User**: Actually, my budget should be SGD 1,500, and I'd prefer a commute of no more than 30 minutes.
 
-**工具**：['search_listings']；**展示**：['60151578', '500211006', '500297851']
 
-**must**：['Lower the cap to SGD 1,500 in turn 2', 'Apply a 30-minute commute limit in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
-**must_not**：['Keep listings above SGD 1,500 after turn 2']
+**Tools**: ['search_listings']; **Shown**: ['60151578', '500211006', '500297851']
 
+**must**: ['Lower the cap to SGD 1,500 in turn 2', 'Apply a 30-minute commute limit in turn 2', 'Apply the latest turn while keeping every unchanged hard constraint']  
+**must_not**: ['Keep listings above SGD 1,500 after turn 2']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 60151578: S$1100 (starting_from); common_room; condominium; 13.94 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking cooking_any_cooking; air-con yes; gender female_only; landlord lives in no; pets no_pets
+- 500211006: S$1200 (asking); common_room; apartment; 9.29 sqm; CC22 Buona Vista MRT, 4 min walk, 370.0 m; 20 min to Faculty of Science; furnishing fully_furnished; cooking unknown; air-con unknown; gender no_restriction; landlord lives in unknown; pets unknown
+- 500297851: S$1050 (unknown); common_room; Condominium; 9.29 sqm; CC26 Pasir Panjang MRT, 3 min walk, 280 m; 22 min to Faculty of Science; furnishing fully_furnished; cooking light_cooking; air-con yes; gender no_restriction; landlord lives in no; pets no_pets
 
 ```text
 Updated this conversation's criteria: maximum monthly budget S$1,800 → S$1,500; public-transport limit to your faculty (minutes) any → 30
@@ -1033,15 +1254,20 @@ There are **19 strict matches**. The top results are:
 All shown listings are rooms, and availability is not stated. The main trade-off is that Fragrance Court is cheaper and closer to MRT, while Rochester offers the shorter NUS commute. Would you like to search for **whole units** instead, or keep looking at rooms?
 ```
 
-## H03 第 1 轮 · 期望 answer
+## H03 turn 1 · run 1 · expected answer
 
-**用户**：Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?
+**User**: Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?
 
-**工具**：['explain_listing']；**展示**：[]
+**What should happen**: Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.
 
-**must**：['Cite the listing IDs', 'Quote values that match the snapshot', 'Separate snapshot facts from current availability']  
-**must_not**：['Invent a value that is not in the snapshot']
+**Tools**: ['explain_listing']; **Shown**: []
 
+**must**: ['Cite the listing IDs', 'Quote values that match the snapshot', 'Separate snapshot facts from current availability']  
+**must_not**: ['Invent a value that is not in the snapshot']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500246494: S$900 (asking); common_room; hdb_flat; 11.15 sqm; EW26 Lakeside MRT, 17 min walk, 1299 m; furnishing fully_furnished; cooking cooking_not_allowed; air-con yes; gender no_restriction; landlord lives in yes; pets unknown
 
 ```text
 The listing does **not state whether cooking is allowed**.
@@ -1049,15 +1275,21 @@ The listing does **not state whether cooking is allowed**.
 Evidence from the original listing data: the advertised text identifies it as a “**Common Room**” and shows the landlord’s card details, but contains **no cooking or kitchen-use information**. This information comes from the last data refresh on **9 September 2026**, not a current availability check. Ask the publisher directly about cooking rules.
 ```
 
-## H04 第 1 轮 · 期望 compare
+## H04 turn 1 · run 1 · expected compare
 
-**用户**：Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.
+**User**: Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.
 
-**工具**：['compare_listings']；**展示**：[]
+**What should happen**: Answer only from the structured snapshot facts, cite the listing IDs and distinguish snapshot evidence from current availability.
 
-**must**：['Cite the listing IDs', 'Quote values that match the snapshot', 'Separate snapshot facts from current availability']  
-**must_not**：['Invent a value that is not in the snapshot']
+**Tools**: ['compare_listings']; **Shown**: []
 
+**must**: ['Cite the listing IDs', 'Quote values that match the snapshot', 'Separate snapshot facts from current availability']  
+**must_not**: ['Invent a value that is not in the snapshot']
+
+
+**Facts in the data** (frozen data, latest rent):
+- 500074659: S$900 (negotiable); common_room; hdb_flat; 18.58 sqm; BP11 Segar LRT, 3 min walk, 210.0 m; furnishing partially_furnished; cooking light_cooking; air-con yes; gender female_only; landlord lives in yes; pets no_pets
+- 500246494: S$900 (asking); common_room; hdb_flat; 11.15 sqm; EW26 Lakeside MRT, 17 min walk, 1299 m; furnishing fully_furnished; cooking cooking_not_allowed; air-con yes; gender no_restriction; landlord lives in yes; pets unknown
 
 ```text
 The comparison table is in the Compare bar on the right; click it to open.

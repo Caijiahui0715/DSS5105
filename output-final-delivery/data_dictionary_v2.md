@@ -1,141 +1,143 @@
-# rental_data_v2.csv 数据字典
+# rental_data_v2.csv data dictionary
 
-**版本**: v2.3 · **更新**: 2026-09-18 · **行数**: 519 条有效在租房源 · **字段数**: 50
-**配套文件**: `removed_listings.csv`（74 条已下架房源，字段结构相同）
+**Version**: v2.3 · **Updated**: 2026-09-18 · **Rows**: 519 active rental listings · **Fields**: 50
+**Companion file**: `removed_listings.csv` (74 listings taken down, same fields)
+
+> The counts and coverage figures on this page describe version v2.3 (2026-09-18). The final data frozen on 2026-11-02, which the system and the evaluation use, has 369 active listings (see `evaluation/CONVENTIONS.md`).
 
 ---
 
-## 1. 数据集概览
+## 1. Overview
 
-| 项目 | 说明 |
+| Item | Details |
 |---|---|
-| 数据对象 | PropertyGuru 新加坡站挂牌租房房源（Bukit Timah / Clementi / West Coast 等 D05 及周边区域为主，少量外区） |
-| 采集时间线 | v1 搜索页采集 2026-09-09 → 详情页补齐 2026-09-17 → 失效/异常清洗 2026-09-17~18 |
-| 反爬与获取方式 | Playwright 有头浏览器 + Cloudflare 会话复用；数据载体为页面内嵌 `__NEXT_DATA__` JSON |
-| 坐标系 | WGS84 经纬度 |
-| 清洗记录 | 74 条下架（removed）、6 条单间面积异常剔除、1 条无法定位剔除（git 历史可追溯） |
+| Subject | PropertyGuru Singapore rental listings (mainly D05 and nearby areas such as Bukit Timah, Clementi and West Coast, with a few from other districts) |
+| Collection timeline | v1 search pages collected 2026-09-09 → detail pages filled in 2026-09-17 → cleaning of dead or abnormal listings 2026-09-17 to 18 |
+| Anti-bot handling and access | Headed Playwright browser + reused Cloudflare session; the data comes from the `__NEXT_DATA__` JSON embedded in each page |
+| Coordinates | WGS84 latitude and longitude |
+| Cleaning | 74 taken down (removed), 6 rooms with abnormal area dropped, 1 listing that could not be located dropped (traceable in git history) |
 
-**处理流水**: 600（v1）→ 剔除 74 下架 → 526 active → 剔除 6 条面积异常 → 剔除 1 条 Paradise Island（无法定位）→ **519**
+**Pipeline**: 600 (v1) → 74 taken down removed → 526 active → 6 with abnormal area removed → 1 (Paradise Island, could not be located) removed → **519**
 
 ---
 
-## 2. 字段字典
+## 2. Fields
 
-### 2.1 标识与价格
+### 2.1 Identity and price
 
-| # | 字段 | 类型 | 来源 | 说明 | 覆盖 | 典型值 / 范围 |
+| # | Field | Type | Source | Description | Coverage | Typical values / range |
 |---|---|---|---|---|---|---|
-| 1 | `listing_id` | string | PG | 房源唯一 ID（主键） | 100% | — |
-| 2 | `title` | string | PG | 挂牌标题（多为项目名/地址） | 100% | — |
-| 3 | `listing_url` | string | PG | 房源链接，可用于回访核验 | 100% | — |
-| 4 | `rent_monthly_sgd` | float | v1 | 月租（S$，9-9 采集时点） | 100% | 中位 4300，[580, 80000] |
-| 5 | `rent_price_type` | string | v1 | 价格性质：`asking` 要价 / `negotiable` 可议 / `starting_from` 起价 / `guide_price` 指导价 | 100% | asking 68% |
-| 31 | `rent_monthly_sgd_now` | float | PG 9-17 | 现挂牌价；与 #4 差值可分析降价行为 | 99% | 中位 4400 |
+| 1 | `listing_id` | string | PG | Unique listing ID (primary key) | 100% | — |
+| 2 | `title` | string | PG | Listing title (mostly the project name or address) | 100% | — |
+| 3 | `listing_url` | string | PG | Listing link, for checking back | 100% | — |
+| 4 | `rent_monthly_sgd` | float | v1 | Monthly rent (S$, as collected on 9-9) | 100% | median 4300, [580, 80000] |
+| 5 | `rent_price_type` | string | v1 | Kind of price: `asking` / `negotiable` / `starting_from` / `guide_price` | 100% | asking 68% |
+| 31 | `rent_monthly_sgd_now` | float | PG 9-17 | Current advertised price; the difference from #4 shows price cuts | 99% | median 4400 |
 
-### 2.2 户型与面积
+### 2.2 Layout and area
 
-| # | 字段 | 类型 | 来源 | 说明 | 覆盖 | 取值 |
+| # | Field | Type | Source | Description | Coverage | Values |
 |---|---|---|---|---|---|---|
-| 6 | `rental_scope` | string | PG 详情页 | 租赁方式：`room` 单间 / `entire_unit` 整租。中介自行申报字段 | 99% | entire_unit 348, room 169 |
-| 7 | `room_type` | string | PG 详情页 | 房型：`common_room` / `master_room` / `studio` / `shared_room` / `room_unspecified`。整租房源不适用（unknown） | 34% | common 121 |
-| 8 | `property_type` | string | PG | 物业类型：condominium / hdb_flat / apartment / terraced_house / detached_house 等 | 100% | condo 273, HDB 100 |
-| 9 | `bedrooms` | int | PG | 卧室数；0=studio；单间出租不适用（空） | 68% | 中位 3 |
-| 10 | `bathrooms` | int | PG | 卫浴数 | 92% | 中位 2 |
-| 11 | `area_sqm` | float | PG | 面积（㎡）。口径由 #12 区分。极值（>2000㎡）为豪华有地住宅，属实 | 99% | 中位 68 |
-| 12 | `area_scope` | string | PG | 面积口径：`floor_reported` 整套面积 / `room_reported` 单间面积 | 99% | floor 350, room 168 |
+| 6 | `rental_scope` | string | PG detail page | Rental type: `room` / `entire_unit`. Declared by the agent who posted it | 99% | entire_unit 348, room 169 |
+| 7 | `room_type` | string | PG detail page | Room type: `common_room` / `master_room` / `studio` / `shared_room` / `room_unspecified`. Not applicable to whole units (unknown) | 34% | common 121 |
+| 8 | `property_type` | string | PG | Property type: condominium / hdb_flat / apartment / terraced_house / detached_house and others | 100% | condo 273, HDB 100 |
+| 9 | `bedrooms` | int | PG | Bedrooms; 0 = studio; not applicable to room rentals (empty) | 68% | median 3 |
+| 10 | `bathrooms` | int | PG | Bathrooms | 92% | median 2 |
+| 11 | `area_sqm` | float | PG | Area (m²); what it measures is given by #12. Extreme values (> 2000 m²) are luxury landed homes and are genuine | 99% | median 68 |
+| 12 | `area_scope` | string | PG | What the area measures: `floor_reported` the whole unit / `room_reported` the room | 99% | floor 350, room 168 |
 
-> ⚠️ 单间分析建议：`rental_scope=='room'` 的行面积中位仅 11㎡，与整套不可比；按平米算租金时用 `area_scope` 分组。
+> ⚠️ For rooms: rows with `rental_scope=='room'` have a median area of only 11 m², not comparable with whole units; group by `area_scope` when computing rent per square metre.
 
-### 2.3 位置与交通
+### 2.3 Location and transport
 
-| # | 字段 | 类型 | 来源 | 说明 | 覆盖 | 取值 |
+| # | Field | Type | Source | Description | Coverage | Values |
 |---|---|---|---|---|---|---|
-| 13 | `district_code` | string | PG | URA 规划区（D05=Clementi/West Coast 等） | 100% | D05 最多(101) |
-| 14 | `address` | string | v1 | 地址文本（门牌+街道，区域），约 18% 无门牌号 | 100% | — |
-| 34 | `postcode` | string | PG 详情页 | 6 位邮编（精确到楼栋）。注意：个别中介填占位值 | 100% | — |
-| 35 | `street_name` | string | PG 详情页 | 标准化路名 | 94% | — |
-| 36 | `latitude` | float | 见 #48 | 纬度 | **100%** | [1.240, 1.454] |
-| 37 | `longitude` | float | 见 #48 | 经度 | **100%** | [103.693, 103.969] |
-| 48 | `coord_source` | string | 处理生成 | 坐标来源：`onemap_postcode`（496，OneMap 官方地理编码，门牌级）/ `pg_poi_inferred`（21，由周边设施步行距离反推，误差约 165m）/ `onemap_street_geocode`（2，路名级） | 100% | — |
-| 49 | `coord_error_m` | float | 处理生成 | 坐标不确定度（米）。inferred≈165；street≈500；postcode 级不标注 | 4% | — |
-| 15 | `mrt_station` | string | PG POI | 最近地铁站（含站编号，如 CR17 Clementi MRT） | 86% | — |
-| 16 | `mrt_distance_m` | int | PG POI | 最近 MRT 步行距离（米，路网测算） | 86% | 中位 620 |
-| 17 | `mrt_minutes_reported` | int | PG POI | 最近 MRT 步行时间（分钟） | 86% | 中位 7 |
-| 18 | `mrt_operation_status` | string | 处理生成 | `operational` 运营中 / `under_construction` 在建（站名含 U/C） | 84% | operational 423 |
+| 13 | `district_code` | string | PG | URA planning district (D05 = Clementi / West Coast and so on) | 100% | D05 most (101) |
+| 14 | `address` | string | v1 | Address text (house number + street, area); about 18% lack a house number | 100% | — |
+| 34 | `postcode` | string | PG detail page | 6-digit postcode (down to the building). Note: a few agents enter placeholder values | 100% | — |
+| 35 | `street_name` | string | PG detail page | Standardised street name | 94% | — |
+| 36 | `latitude` | float | see #48 | Latitude | **100%** | [1.240, 1.454] |
+| 37 | `longitude` | float | see #48 | Longitude | **100%** | [103.693, 103.969] |
+| 48 | `coord_source` | string | derived | Coordinate source: `onemap_postcode` (496, OneMap's official geocoding, building level) / `pg_poi_inferred` (21, inferred from walking distances to nearby facilities, error about 165 m) / `onemap_street_geocode` (2, street level) | 100% | — |
+| 49 | `coord_error_m` | float | derived | Coordinate uncertainty (metres): inferred ≈ 165; street ≈ 500; not given at postcode level | 4% | — |
+| 15 | `mrt_station` | string | PG POI | Nearest MRT station (with its code, such as CR17 Clementi MRT) | 86% | — |
+| 16 | `mrt_distance_m` | int | PG POI | Walking distance to the nearest MRT (metres, along the road network) | 86% | median 620 |
+| 17 | `mrt_minutes_reported` | int | PG POI | Walking time to the nearest MRT (minutes) | 86% | median 7 |
+| 18 | `mrt_operation_status` | string | derived | `operational` / `under_construction` (station name contains U/C) | 84% | operational 423 |
 
-### 2.4 出租条件（PG 详情页 unitDetails，缺失=页面未提供）
+### 2.4 Rental conditions (PG detail page unitDetails; missing = not given on the page)
 
-| # | 字段 | 类型 | 说明 | 覆盖 | 取值 |
+| # | Field | Type | Description | Coverage | Values |
 |---|---|---|---|---|---|
-| 21 | `tenant_count_reported` | int | 最多租客数（单间场景） | 27% | 中位 1 |
-| 22 | `tenant_gender_label` | string | 中介标注的租客性别：female / male / any | 27% | any 102 |
-| 23 | `gender_restriction` | string | 规范化性别限制：`no_restriction` / `female_only` / `male_only`。**分组分析用此列** | 27% | no_restriction 101 |
-| 24 | `gender_preference` | string | 性别偏好（页面不提供，仅 1 条有值，**建议忽略此列**） | 0% | — |
-| 25 | `cooking_policy` | string | 炊事政策：`light_cooking` 可轻炊 / `cooking_any_cooking` 不限 / `cooking_not_allowed`+`not_allowed` 禁止 / `cooking_prefer_not_to_say`。仅单间场景有值 | 18% | light 72 |
-| 26 | `furnishing` | string | 装修：`fully_furnished` / `partially_furnished` / `unfurnished` / `furnished_unspecified` | 99% | full 258, partial 219 |
-| 27 | `landlord_lives_in` | string | 房东是否住内：yes / no（源自 ownerStays） | 22% | no 71 |
-| 28 | `private_bathroom` | string | 独立卫浴：仅页面明确提供才填（yes） | 1% | yes 5 |
-| 29 | `air_conditioning` | string | 空调：yes / no（仅结构化字段明确提供才填） | 40% | yes 208 |
-| 30 | `pets_policy` | string | 宠物：`no_pets` / `pets_allowed`+`allowed`（仅明确提供才填） | 19% | no_pets 99 |
+| 21 | `tenant_count_reported` | int | Maximum number of tenants (rooms) | 27% | median 1 |
+| 22 | `tenant_gender_label` | string | Tenant gender as labelled by the agent: female / male / any | 27% | any 102 |
+| 23 | `gender_restriction` | string | Normalised gender restriction: `no_restriction` / `female_only` / `male_only`. **Use this column for grouping** | 27% | no_restriction 101 |
+| 24 | `gender_preference` | string | Gender preference (not given on the page; only 1 row has a value; **better ignored**) | 0% | — |
+| 25 | `cooking_policy` | string | Cooking policy: `light_cooking` light cooking / `cooking_any_cooking` any / `cooking_not_allowed` + `not_allowed` not allowed / `cooking_prefer_not_to_say`. Only rooms have values | 18% | light 72 |
+| 26 | `furnishing` | string | Furnishing: `fully_furnished` / `partially_furnished` / `unfurnished` / `furnished_unspecified` | 99% | full 258, partial 219 |
+| 27 | `landlord_lives_in` | string | Whether the landlord lives in: yes / no (from ownerStays) | 22% | no 71 |
+| 28 | `private_bathroom` | string | Private bathroom: filled only when the page states it (yes) | 1% | yes 5 |
+| 29 | `air_conditioning` | string | Air-conditioning: yes / no (filled only when a structured field states it) | 40% | yes 208 |
+| 30 | `pets_policy` | string | Pets: `no_pets` / `pets_allowed` + `allowed` (filled only when stated) | 19% | no_pets 99 |
 
-> 空值与 `unknown` 语义一致：**页面未提供即保留 unknown/空，不做推断**。
+> Empty and `unknown` mean the same: **when the page does not give a value, it stays unknown or empty; nothing is inferred**.
 
-### 2.5 周边设施特征 A：OneMap 官方主题图层（1km 直线内数量，快照 2026-09-18）
+### 2.5 Nearby facilities A: OneMap official theme layers (count within 1 km straight-line distance, snapshot 2026-09-18)
 
-| # | 字段 | 设施 | 数据机构 | POI 库存 | 覆盖 | 中位 |
+| # | Field | Facility | Agency | POIs | Coverage | Median |
 |---|---|---|---|---|---|---|
-| 38 | `poi_hawker_1km` | 小贩中心 | NEA | 129 | 95% | 1 |
-| 39 | `poi_library_1km` | 图书馆 | NLB | 28 | 95% | 0 |
-| 40 | `poi_sport_1km` | 体育设施 | SportSG | 45 | 95% | 0 |
-| 41 | `poi_healthcare_1km` | 医院+注册药店 | MOH / HSA | 31+249 | 95% | 2 |
-| 42 | `poi_community_1km` | 民众俱乐部 | PA | 125 | 95% | 1 |
+| 38 | `poi_hawker_1km` | Hawker centres | NEA | 129 | 95% | 1 |
+| 39 | `poi_library_1km` | Libraries | NLB | 28 | 95% | 0 |
+| 40 | `poi_sport_1km` | Sports facilities | SportSG | 45 | 95% | 0 |
+| 41 | `poi_healthcare_1km` | Hospitals + registered pharmacies | MOH / HSA | 31+249 | 95% | 2 |
+| 42 | `poi_community_1km` | Community clubs | PA | 125 | 95% | 1 |
 
-### 2.6 周边设施特征 B：PropertyGuru What's nearby（步行路网距离，快照 2026-09-17）
+### 2.6 Nearby facilities B: PropertyGuru "What's nearby" (walking distance along the road network, snapshot 2026-09-17)
 
-| # | 字段 | 说明 | 覆盖 | 中位 |
+| # | Field | Description | Coverage | Median |
 |---|---|---|---|---|
-| 43 | `pg_school_count` | PG 列出的周边学校数（含私立/国际学校） | 97% | 20 |
-| 44 | `pg_school_nearest_walk_m` | 最近学校步行距离（米） | 97% | 600 |
-| 45 | `pg_school_nearest_walk_min` | 最近学校步行时间（分钟，≈80m/min 口径） | 97% | 7 |
-| 46 | `pg_mrt_count` | PG 列出的周边 MRT 站数 | 85% | 2 |
-| 47 | `pg_mrt_nearest_walk_m` | 最近 MRT 步行距离（米） | 85% | 600 |
+| 43 | `pg_school_count` | Number of nearby schools PG lists (including private and international schools) | 97% | 20 |
+| 44 | `pg_school_nearest_walk_m` | Walking distance to the nearest school (metres) | 97% | 600 |
+| 45 | `pg_school_nearest_walk_min` | Walking time to the nearest school (minutes, at about 80 m/min) | 97% | 7 |
+| 46 | `pg_mrt_count` | Number of nearby MRT stations PG lists | 85% | 2 |
+| 47 | `pg_mrt_nearest_walk_m` | Walking distance to the nearest MRT (metres) | 85% | 600 |
 
-### 2.7 周边设施特征 C：OpenStreetMap（1km 直线内数量，快照 2026-09-18，ODbL）
+### 2.7 Nearby facilities C: OpenStreetMap (count within 1 km straight-line distance, snapshot 2026-09-18, ODbL)
 
-| # | 字段 | 说明 | POI 库存 | 覆盖 | 范围 |
+| # | Field | Description | POIs | Coverage | Range |
 |---|---|---|---|---|---|
-| 50 | `poi_fnb_1km` | 1km 内餐饮点（restaurant/cafe/fast_food/food_court/pub/bar 等） | 10,724（全岛） | 100% | 中位 64，[3, 1395] |
+| 50 | `poi_fnb_1km` | Food and drink places within 1 km (restaurant / cafe / fast_food / food_court / pub / bar and so on) | 10,724 (island-wide) | 100% | median 64, [3, 1395] |
 
-### 2.8 时间与管理字段
+### 2.8 Time and housekeeping fields
 
-| # | 字段 | 类型 | 说明 |
+| # | Field | Type | Description |
 |---|---|---|---|
-| 19 | `listed_date` | date | 挂牌日期（PG lastPosted） |
-| 20 | `collected_at` | datetime | v1 采集时间（2026-09-09） |
-| 32 | `scrape_status` | string | 本文件全部为 `active`（下架房源见 removed_listings.csv） |
-| 33 | `enriched_at` | datetime | 预留字段，当前为空（补齐批次日期见 git 提交历史：2026-09-17） |
+| 19 | `listed_date` | date | Listing date (PG lastPosted) |
+| 20 | `collected_at` | datetime | v1 collection time (2026-09-09) |
+| 32 | `scrape_status` | string | All `active` in this file (listings taken down are in removed_listings.csv) |
+| 33 | `enriched_at` | datetime | Reserved, currently empty (the fill-in batch date is in the git history: 2026-09-17) |
 
 ---
 
-## 3. 数据质量与使用注意事项
+## 3. Data quality and usage notes
 
-1. **unknown / 空值**：一律表示"页面未提供"，未做任何推断填充。缺失集中在中介条件类字段（单间场景才有：tenant/gender/cooking），以及 PG 站点本身不含的类别（gender_preference、private_bathroom 基本不可用）。
-2. **rental_scope 为申报值**：由中介勾选，已人工核验修正 5 条（git `7754c79`）；1km 内小面积的 entire_unit 多为 co-living 微型 studio（Coliwoo、lyf 等），非错误。
-3. **面积异常已清洗**：6 条单间面积 <2㎡ 或 >40㎡（整套面积误填）的房源已剔除（git `6fb3a8e`）。
-4. **坐标精度分三档**：严格距离计算建议仅用 `coord_source=='onemap_postcode'`（496 条）；`pg_poi_inferred` 的 21 条建议加 ±200m 不确定度（方法：周边设施三角定位，485 条盲测中位误差 165m）。
-5. **两套 POI 特征口径不同**：`poi_*`（OneMap/OSM）为直线 1km 计数；`pg_*` 为 PG 步行路网距离（更真实但仅学校/MRT 两类）。合并综合分时注意归一化。
-6. **价格双时点**：`rent_monthly_sgd`（9-9）与 `rent_monthly_sgd_now`（9-17）差值可做"一周降价幅度"；removed 房源的租金是"下架前要价"，勿与在租混合同一回归。
-7. **外部数据引用**：OneMap（SLA 官方开放数据）；OpenStreetMap 按 ODbL 许可使用，公开发布需署名；PropertyGuru 数据仅用于学术分析。
+1. **unknown / empty values**: always mean "not given on the page"; nothing was inferred to fill them. Missing values concentrate in the agents' condition fields (present only for rooms: tenant / gender / cooking) and in categories PropertyGuru itself does not carry (gender_preference and private_bathroom are practically unusable).
+2. **rental_scope is declared**: ticked by the posting agent; 5 rows were checked and corrected by hand (git `7754c79`). Small entire_unit listings within 1 km are mostly co-living micro studios (Coliwoo, lyf and others), not errors.
+3. **Abnormal areas were cleaned**: 6 rooms with an area < 2 m² or > 40 m² (the whole unit's area entered by mistake) were dropped (git `6fb3a8e`).
+4. **Three levels of coordinate precision**: for strict distance calculations, use only `coord_source=='onemap_postcode'` (496 rows); for the 21 `pg_poi_inferred` rows, allow ±200 m of uncertainty (method: triangulation from nearby facilities; median error 165 m in a blind test on 485 listings).
+5. **The two sets of POI features measure differently**: `poi_*` (OneMap / OSM) are counts within a 1 km straight line; `pg_*` are PropertyGuru walking distances along the road network (more realistic, but only for schools and MRT). Normalise before combining them into a score.
+6. **Prices at two dates**: the difference between `rent_monthly_sgd` (9-9) and `rent_monthly_sgd_now` (9-17) gives the price cut over a week; the rent of removed listings is the asking price before removal, so do not mix them with active listings in one regression.
+7. **External data**: OneMap (SLA official open data); OpenStreetMap under the ODbL licence, which requires attribution when published; PropertyGuru data for academic analysis only.
 
-## 4. 复现脚本索引（propertyguru_data/）
+## 4. Scripts for reproduction (propertyguru_data/)
 
-| 脚本 | 作用 |
+| Script | Purpose |
 |---|---|
-| `scrape_propertyguru.py` | 列表页→详情页抓取（Playwright） |
-| `enrich_listings.py` | v1→v2 字段补齐主流程（含 Cloudflare 会话） |
-| `enrich_geo.py` | 邮编/路名 + OneMap 地理编码 |
-| `enrich_poi.py` | OneMap 主题图层 1km 计数 |
-| `enrich_nearby.py` | PG What's nearby 解析 + 坐标重试 |
-| `infer_location.py` | POI 三角定位反推坐标（含精度校准） |
-| `raw_pg/*.json` | 每条房源的原始结构化数据（可离线重算） |
-| `poi_themes/*.json` | OneMap 主题图层与 OSM F&B 快照 |
+| `scrape_propertyguru.py` | List pages → detail pages (Playwright) |
+| `enrich_listings.py` | Main v1 → v2 field fill-in (with the Cloudflare session) |
+| `enrich_geo.py` | Postcode / street name + OneMap geocoding |
+| `enrich_poi.py` | OneMap theme-layer counts within 1 km |
+| `enrich_nearby.py` | Parse PG "What's nearby" + retry coordinates |
+| `infer_location.py` | Infer coordinates by POI triangulation (with accuracy calibration) |
+| `raw_pg/*.json` | Raw structured data for each listing (for offline recomputation) |
+| `poi_themes/*.json` | Snapshots of the OneMap theme layers and OSM food and drink places |

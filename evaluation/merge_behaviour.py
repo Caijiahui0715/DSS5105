@@ -20,8 +20,25 @@ from collections import defaultdict
 from pathlib import Path
 
 RESULTS = Path(__file__).resolve().parent / "results"
-SCORES = ("决策分", "解释分")
+SCORES = ("decision_score", "explanation_score")
 TARGET = 0.85
+# Sheets made before the columns were renamed in English use these names; they are read the same way.
+OLD_COLUMNS = {"题号": "case_id", "轮": "turn", "期望行为": "expected_behaviour", "用户说的": "user_message",
+               "决策分": "decision_score", "解释分": "explanation_score", "打分人": "rater", "备注": "note",
+               "最终决策分": "final_decision", "最终解释分": "final_explanation", "讨论结论": "resolution"}
+OLD_PREFIXES = {"决策分_": "decision_", "解释分_": "explanation_", "备注_": "note_"}
+# results/ also holds the team's final holdout scores under the same name pattern; they are not rater sheets.
+NOT_RATER_SHEETS = {"merged", "final", "adjudication"}
+
+
+def english(column: str | None) -> str:
+    column = (column or "").strip()
+    if column in OLD_COLUMNS:
+        return OLD_COLUMNS[column]
+    for old, new in OLD_PREFIXES.items():
+        if column.startswith(old):
+            return new + column.removeprefix(old)
+    return column
 
 
 def read(path: Path) -> list[dict]:
@@ -29,7 +46,7 @@ def read(path: Path) -> list[dict]:
     for encoding in ("utf-8-sig", "gbk"):
         try:
             with path.open(encoding=encoding, newline="") as file:
-                return list(csv.DictReader(file))
+                return [{english(k): v for k, v in row.items()} for row in csv.DictReader(file)]
         except UnicodeDecodeError:
             continue
     raise SystemExit(f"Cannot read {path}: save it as CSV (UTF-8)")
@@ -51,47 +68,48 @@ def kappa(a: list[int], b: list[int]) -> float | None:
 
 
 def merge(label: str, directory: Path, force: bool) -> None:
-    sheets = sorted(p for p in directory.glob(f"{label}_behaviour_*.csv") if not p.stem.endswith("_merged"))
+    sheets = sorted(p for p in directory.glob(f"{label}_behaviour_*.csv")
+                    if p.stem.removeprefix(f"{label}_behaviour_") not in NOT_RATER_SHEETS)
     if len(sheets) != 2:
         raise SystemExit(f"Need exactly two rater sheets named {label}_behaviour_<name>.csv in {directory}, found {[p.name for p in sheets]}")
     names = [p.stem.removeprefix(f"{label}_behaviour_") for p in sheets]
     a_rows, b_rows = (read(p) for p in sheets)
-    keys = [(r["题号"], r["轮"]) for r in a_rows]
-    if keys != [(r["题号"], r["轮"]) for r in b_rows]:
+    keys = [(r["case_id"], r["turn"]) for r in a_rows]
+    if keys != [(r["case_id"], r["turn"]) for r in b_rows]:
         raise SystemExit("The two sheets do not list the same rows in the same order")
-    a = {s: [score(r[s], f"{sheets[0].name} {r['题号']} 第 {r['轮']} 轮 {s}") for r in a_rows] for s in SCORES}
-    b = {s: [score(r[s], f"{sheets[1].name} {r['题号']} 第 {r['轮']} 轮 {s}") for r in b_rows] for s in SCORES}
+    a = {s: [score(r[s], f"{sheets[0].name} {r['case_id']} turn {r['turn']} {s}") for r in a_rows] for s in SCORES}
+    b = {s: [score(r[s], f"{sheets[1].name} {r['case_id']} turn {r['turn']} {s}") for r in b_rows] for s in SCORES}
 
-    print(f"{label}：{len(keys)} 轮，评分人 {names[0]}、{names[1]}\n")
+    print(f"{label}: {len(keys)} turns, raters {names[0]} and {names[1]}\n")
     for s in SCORES:
         same = sum(x == y for x, y in zip(a[s], b[s]))
         k = kappa(a[s], b[s])
-        print(f"{s}：一致 {same}/{len(keys)}（{same / len(keys):.0%}），Cohen's κ = {'–（两人都几乎全给同一个分）' if k is None else f'{k:.2f}'}")
-    print("\n两人不一致的行：")
+        print(f"{s}: agree {same}/{len(keys)} ({same / len(keys):.0%}), Cohen's κ = {'– (both gave almost only one score)' if k is None else f'{k:.2f}'}")
+    print("\nRows where the raters differ:")
     differ = 0
     for i, (case, turn) in enumerate(keys):
         diff = [s for s in SCORES if a[s][i] != b[s][i]]
         if diff:
             differ += 1
-            parts = "；".join(f"{s} {names[0]} {a[s][i]} / {names[1]} {b[s][i]}" for s in diff)
-            notes = " | ".join(n for n in (a_rows[i].get("备注", "").strip(), b_rows[i].get("备注", "").strip()) if n)
-            print(f"  {case} 第 {turn} 轮：{parts}" + (f"（备注：{notes}）" if notes else ""))
+            parts = "; ".join(f"{s} {names[0]} {a[s][i]} / {names[1]} {b[s][i]}" for s in diff)
+            notes = " | ".join(n for n in (a_rows[i].get("note", "").strip(), b_rows[i].get("note", "").strip()) if n)
+            print(f"  {case} turn {turn}: {parts}" + (f" (notes: {notes})" if notes else ""))
     if not differ:
-        print("  无")
+        print("  none")
 
     output = directory / f"{label}_behaviour_merged.csv"
     if output.exists() and not force:
-        print(f"\n{output.name} 已经存在，没有覆盖（里面可能有讨论后的最终分）。要重新生成，加 --force。")
+        print(f"\n{output.name} already exists and was not overwritten (it may hold the scores agreed after discussion). Add --force to rebuild it.")
         return
     with output.open("w", encoding="utf-8-sig", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["题号", "轮", "期望行为", f"决策分_{names[0]}", f"决策分_{names[1]}", f"解释分_{names[0]}", f"解释分_{names[1]}",
-                         "最终决策分", "最终解释分", f"备注_{names[0]}", f"备注_{names[1]}", "讨论结论"])
+        writer.writerow(["case_id", "turn", "expected_behaviour", f"decision_{names[0]}", f"decision_{names[1]}", f"explanation_{names[0]}",
+                         f"explanation_{names[1]}", "final_decision", "final_explanation", f"note_{names[0]}", f"note_{names[1]}", "resolution"])
         for i, row in enumerate(a_rows):
             final = [a[s][i] if a[s][i] == b[s][i] else "" for s in SCORES]
-            writer.writerow([row["题号"], row["轮"], row["期望行为"], a["决策分"][i], b["决策分"][i], a["解释分"][i], b["解释分"][i],
-                             *final, row.get("备注", ""), b_rows[i].get("备注", ""), ""])
-    print(f"\n已生成 {output.name}：一致的行已填最终分，{differ} 行留空，讨论后填上，再运行 --final。")
+            writer.writerow([row["case_id"], row["turn"], row["expected_behaviour"], a["decision_score"][i], b["decision_score"][i],
+                             a["explanation_score"][i], b["explanation_score"][i], *final, row.get("note", ""), b_rows[i].get("note", ""), ""])
+    print(f"\nWrote {output.name}: agreed rows have their final scores; {differ} rows are blank. Fill them in after discussion, then run --final.")
 
 
 def final(label: str, directory: Path) -> None:
@@ -99,26 +117,26 @@ def final(label: str, directory: Path) -> None:
     if not path.exists():
         raise SystemExit(f"{path.name} not found: run without --final first")
     rows = read(path)
-    blank = [f"{r['题号']} 第 {r['轮']} 轮" for r in rows if not (r["最终决策分"].strip() and r["最终解释分"].strip())]
+    blank = [f"{r['case_id']} turn {r['turn']}" for r in rows if not (r["final_decision"].strip() and r["final_explanation"].strip())]
     if blank:
-        raise SystemExit("还有行没有最终分：" + "、".join(blank))
+        raise SystemExit("These rows have no final score yet: " + ", ".join(blank))
     groups = defaultdict(lambda: [0, 0, 0, 0])
     for r in rows:
-        d, e = score(r["最终决策分"], r["题号"]), score(r["最终解释分"], r["题号"])
-        for key in (r["期望行为"], "全部"):
+        d, e = score(r["final_decision"], r["case_id"]), score(r["final_explanation"], r["case_id"])
+        for key in (r["expected_behaviour"], "all"):
             g = groups[key]
             g[0] += 1
             g[1] += d
             g[2] += e
             g[3] += d and e
-    print(f"{label} 最终行为分（目标 ≥ {TARGET:.0%}）\n")
-    print(f"{'期望行为':<14}{'轮':>4}{'决策分':>10}{'解释分':>10}{'两项都对':>10}")
-    for key in sorted(groups, key=lambda k: (k == "全部", k)):
+    print(f"{label} final behaviour scores (target ≥ {TARGET:.0%})\n")
+    print(f"{'Expected':<14}{'Turns':>6}{'Decision':>12}{'Explanation':>12}{'Both':>12}")
+    for key in sorted(groups, key=lambda k: (k == "all", k)):
         n, d, e, both = groups[key]
-        print(f"{key:<14}{n:>4}{f'{d}/{n} {d / n:.0%}':>12}{f'{e}/{n} {e / n:.0%}':>12}{f'{both}/{n} {both / n:.0%}':>12}")
-    n, d, e, both = groups["全部"]
-    for name, value in (("决策分", d / n), ("解释分", e / n)):
-        print(f"\n{name} {value:.0%}：{'达到' if value >= TARGET else '没有达到'}目标")
+        print(f"{key:<14}{n:>6}{f'{d}/{n} {d / n:.0%}':>12}{f'{e}/{n} {e / n:.0%}':>12}{f'{both}/{n} {both / n:.0%}':>12}")
+    n, d, e, both = groups["all"]
+    for name, value in (("Decision", d / n), ("Explanation", e / n)):
+        print(f"\n{name} {value:.0%}: target {'met' if value >= TARGET else 'not met'}")
 
 
 def main() -> None:

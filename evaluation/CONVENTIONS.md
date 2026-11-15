@@ -1,85 +1,89 @@
-# 评估约定（2026-11-05 确认）
+# Evaluation conventions (confirmed 2026-11-05)
 
-`gold.py` 严格按本页计算标准答案。系统和评估脚本都按这一页执行，Evaluation.pdf 里原样写进去。改任何一条，都要重跑 `gold.py`，并在本页末尾记一笔。
+`gold.py` computes the gold answers strictly by this page. The system and the evaluation scripts both follow it, and Evaluation.pdf refers to it. Any change to a rule means running `gold.py` again and recording the change at the end of this page.
 
-草案中标为待定的 4 条（"below X"、入住人数、"near NUS"、"entire apartment"）已于 2026-11-05 确认，按下文执行。
+The 4 items marked as open in the draft ("below X", number of occupants, "near NUS" and "entire apartment") were confirmed on 2026-11-05 and apply as written below.
 
-## 1. 数据快照
+## 1. Data snapshot
 
-- 房源：`output-final-delivery/rental_data_v2.csv`，2026-11-02 冻结的最终数据，369 条，全部 `scrape_status=active`。61 条已下架房源在 `removed_listings.csv` 里，**不参与评估**。系统推荐了下架房源，算作违规。
-- 通勤：`commute_faculty.csv`，OneMap 公共交通缓存，369 条 × 16 个学院，出发时间工作日 08:30。评估时只读缓存，不在线调用 OneMap。
-- 文件 hash 由 `gold.py` 写进 `gold/gold_answers.json` 的 metadata；系统跑分时也要记录同样的 hash。
+- Listings: `output-final-delivery/rental_data_v2.csv`, the final data frozen on 2026-11-02: 369 listings, all with `scrape_status=active`. The 61 listings taken down are in `removed_listings.csv` and **are not part of the evaluation**. Recommending a listing that was taken down counts as a violation.
+- Commutes: `commute_faculty.csv`, the OneMap public-transport cache: 369 listings × 16 faculties, departing at 08:30 on a weekday. The evaluation reads only the cache and never calls OneMap online.
+- `gold.py` writes the file hashes into the metadata of `gold/gold_answers.json`; system runs record the same hashes.
 
-## 2. 三分类
+## 2. Three outcomes
 
-每套房源对每个硬条件的判定只有三种：
+For each hard condition, a listing gets one of three outcomes:
 
-| 判定 | 含义 |
+| Outcome | Meaning |
 |---|---|
-| pass | 数据明确满足 |
-| unknown | 数据没写，或写了但无法判断 |
-| fail | 数据明确不满足 |
+| pass | The data clearly meets the condition |
+| unknown | The data does not say, or says something that cannot be judged |
+| fail | The data clearly does not meet the condition |
 
-整体判定：有一项 fail 就是 **excluded**；没有 fail、但有 unknown，就是 **needs_confirmation**；全部 pass 才是 **confirmed**。系统只能把 confirmed 当成"符合"展示；needs_confirmation 可以展示，但必须标"需确认"，并说出哪一项未知（`gold_answers.json` 里每套都有 `unknown_fields`）。
+Overall: one fail makes the listing **excluded**; no fail but at least one unknown makes it **needs_confirmation**; only a listing that passes everything is **confirmed**. The system may present only confirmed listings as matches. Listings that need confirmation may be shown, but must be marked as needing confirmation, with the unknown item named (each listing in `gold_answers.json` has its `unknown_fields`).
 
-## 3. 各字段的判定规则
+## 3. Rules for each field
 
-| 条件 | pass | unknown | fail |
+| Condition | pass | unknown | fail |
 |---|---|---|---|
-| 预算 `max_price_sgd` | 租金 ≤ 上限 | 租金缺失 | 租金 > 上限 |
-| 整租/合租 `rental_scope` | 一致 | — | 不一致 |
-| 房型 `room_type` | 一致 | `room_unspecified`、`unknown` | 其他房型，或不是单间 |
-| 区 `district_code` | 一致 | — | 不一致 |
-| 性别 `tenant_gender=female` | `female_only`、`no_restriction` | `unknown` | `male_only` |
-| 家具 `furnished_required` | 全家具、半家具、`furnished_unspecified` | `unknown` | `unfurnished` |
-| 全家具 `furnishing_level=full`（B07） | `fully_furnished` | `furnished_unspecified`、`unknown` | 半家具、`unfurnished` |
-| 能做饭 `cooking_required` | `light_cooking`、`cooking_any_cooking` | `unknown`、`cooking_prefer_not_to_say` | `cooking_not_allowed`、`not_allowed` |
-| 能大火做饭 `cooking_level=full` | `cooking_any_cooking` | `unknown`、`cooking_prefer_not_to_say` | `light_cooking`、禁止做饭 |
-| 空调 | `yes` | `unknown` | `no`（数据里没有） |
-| 卧室、卫生间下限 | ≥ 下限 | 缺失 | < 下限 |
-| MRT 步行（分钟或米） | 最近站在运营，且 ≤ 上限 | 最近站不在运营（在建或状态未知）且 ≤ 上限；或数值缺失 | 数值 > 上限 |
-| 到学院通勤 | 缓存分钟数 ≤ 上限 | 缓存里没有 | > 上限 |
-| 物业类型 | 归一化后在列表内 | — | 不在列表内 |
-| 面积、餐饮数量下限 | ≥ 下限 | 缺失 | < 下限 |
-| 能签 N 个月 `lease_months` | 房源最短租期 ≤ N（Flexible 算 0，Short Term 算 1，1 year 算 12，2 years 算 24） | 缺失、`Prefer not to say` | 最短租期 > N |
-| 房东不同住 | `no` | `unknown` | `yes` |
-| 可养宠物 | `pets_allowed` | `unknown` | `no_pets` |
-| 独立卫浴 | `yes` | `unknown` | `no`（数据里没有） |
+| Budget `max_price_sgd` | Rent ≤ limit | Rent missing | Rent > limit |
+| Whole unit / room `rental_scope` | Same | — | Different |
+| Room type `room_type` | Same | `room_unspecified`, `unknown` | Another room type, or not a room |
+| District `district_code` | Same | — | Different |
+| Gender `tenant_gender=female` | `female_only`, `no_restriction` | `unknown` | `male_only` |
+| Furniture `furnished_required` | Fully furnished, partially furnished, `furnished_unspecified` | `unknown` | `unfurnished` |
+| Fully furnished `furnishing_level=full` (B07) | `fully_furnished` | `furnished_unspecified`, `unknown` | Partially furnished, `unfurnished` |
+| Can cook `cooking_required` | `light_cooking`, `cooking_any_cooking` | `unknown`, `cooking_prefer_not_to_say` | `cooking_not_allowed`, `not_allowed` |
+| Full cooking `cooking_level=full` | `cooking_any_cooking` | `unknown`, `cooking_prefer_not_to_say` | `light_cooking`, cooking not allowed |
+| Air-conditioning | `yes` | `unknown` | `no` (not in the data) |
+| Minimum bedrooms, bathrooms | ≥ minimum | Missing | < minimum |
+| Walk to MRT (minutes or metres) | Nearest station is open and ≤ limit | Nearest station is not open (under construction or status unknown) and ≤ limit; or the value is missing | Value > limit |
+| Commute to faculty | Cached minutes ≤ limit | Not in the cache | > limit |
+| Property type | In the list after normalising | — | Not in the list |
+| Minimum area, number of food places | ≥ minimum | Missing | < minimum |
+| Can sign for N months `lease_months` | The listing's shortest lease ≤ N (Flexible counts as 0, Short Term as 1, 1 year as 12, 2 years as 24) | Missing, `Prefer not to say` | Shortest lease > N |
+| Landlord does not live in | `no` | `unknown` | `yes` |
+| Pets allowed | `pets_allowed` | `unknown` | `no_pets` |
+| Private bathroom | `yes` | `unknown` | `no` (not in the data) |
 
-其他约定：
+Other conventions:
 
-- **租金用哪一列**：用 `rent_monthly_sgd_now`（最近一次记录的挂牌价），缺失时才退回 `rent_monthly_sgd`。H01、H02 这类题两列都要答。
-- **"below / under X"** 按 ≤ X 处理，和"no more than X"相同。- **MRT 在建站**：数据只给最近的车站，不管它是否运营。最近站在建时，最近的运营站只会更远：数值已经超过上限就判 fail，否则判 unknown。
-- **入住人数 `occupant_count`** 不作为筛选条件，因为整租房源没有"最多可住几人"的字段。它只用来考系统的解析准确率（A06、A07 的 must_not 要求不能把 4 个人理解成 4 个卧室）。- **物业类型归一化**：转小写，空格和连字符换成下划线（`HDB Flat` → `hdb_flat`，`Condominium` → `condominium`）。
-- **坐标推断的房源**：`coord_source=pg_poi_inferred` 的房源，通勤和 MRT 数值误差约 165 m，标准答案照常使用，但 `top_3` 里会带上 `coord_source`，失败分析时要考虑这一点。
+- **Which rent column**: `rent_monthly_sgd_now` (the latest recorded advertised price), falling back to `rent_monthly_sgd` only when it is missing. Cases such as H01 and H02 must answer with both columns.
+- **"below / under X"** means ≤ X, the same as "no more than X".
+- **MRT stations under construction**: the data gives only the nearest station, whether or not it is open. When the nearest station is under construction, the nearest open station can only be farther away: if the value is already over the limit the outcome is fail, otherwise unknown.
+- **Number of occupants `occupant_count`** is not a filter, because whole-unit listings have no field for how many people may live there. It is used only to test the system's parsing (the must_not of A06 and A07 forbids reading 4 people as 4 bedrooms).
+- **Normalising property types**: lower case, with spaces and hyphens replaced by underscores (`HDB Flat` → `hdb_flat`, `Condominium` → `condominium`).
+- **Listings with inferred coordinates**: for listings with `coord_source=pg_poi_inferred`, commute and MRT values can be off by about 165 m. The gold answer uses them as usual, but `top_3` carries `coord_source`, to be taken into account in failure analysis.
 
-## 4. 题意上的约定
+## 4. How requests are read
 
-- **"near NUS" / "close to NUS"**（G01、G05 第 1 轮）：没给数字，按软偏好处理，只用来排序（通勤优先），不作为筛选条件。- **学院**：按每题原设定（A03、A10、C04 是 Faculty of Science，A04、A06、C05 是 School of Computing）。G01、G02、G05 原题没有学院，按通勤排序需要目的地，设为 Faculty of Science（和 agent 运行时注册的一致）。写在题目的 `preconditions` 里。
-- **"entire apartment"**（G04）：理解为整租，不限制物业类型。新加坡口语里 apartment 常泛指一套房子。- **G04 第 2 轮"也可以合租"**：去掉整租/合租限制，整租和单间都算。
-- **G05**：两轮都没说整租还是合租，所以不限制。
-- **E、F 类里的"this property"**：先发一句"Tell me about listing 500074659."作为前置轮，不计分；之后的提问都指这套房源。
+- **"near NUS" / "close to NUS"** (G01 and G05, turn 1): no number is given, so it is a soft preference used only for ranking (commute first), not a filter.
+- **Faculty**: as set in each case (Faculty of Science for A03, A10 and C04; School of Computing for A04, A06 and C05). G01, G02 and G05 had no faculty; ranking by commute needs a destination, so they use Faculty of Science (the same as the account used when the agent ran them). This is written in each case's `preconditions`.
+- **"entire apartment"** (G04): read as a whole unit, with no limit on property type. In everyday Singapore usage, "apartment" often means any flat.
+- **G04 turn 2, "a shared unit is fine too"**: the whole unit / room limit is removed, so both whole units and rooms count.
+- **G05**: neither turn says whole unit or room, so neither is required.
+- **"this property" in categories E and F**: a set-up turn, "Tell me about listing 500074659.", is sent first and not scored; the questions after it refer to that listing.
 
-## 5. 排序
+## 5. Ranking
 
-- 按用户说的优先项做严格字典序；用户没说时按租金升序。租金如果不在用户的优先项里，就作为最后一级比较；再相同时按 listing_id 排。
-- 映射：price → 租金升序；commute → 到所设学院的通勤升序；mrt → MRT 步行分钟升序；space → 面积降序；food_places → 1 km 内餐饮数降序。缺失值排最后。
-- 只对 confirmed 排序。`top_3` 是标准答案的前 3 名。
-- **用户没说优先项时**，系统按 MRT 和（有预算时的）租金平衡排序，不按租金升序。这类题的 `top_3` 仍按租金升序，留作基线 B1 的对照，**不用来判系统的顺序**；这种情况下排得好不好，由人工排序（指标 7）评价。用户说了优先项的题，系统必须严格按本节排序。
+- Listings are ranked strictly in the order of the priorities the user states (lexicographic); with no stated priority, by rent, lowest first. If rent is not among the user's priorities, it is used as the last tie-breaker, and after that listing_id.
+- Mapping: price → rent, lowest first; commute → commute to the set faculty, shortest first; mrt → minutes to walk to the MRT, fewest first; space → area, largest first; food_places → food places within 1 km, most first. Missing values go last.
+- Only confirmed listings are ranked. `top_3` is the gold answer's top three.
+- **When the user states no priority**, the system balances MRT distance and (when there is a budget) rent, rather than sorting by rent. The `top_3` of such cases is still by rent, lowest first, kept as a reference for baseline B1, and **is not used to judge the system's order**; how well the system ranks in these cases is judged by the human ranking (metric 7). When the user states priorities, the system must rank exactly as this section says.
 
-## 6. 放宽（C 类）
+## 6. Relaxation (category C)
 
-只放宽题目指定的那一个字段（`relaxation_field`）。在"其他条件全部 pass、只有这一项 fail"的房源中，找能让至少一套变成 confirmed 的最小改动，写进 `relaxation.minimum_relaxed_value`；`ladder` 给出前几档放宽值和累计套数。放宽 MRT 条件时，最近站必须在运营。
+Only the one field the case names (`relaxation_field`) is relaxed. Among listings that pass every other condition and fail only this one, the gold answer finds the smallest change that turns at least one listing into confirmed and records it as `relaxation.minimum_relaxed_value`; `ladder` gives the first few relaxed values with the cumulative number of listings. When the MRT condition is relaxed, the nearest station must be open.
 
-`relaxation_field` 是列表时（C08），每个字段单独试一次，分别给出结果，不比较不同字段之间谁"更小"。
+When `relaxation_field` is a list (C08), each field is tried on its own and gets its own result; fields are not compared to decide which change is "smaller".
 
-如果单改这一个字段不够（例如 C06），就写 `single_field_relaxation_available=false`，并列出单独去掉哪个其他条件能有结果（`other_single_field_drops`）。
+If changing this one field is not enough (for example C06), the gold answer records `single_field_relaxation_available=false` and lists which other single condition, if dropped, would give results (`other_single_field_drops`).
 
-## 7. 变更记录
+## 7. Change log
 
-| 日期 | 改了什么 | 谁确认 |
+| Date | What changed | Confirmed by |
 |---|---|---|
-| 2026-11-05 | 初稿；改用 11/02 冻结数据重算全部标准答案 | — |
-| 2026-11-05 | 4 条待定项按初稿确认，规则未改动 | Caijiahui0715 |
-| 2026-11-05 | 新增 B07 用的"全家具"规则；C 类可以同时测试多个放宽字段（C08） | Caijiahui0715 |
-| 2026-11-06 | 第 5 节：用户没说优先项的题不判系统的顺序。`gold.py` 的计算规则没有改，标准答案不变 | Caijiahui0715 |
+| 2026-11-05 | First draft; all gold answers recomputed on the frozen data of 11/02 | — |
+| 2026-11-05 | The 4 open items confirmed as drafted; no rule changed | Caijiahui0715 |
+| 2026-11-05 | Added the "fully furnished" rule used by B07; category C can test several relaxation fields at once (C08) | Caijiahui0715 |
+| 2026-11-06 | Section 5: in cases where the user states no priority, the system's order is not judged. The calculation in `gold.py` did not change, so the gold answers are the same | Caijiahui0715 |

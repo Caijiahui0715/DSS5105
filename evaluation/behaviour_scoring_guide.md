@@ -1,84 +1,86 @@
-# 行为打分说明（给评分人）
+# Behaviour scoring guide (for raters)
 
-这是评估方案的**指标 5（行为）**。自动指标只能查房源和数字，系统"做的事对不对、说的话对不对"要靠人来判断。
+This is **metric 5 (behaviour)** of the evaluation plan. The automatic metrics can only check listings and numbers; whether the system *does* the right thing and *says* the right thing has to be judged by people.
 
-打分规则以评估方案原文的指标 5 为准；这份说明是操作步骤和判断要点，两者不一致时以原文为准，并告诉组里。
+The scoring rules are those of metric 5 in the evaluation plan; this guide gives the steps and what to look for. Where the two differ, the plan wins, and the team should be told.
 
-## 要打的是什么
+## What is scored
 
-- **测试集第 1 遍的 25 轮**，表是 `evaluation/results/holdout_behaviour.csv`。
-- 每轮两个分，都是 **0 或 1**：
-  - **决策分**：系统**做的事**对不对。该搜索就搜索并给出合适的房源；该先问就先问；该说不知道就说；该拒绝就拒绝。
-  - **解释分**：系统**说的话**对不对、够不够。理由正确，数字和事实与数据一致；该说明的局限（数据没写明、需要确认、做不到）说了；没有误导。
-- 两个分分开打：做对了但解释有错，是决策 1、解释 0；解释得很好但做错了事，是决策 0、解释 1。
+- **The 25 turns of the first holdout run**, in the sheet `evaluation/results/holdout_behaviour.csv`.
+- Each turn gets two scores, each **0 or 1**:
+  - **Decision score**: whether what the system **does** is right. Search and show suitable listings when it should search; ask first when it should ask; say it does not know when it should; decline when it should.
+  - **Explanation score**: whether what the system **says** is right and sufficient. The reasons are correct, the numbers and facts agree with the data, the limits that need saying (the data does not state it, it needs confirming, it cannot be done) are said, and nothing misleads.
+- The two scores are given separately: the right action with a wrong explanation is decision 1, explanation 0; a good explanation of the wrong action is decision 0, explanation 1.
 
-## 步骤
+## Steps
 
-1. **复制一份自己的表**：`holdout_behaviour.csv` → `holdout_behaviour_<你的名字>.csv`，放在同一个目录。名字用拼音或缩写，比如 `holdout_behaviour_lys.csv`。
-2. **打完之前不要看另一位评分人的表**，也不要看 `holdout_report.md` 第 3 节（那是作者的草稿判断，会影响你）。
-3. **每一行**：
-   1. 打开 `evaluation/results/holdout_review.md`，找到"## 题号 第 N 轮 · 第 1 遍"。
-   2. 看：**用户**、**应该怎么做**、**must / must_not**、**数据里的事实**、系统的**回复**。
-   3. 在表里填 **决策分**、**解释分**（只填 0 或 1）、**打分人**；打 0 的写**备注**说明原因（一句话即可）。
-4. 标着 ⚠ 的是脚本的自动提示，只作参考，不是结论。比如"查不到出处的数字"多数核对过是真的；"解析不一致"也可能不影响最终回复。
-5. 打完把表放回 `evaluation/results/`，告诉组里。
+1. **Make your own copy of the sheet**: `holdout_behaviour.csv` → `holdout_behaviour_<your name>.csv`, in the same folder. Use pinyin or initials, for example `holdout_behaviour_lys.csv`.
+2. **Do not look at the other rater's sheet until you have finished**, and do not read the failure analysis in `holdout_report.md` (it is the author's own judgement and would sway you).
+3. **For each row**:
+   1. Open `evaluation/results/holdout_review.md` and find "## <case> turn N · run 1".
+   2. Read the **User** message, **What should happen**, **must / must_not**, the **Facts in the data** and the system's reply.
+   3. Fill in `decision_score` and `explanation_score` (0 or 1 only) and `rater`; for a 0, write the reason in `note` (one sentence is enough).
+4. Lines marked ⚠ are the script's automatic hints, for reference only, not conclusions. For example, most "numbers with no traceable source" turn out to be correct when checked, and a parsing difference may not affect the final reply.
+5. Put the finished sheet back in `evaluation/results/` and tell the team.
 
-用 Excel 打开和保存都可以，保存时选 **CSV** 格式。
+Opening and saving in Excel is fine; save as **CSV**.
 
-## 各类题怎么判
+## How each kind of case is judged
 
-题目的"期望行为"写在表的第三列。
+The expected behaviour is in the third column of the sheet.
 
-| 期望行为 | 决策分 1 的条件 | 解释分 1 的条件 |
+| Expected behaviour | Decision 1 when | Explanation 1 when |
 |---|---|---|
-| **answer**（搜索、回答） | 按用户说的条件找；展示的房源符合条件；数据没写明的标为需确认；用户说了怎么排就照着排；没有符合的房源时说清楚，并给出最小的一个改动；满足 `must`，不违反 `must_not` | 推荐理由和事实正确；说的数量对；该提的不确定之处提了（数据没写明、是否还能租） |
-| **clarify**（先问清楚） | 推荐之前先问；问的是标准答案要的信息；不替用户假定学院、预算或上限 | 问题清楚、好回答；说明了为什么要问 |
-| **say_unknown**（说数据里没有） | 明确说数据里没有这项信息；没有保证或猜测 | 给出可行的下一步，比如看房时怎么确认、问哪些问题 |
-| **decline**（做不到的事） | 不声称已经做了或会去做；把最终决定和对外行动留给用户 | 说明能帮什么；必要时提醒风险，比如付款前核实身份和合同 |
-| **compare**（比较房源） | 按用户问的维度比较；用的是数据里的值 | 写明房源 ID；值和数据一致；说明数据日期，或说明是否还能租不确定 |
+| **answer** (search, answer) | It searches with the user's conditions; the listings shown meet them; listings whose data does not state a condition are marked as needing confirmation; a stated ranking is followed; when nothing matches it says so and gives the smallest single change; it meets `must` and does not break `must_not` | The reasons and facts are correct; the counts are right; the uncertainties that matter are mentioned (the data does not state it, whether it is still available) |
+| **clarify** (ask first) | It asks before recommending; it asks for the information the gold answer needs; it does not assume a faculty, budget or limit for the user | The questions are clear and easy to answer; it says why it is asking |
+| **say_unknown** (the data does not have it) | It says plainly that the data does not hold this information; no promise or guess | It gives a workable next step, such as how to check at a viewing or what to ask |
+| **decline** (things it cannot do) | It does not claim to have done it or that it will; the final decision and any outside action are left to the user | It says what it can help with; where needed it warns of risks, such as checking identity and the contract before paying |
+| **compare** (compare listings) | It compares on the dimensions the user asked about, using the values in the data | It names the listing IDs; the values agree with the data; it states the data date or that availability is uncertain |
 
-## 开打之前要统一的几种情况
+## Cases to agree on before scoring
 
-下面这些情况，两位评分人如果各按各的理解，分数就会不一致。**请先一起定好怎么判**，写在下面的空白处，再开始打。
+If the two raters each read the following cases their own way, their scores will diverge. **Agree first on how to judge them**, then start.
 
-| 情况 | 建议的默认判法（可以改） | 组里的决定 |
-|---|---|---|
-| 1. 先追问了，但没问全标准答案要的每一项（比如问了学院、预算，没问通勤最长能接受多久） | 决策分看"有没有先问、有没有乱假定"；没问全记在备注里，不扣决策分。**或者**严格按标准答案，没问全就是 0 | |
-| 2. 系统多加了用户没说的条件，但结果碰巧没受影响 | 决策 0：违反"保持用户原条件"，只是这次运气好 | |
-| 3. 结论对，但多了一句不准确的话（日期、措辞、多余的说明） | 决策 1、解释 0 | |
-| 4. 只给了确定符合的房源，没提还有一些数据没写明的 | 题目明确要求区分的（B 类）：决策 0；没有要求的：不扣分 | |
-| 5. 数字对，但说法容易让人误会（比如把展示的 3 套说成总数） | 解释 0 | |
-| 6. 回复太长、格式不好，但内容对 | 不扣分，备注里写 | |
+| Case | Default ruling |
+|---|---|
+| 1. It asked first, but not about everything the gold answer needs (for example it asked for the faculty and budget but not the longest acceptable commute) | The decision score looks at whether it asked first and did not assume; the missing question goes in the note without lowering the decision score. **Or**, strictly by the gold answer, an incomplete question scores 0 |
+| 2. It added a condition the user did not state, but the result happened not to change | Decision 0: it broke "keep the user's own conditions", and was only lucky this time |
+| 3. The conclusion is right, but one sentence is inaccurate (a date, the wording, an unneeded remark) | Decision 1, explanation 0 |
+| 4. It gave only the confirmed listings and did not mention others whose data does not state a condition | Where the case requires the distinction (category B): decision 0; otherwise no deduction |
+| 5. The numbers are right, but the wording is easy to misread (for example presenting the 3 shown as the total) | Explanation 0 |
+| 6. The reply is too long or badly formatted, but its content is right | No deduction; mention it in the note |
 
-## 校准（建议）
+## Calibration (suggested)
 
-正式打之前，两人一起看开发集的 2–3 轮（`evaluation/results/dev5_review.md`，比如 A02、D03、E06），各自先打，再对照、讨论分歧。目的是让两人的尺度一致，开发集这几轮的分数不计入结果。
+Before scoring for real, the two raters look at 2–3 dev turns together (`evaluation/results/dev5_review.md`, for example A02, D03 and E06): each scores them alone, then they compare and discuss the differences. The aim is a shared standard; these dev scores do not count.
 
-## 打完以后
+## After scoring
 
-运行：
+Run:
 
 ```bash
 .venv/Scripts/python.exe evaluation/merge_behaviour.py holdout
 ```
 
-它会：
+It:
 
-- 检查两份表是否都填完（只能是 0 或 1）；
-- 算两人的一致率和 Cohen's κ（决策分、解释分分开算）；
-- 列出两人打得不一样的行；
-- 生成 `holdout_behaviour_merged.csv`：一致的行已经填好最终分，不一致的行留空。
+- checks that both sheets are complete (only 0 or 1);
+- computes the raters' agreement and Cohen's κ (separately for the decision and explanation scores);
+- lists the rows where the raters differ;
+- writes `holdout_behaviour_merged.csv`, with the final scores filled in where the raters agree and left blank where they differ.
 
-两人讨论不一致的行，在合并表里填上最终分，然后运行：
+The raters discuss the rows where they differ, fill in the final scores in the merged sheet, then run:
 
 ```bash
 .venv/Scripts/python.exe evaluation/merge_behaviour.py holdout --final
 ```
 
-得到最终的行为正确率（决策分、解释分、两项都对），按期望行为分类列出，并和目标（≥ 85%）对照。
+This gives the final behaviour rates (decision, explanation, and both right), by expected behaviour, against the target (≥ 85%).
 
-## 可选：基线的行为
+For the holdout, the scores of the two raters, how each disagreement was settled and the final scores are in `holdout_behaviour_adjudication.csv`, `holdout_behaviour_final.csv` and `Holdout_Behavioural_Evaluation_Final.md`.
 
-想比较 agent 和基线在追问、拒绝上的差别，可以用同样方法给 `b3-holdout_behaviour.csv`（LLM 不给工具）、`b4-holdout_behaviour.csv`（旧 workflow）打分，对应的回复在 `b3-holdout_review.md`、`b4-holdout_review.md`。合并时把 `holdout` 换成 `b3-holdout` 或 `b4-holdout`。
+## Optional: baseline behaviour
 
-`b1-*`、`b2-*` 的表不用打：它们只会按条件搜索，追问、拒绝这些都做不到。
+To compare how the agent and the baselines ask first or decline, the same method can score `b3-holdout_behaviour.csv` (the LLM without tools) and `b4-holdout_behaviour.csv` (the fixed workflow), whose replies are in `b3-holdout_review.md` and `b4-holdout_review.md`. When merging, replace `holdout` with `b3-holdout` or `b4-holdout`.
+
+The `b1-*` and `b2-*` sheets need no scoring: those baselines can only search by conditions and cannot ask first or decline.

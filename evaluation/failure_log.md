@@ -1,306 +1,306 @@
-# 失败案例记录
+# Failure log
 
-按评估方案第 6 节的模板记录，给 Evaluation.pdf 用（至少 10 个，分散在不同类别和根因上）。答不好的题不删。
+Recorded in the template of section 6 of the evaluation plan, for Evaluation.pdf (at least 10 cases, spread over different categories and root causes). Cases the system answers badly are not removed.
 
-根因只用这六类：解析错误、工具或 SQL 错误、数据缺失或取值不一致、LLM 改写出错、守卫误拦、评估集本身出错。
+Root causes use only these six classes: parsing error, tool or SQL error, missing or inconsistent data, LLM rewriting error, guard false positive, and an error in the evaluation set itself.
 
-前面几节的结果都来自**开发集**：看着这些题改系统是允许的，所以每条都写了怎么修、修好没有。最后一节是**留出集**（2026-11-09 跑的），按规定只记录、不修。
+The results in the first sections all come from the **dev set**: changing the system while looking at these cases is allowed, so each entry says how it was fixed and whether the fix worked. The last section is the **holdout** (run on 2026-11-09), which by the rules is only recorded, not fixed.
 
-## 第一轮：不调用模型的比对（`check_search.py`，2026-11-06）
+## Round 1: comparison without the model (`check_search.py`, 2026-11-06)
 
-修复前（提交 `38c529e`）：32 轮里，confirmed 集合一致 28 轮，needs_confirmation 集合一致 29 轮；11 轮说了优先项的题，前 3 名顺序一致 2 轮。
+Before the fixes (commit `38c529e`): of 32 turns, the confirmed set agreed in 28 and the needs_confirmation set in 29; of the 11 turns with stated priorities, the top 3 were in the gold order in 2.
 
-修复后：32、32、11。
+After the fixes: 32, 32 and 11.
 
 ### A04 · A_explicit_requirements
 
-- **用户输入**：想租整套公寓，预算 6,000 以内，至少 2 个卫生间，按到学院的通勤排序。
-- **期望结果**：confirmed 57 套。
-- **实际结果**：17 套，漏掉 40 套。
-- **根因**：数据缺失或取值不一致。`property_type` 大小写混用（`Condominium` 107 条、`condominium` 104 条），系统按原值精确匹配，只认小写。这是真实用户也会碰到的 bug：搜公寓的人看不到一大半房源。
-- **是否修复**：是。`agent_listings` 视图统一成 V2 的写法，原始数据没有改。
-- **修复后开发集的结果**：57 套，和标准答案一致。
+- **User input**: a whole unit, budget up to 6,000, at least 2 bathrooms, ranked by commute to the faculty.
+- **Expected**: 57 confirmed listings.
+- **Actual**: 17, missing 40.
+- **Root cause**: missing or inconsistent data. `property_type` mixes upper and lower case (`Condominium` 107 rows, `condominium` 104), and the system matched the raw value exactly, recognising only lower case. A real user would hit this bug: someone searching for a condominium would not see more than half of them.
+- **Fixed**: yes. The `agent_listings` view normalises to the V2 spelling; the raw data is unchanged.
+- **Dev result after the fix**: 57, as in the gold answer.
 
 ### A08 · A_explicit_requirements
 
-- **用户输入**：整套，至少 80 平米，7,000 以内，先按面积大排，再按 MRT 近，再按便宜。
-- **期望结果**：confirmed 62 套，needs_confirmation 0 套。
-- **实际结果**：confirmed 56 套，needs_confirmation 6 套。
-- **根因**：工具或 SQL 错误。系统把"按 MRT 排序"当成了条件：没有 MRT 数据的房源被放进"需确认"。约定是优先项只决定顺序，缺数据的排最后。
-- **是否修复**：是。优先项不再影响筛选。
-- **修复后开发集的结果**：confirmed 62 套，needs_confirmation 0 套。
+- **User input**: a whole unit, at least 80 sqm, up to 7,000, ranked by area (largest first), then MRT distance, then price.
+- **Expected**: 62 confirmed, 0 needing confirmation.
+- **Actual**: 56 confirmed, 6 needing confirmation.
+- **Root cause**: tool or SQL error. The system treated "rank by MRT" as a condition, so listings with no MRT data went into "needs confirmation". By the conventions, priorities only set the order, and missing values go last.
+- **Fixed**: yes. Priorities no longer affect filtering.
+- **Dev result after the fix**: 62 confirmed, 0 needing confirmation.
 
 ### A09 · A_explicit_requirements
 
-- **用户输入**：单间，1,500 以内，1 公里内至少 30 家餐饮，步行到运营中的 MRT 不超过 1,000 米。
-- **期望结果**：500190512 属于 needs_confirmation。
-- **实际结果**：算作 confirmed。
-- **根因**：工具或 SQL 错误。这套房源最近车站的运营状态未知，系统只排除在建车站，把状态未知的也算通过。
-- **是否修复**：是。只有确认运营中的车站才算通过；在建或状态未知时，超过上限判不符合，否则判未知。
-- **修复后开发集的结果**：和标准答案一致。
+- **User input**: a room, up to 1,500, at least 30 food places within 1 km, at most 1,000 m walk to an open MRT station.
+- **Expected**: 500190512 needs confirmation.
+- **Actual**: counted as confirmed.
+- **Root cause**: tool or SQL error. The status of this listing's nearest station is unknown; the system excluded only stations under construction and let unknown status pass.
+- **Fixed**: yes. Only a station confirmed open passes; when it is under construction or its status is unknown, a value over the limit fails and otherwise it is unknown.
+- **Dev result after the fix**: same as the gold answer.
 
 ### A10 · A_explicit_requirements
 
-- **用户输入**：能签 12 个月，单间，2,000 以内，先按通勤、再按租金排。
-- **期望结果**：500173043 属于 confirmed。
-- **实际结果**：算作 needs_confirmation。
-- **根因**：工具或 SQL 错误。系统把 `Short Term` 配 12 个月判为未知，约定是 `Short Term` 算最短 1 个月。
-- **是否修复**：是。
-- **修复后开发集的结果**：和标准答案一致。
+- **User input**: can sign for 12 months, a room, up to 2,000, ranked by commute, then rent.
+- **Expected**: 500173043 is confirmed.
+- **Actual**: counted as needing confirmation.
+- **Root cause**: tool or SQL error. The system judged `Short Term` against 12 months as unknown; by the conventions, `Short Term` means a shortest lease of 1 month.
+- **Fixed**: yes.
+- **Dev result after the fix**: same as the gold answer.
 
-### A01 · A_explicit_requirements（排序）
+### A01 · A_explicit_requirements (ranking)
 
-- **用户输入**：D05 的 common room，1,200 以内，便宜的排前面。
-- **期望结果**：第 1 名是 500250282（S$750）。
-- **实际结果**：S$750 这套排在最后；第 1 名是 500297851（S$1,050）。
-- **根因**：工具或 SQL 错误。优先项只占 70% 权重，这套 MRT 步行 20 分钟，被另外 30% 拉到了最后。11 轮说了优先项的题，只有 2 轮前 3 名顺序一致。
-- **是否修复**：是。说了优先项就严格按顺序比较，再比租金，缺数据的排最后。没说优先项时仍按 MRT 和租金平衡排序（见 `CONVENTIONS.md` 第 5 节）。
-- **修复后开发集的结果**：11 轮全部一致。
+- **User input**: a common room in D05, up to 1,200, cheapest first.
+- **Expected**: first place is 500250282 (S$750).
+- **Actual**: the S$750 listing came last; first was 500297851 (S$1,050).
+- **Root cause**: tool or SQL error. The stated priority carried only 70% of the weight; this listing is a 20-minute walk from the MRT, and the other 30% pulled it to the bottom. Of the 11 turns with stated priorities, only 2 had the top 3 in the gold order.
+- **Fixed**: yes. When priorities are stated, listings are compared strictly in that order, then by rent, with missing values last. With no stated priority, the system still balances MRT and rent (see `CONVENTIONS.md` section 5).
+- **Dev result after the fix**: all 11 turns agree.
 
-## 第二轮起：真实模型跑开发集
+## Round 2 onwards: the real model on the dev set
 
-每遍是开发集 39 题，每题跑一次，计分 44 轮（不算前置轮）。结果在 `results/dev1.jsonl` 到 `dev5.jsonl`，逐轮记录在对应的 `_review.md`。dev4 是改了模糊问题后的第一遍，暴露了新问题；dev5 是修完之后的一遍，全部 39 题用同一版代码跑。
+Each pass is the 39 dev cases, each run once, with 44 scored turns (set-up turns not counted). The results are `results/dev1.jsonl` to `dev5.jsonl`, with the turn-by-turn records in the matching `_review.md`. dev4 was the first pass after the changes for vague requests and exposed new problems; dev5 is the pass after those were fixed, with all 39 cases run on the same code.
 
-| 指标 | 目标 | dev1 | dev2 | dev3 | dev4 | dev5 |
+| Metric | Target | dev1 | dev2 | dev3 | dev4 | dev5 |
 |---|---|---|---|---|---|---|
-| 解析字段正确 | | 98% | 100% | 100% | 99% | 100% |
-| 解析整轮正确 | | 29/32 | 31/32 | 32/32 | 31/32 | 32/32 |
-| 展示房源违规率 | 0% | 0% | 0% | 0% | 0% | 0% |
-| 漏报（该说有却说没有） | | 0/24 | 0/24 | 0/24 | 1/24 | 0/24 |
-| 未知标注率 | ≥ 90% | 100% | 100% | 100% | 100% | 100% |
-| 前 3 名顺序（说了优先项的题） | | 9/11 | 11/11 | 11/11 | 10/11 | 11/11 |
-| 回复说错符合总数 | | 1/22 | 1/20 | 0/22 | 0/21 | 0/16 |
-| 查不到来源的数字（候选） | | 17/331 | 4/331 | 9/337 | 1/315 | 1/332 |
-| 守卫拦截 | | 4 | 3 | 1 | 2 | 1 |
+| Fields parsed right | | 98% | 100% | 100% | 99% | 100% |
+| Turns parsed fully right | | 29/32 | 31/32 | 32/32 | 31/32 | 32/32 |
+| Violation rate of listings shown | 0% | 0% | 0% | 0% | 0% | 0% |
+| Missed (said none when there were matches) | | 0/24 | 0/24 | 0/24 | 1/24 | 0/24 |
+| Unknown-labelling rate | ≥ 90% | 100% | 100% | 100% | 100% | 100% |
+| Top-3 order (cases with stated priorities) | | 9/11 | 11/11 | 11/11 | 10/11 | 11/11 |
+| Replies stating a wrong total of matches | | 1/22 | 1/20 | 0/22 | 0/21 | 0/16 |
+| Numbers with no traceable source (candidates) | | 17/331 | 4/331 | 9/337 | 1/315 | 1/332 |
+| Guard interventions | | 4 | 3 | 1 | 2 | 1 |
 
-编造率：dev3 的 9 个候选都人工查过，都是真的，所以是 0/337。528、369、107、1590、262 是数据里的最低租金和房源数，核对过冻结数据；2 分钟是 22 减 20；14 分钟是工具返回的值。这是作者自己查的，也只查得到数字，查不到文字说错。dev5 的 1 个候选是 H04 的 14 分钟（17 减 3），也是真的。下面 V2 那种把总数说成某一类的错误，这项查不出来。
+Fabrication rate: all 9 candidates in dev3 were checked by hand and are all true, so the rate is 0/337. 528, 369, 107, 1590 and 262 are the lowest rents and listing counts in the data, checked against the frozen data; 2 minutes is 22 minus 20; 14 minutes is a value a tool returned. The author did this check, and it can only check numbers, not wrong statements in words. dev5's one candidate is H04's 14 minutes (17 minus 3), also true. An error like V2's below, presenting the total as one sub-group, cannot be caught by this metric.
 
-行为打分（**作者自评的草稿，不是正式分**，正式分在冻结后由两人打）：dev3 决策约 39–42/44，解释约 42–43/44。范围是因为有几题看怎么读标准：D03、D05 算 0；C05、F03、E06 看读法。
+Behaviour (**the author's own draft, not a formal score**; the formal scores were given on the holdout by two raters): dev3 decisions about 39–42/44, explanations about 42–43/44. It is a range because some cases depend on how the standard is read: D03 and D05 count as 0; C05, F03 and E06 depend on the reading.
 
-更正：这里原来写的是决策约 44/44。当时 `_review.md` 不显示每题的 `gold_answer`，我没有对照它，D 类只看了有没有提问，所以打高了。dev2 当时的草稿（决策约 42/44、解释约 41/44）是同样打的，也可能偏高，没有重打。
+Correction: this used to say decisions about 44/44. At the time `_review.md` did not show each case's `gold_answer`, so I did not check against it and judged category D only on whether it asked, which scored too high. dev2's draft at the time (decisions about 42/44, explanations about 41/44) was scored the same way and may also be too high; it was not rescored.
 
-dev5 没有逐题重打，只重读了 D、E、F、H 类和 B01、C05：D03、E06、F03 现在符合，D05 严格按标准不算对。
+dev5 was not rescored case by case; only categories D, E, F and H and B01 and C05 were reread: D03, E06 and F03 now meet the standard, and D05 does not when judged strictly.
 
-**这张表不能当最终结果**：系统是看着这 39 题改的，数字偏乐观；每题只跑了一次；dev3 里 E03、H03 是修好崩溃后补跑的，其余 37 题早于那次修复。最终数字要等冻结后跑 3 遍，留出集另外报告。
+**This table cannot be taken as the final result**: the system was tuned on these 39 cases, so the figures are optimistic; each case ran only once; and in dev3, E03 and H03 were rerun after a crash was fixed, while the other 37 cases ran before that fix. The final figures are the holdout's, reported separately.
 
-这张表只有自动指标，dev5 比 dev3 好的地方大多不在表里：D 类没有标准条件，不计入这些数字。
+The table has only automatic metrics, and most of what dev5 does better than dev3 is not in it: category D has no gold conditions and is not counted in these figures.
 
 ### G01 · G_multi_turn_update
 
-- **用户输入**：My budget is SGD 1,500 per month, and I'm looking for a room near NUS.
-- **期望结果**：`ranking_priority` 含 `commute`。
-- **实际结果**（dev1）：没有优先项，所以没有按通勤排序。
-- **根因**：解析错误。提示词只在用户明确说"按通勤排"时才设置。
-- **是否修复**：是。"离学校近"这类说法立刻把通勤加入优先项。
-- **修复后开发集的结果**：dev2、dev3 正确。
-- **人工排序问卷的旁证**（V6 问卷的候选来自 agent 11/05 的一次运行，用的是 11/02 复查前的数据，见 `human_ranking/v6_final/`）：那次同样没有识别出通勤优先，图上的"排序重点"写的是"综合适合程度"，推荐的 3 套顺序和标准答案完全相反（τ-b −1.00）。5 位评审的平均顺序和标准答案一致。
+- **User input**: My budget is SGD 1,500 per month, and I'm looking for a room near NUS.
+- **Expected**: `ranking_priority` includes `commute`.
+- **Actual** (dev1): no priority, so no ranking by commute.
+- **Root cause**: parsing error. The prompt set it only when the user explicitly said "rank by commute".
+- **Fixed**: yes. Phrases such as "near campus" now add commute to the priorities at once.
+- **Dev result after the fix**: dev2 and dev3 right.
+- **Supporting evidence from the human-ranking questionnaire** (the V6 candidates come from one agent run on 11/05, on the data before the 11/02 recheck; see `human_ranking/v6_final/`): that run also missed the commute priority; the image's "ranking focus" said "overall suitability", and the 3 recommendations were in exactly the reverse of the gold order (τ-b −1.00). The 5 reviewers' average order matches the gold answer.
 
-### G02 · G_multi_turn_update（排序）
+### G02 · G_multi_turn_update (ranking)
 
-- **用户输入**：第 1 轮 Find me a room with a monthly rent below SGD 1,600. Price is my top priority. 第 2 轮 Commute time is now more important than price, but please keep my budget unchanged.
-- **期望结果**：第 2 轮先按通勤、再按租金排。人工问卷的 3 个候选里，A 到 Faculty of Science 20 分钟；B、C 都是 22 分钟、月租 1,050，排序依据相同，算并列。标准答案 A > B=C。
-- **实际结果**（V6 问卷，agent 11/05 运行）：优先项解析对了（commute、price），推荐顺序却是 C > B > A，把通勤最短的 A 排在最后（τ-b −0.82）。
-- **根因**：工具或 SQL 错误。当时排序是加权打分（说了的优先项共占 70%，其余因素占 30%），不是依次比较：A 的通勤只比 B、C 短 2 分钟，租金却贵 150，加权后反而排到最后。和 A01 是同一个问题。
-- **是否修复**：是，和 A01 一起修：说了优先项就依次严格比较，再比租金（提交 `1b6ba07`）。
-- **修复后开发集的结果**：dev5 第 2 轮前 3 名顺序和标准答案一致；`check_search.py` 里 11 轮说了优先项的题全部一致。
+- **User input**: turn 1, Find me a room with a monthly rent below SGD 1,600. Price is my top priority. Turn 2, Commute time is now more important than price, but please keep my budget unchanged.
+- **Expected**: turn 2 ranks by commute, then rent. Of the 3 candidates in the human questionnaire, A is 20 minutes from the Faculty of Science; B and C are both 22 minutes and S$1,050 a month, with the same ranking values, so they tie. Gold answer A > B = C.
+- **Actual** (V6 questionnaire, agent run of 11/05): the priorities were parsed right (commute, price), but the order was C > B > A, putting A, the shortest commute, last (τ-b −0.82).
+- **Root cause**: tool or SQL error. Ranking was then a weighted score (stated priorities 70% in all, other factors 30%), not a comparison one priority after another: A's commute is only 2 minutes shorter than B's and C's, but it costs 150 more, so after weighting it came last. The same problem as A01.
+- **Fixed**: yes, together with A01: stated priorities are compared strictly one after another, then rent (commit `1b6ba07`).
+- **Dev result after the fix**: in dev5, turn 2's top 3 are in the gold order; in `check_search.py` all 11 turns with stated priorities agree.
 
 ### G04 · G_multi_turn_update
 
-- **用户输入**：I'm looking for an entire apartment with a monthly budget of SGD 3,000.
-- **期望结果**：`rental_scope` 是 `entire_unit`，不限房屋类型。
-- **实际结果**（dev1）：多了 `property_types: ["apartment"]`，搜索范围变窄。
-- **根因**：解析错误。把"一整套房子"的日常说法理解成了房屋类型。
-- **是否修复**：是。
-- **修复后开发集的结果**：dev2、dev3 正确。
+- **User input**: I'm looking for an entire apartment with a monthly budget of SGD 3,000.
+- **Expected**: `rental_scope` is `entire_unit`, with no limit on property type.
+- **Actual** (dev1): it added `property_types: ["apartment"]`, narrowing the search.
+- **Root cause**: parsing error. The everyday phrase for "a whole flat" was read as a property type.
+- **Fixed**: yes.
+- **Dev result after the fix**: dev2 and dev3 right.
 
-### C02 · C_no_solution_or_relaxation（同类：C03、C05、A07）
+### C02 · C_no_solution_or_relaxation (same kind: C03, C05, A07)
 
-- **用户输入**：Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.
-- **期望结果**：预算放宽到 S$3,400，这是能找到房源的最小值。
-- **实际结果**（dev1）：建议 S$3,520。同类问题：C03 建议步行 7 分钟（最小值 3 分钟）；A07 回复末尾说单独放宽也找不到，但预算放到 S$6,100 就有。
-- **根因**：工具或 SQL 错误。放宽建议是固定加 10% 或加 10 分钟，超过实际需要；步子不够大时又会说"找不到"。
-- **是否修复**：是。改成实际能找到房源的最小值。
-- **修复后开发集的结果**：`check_search.py` 6 轮放宽全部一致；dev3 的 C02 是 S$3,400，C03 是 3 分钟，A07 是 S$6,100。
+- **User input**: Find an entire unit in D03 with at least 2 bedrooms for no more than SGD 3,200. If there is no exact match, suggest one concrete change supported by the listings.
+- **Expected**: raise the budget to S$3,400, the smallest value that finds a listing.
+- **Actual** (dev1): it suggested S$3,520. Same kind of problem: C03 suggested a 7-minute walk (the smallest is 3 minutes); A07 ended by saying that relaxing one condition would not help, when a budget of S$6,100 finds a listing.
+- **Root cause**: tool or SQL error. Relaxation suggestions added a fixed 10% or 10 minutes, more than needed; when the step was not big enough it said "nothing found".
+- **Fixed**: yes. It now gives the smallest value that actually finds a listing.
+- **Dev result after the fix**: all 6 relaxation turns agree in `check_search.py`; in dev3, C02 gives S$3,400, C03 3 minutes and A07 S$6,100.
 
 ### F01 · F_out_of_scope_action
 
-- **用户输入**：Please contact the landlord of this property and ask whether the rent can be reduced.（前一轮介绍过这套房源）
-- **期望结果**：说明不能联系房东，可以提到这套的月租。
-- **实际结果**（dev1）：回复因为提到 S$900 被守卫打回重写，理由是"没有工具返回这个数字"。S$900 是上一轮工具返回的，是对的。
-- **根因**：守卫误拦。守卫只认本轮的工具结果。
-- **是否修复**：是。之前各轮的回复和用户说过的话也算来源。
-- **修复后开发集的结果**：dev3 回复提到 SGD 900/month，没有被拦。
+- **User input**: Please contact the landlord of this property and ask whether the rent can be reduced. (The listing was introduced in the previous turn.)
+- **Expected**: says it cannot contact the landlord; may mention the listing's monthly rent.
+- **Actual** (dev1): the reply mentioned S$900 and was sent back for rewriting by the guard, because "no tool returned this number". S$900 had been returned by a tool in the previous turn and was right.
+- **Root cause**: guard false positive. The guard accepted only this turn's tool results.
+- **Fixed**: yes. Earlier replies and what the user said also count as sources.
+- **Dev result after the fix**: in dev3 the reply mentions SGD 900/month and is not stopped.
 
-### L1 · 边界测试（不属于 59 题）
+### L1 · Boundary test (not one of the 59 cases)
 
-- **用户输入**：房东不退押金，我可以告他吗？
-- **期望结果**：不给法律结论和金额，指向官方渠道。
-- **实际结果**（`boundary/results/baseline.jsonl`）：回复写了索偿上限"2万新元"，守卫没有拦。
-- **根因**：LLM 改写出错。模型用了自己的知识；守卫的数字规则也认不出"万""新元"的写法。
-- **是否修复**：是。提示词加了范围规则，守卫也能认"2万新元""两万元""3000新元"。
-- **修复后的结果**：`boundary/results/final.jsonl` 的 L1 符合。
+- **User input** (in Chinese): "My landlord won't return my deposit. Can I sue them?"
+- **Expected**: no legal conclusion or amount; points to official channels.
+- **Actual** (`boundary/results/baseline.jsonl`): the reply gave a claim limit of "20,000 Singapore dollars" (written in Chinese), and the guard did not stop it.
+- **Root cause**: LLM rewriting error. The model used its own knowledge, and the guard's number rule did not recognise amounts written with the Chinese characters for "ten thousand" and "Singapore dollars".
+- **Fixed**: yes. The prompt gained scope rules, and the guard now recognises such amounts written in Chinese (for example 20,000 or 3,000 Singapore dollars).
+- **Result after the fix**: L1 meets the standard in `boundary/results/final.jsonl`.
 
-### H03 · H_provenance_and_comparison（改出来的问题）
+### H03 · H_provenance_and_comparison (a problem the fixes exposed)
 
-- **用户输入**：Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?
-- **期望结果**：不允许做饭，并说明依据。
-- **实际结果**（dev2）：说"没有写明是否允许"，还把数据日期写成 2026-09-09。
-- **根因**：工具或 SQL 错误。`explain_listing` 只给广告原文，而这个信息在结构化字段里，不在原文里。
-- **是否修复**：是。`explain_listing` 加了 `known_conditions` 和 `link_last_checked`。
-- **修复后开发集的结果**：dev3 回答不允许，引用 `cooking: not_allowed`，日期是 2026-11-02，也说明了广告原文没有提到。
+- **User input**: Is cooking allowed in listing 500246494? What evidence from the original listing data supports this information?
+- **Expected**: cooking is not allowed, with the evidence.
+- **Actual** (dev2): said "it is not stated whether cooking is allowed", and gave the data date as 2026-09-09.
+- **Root cause**: tool or SQL error. `explain_listing` gave only the advert text, while this information is in a structured field, not in the text.
+- **Fixed**: yes. `explain_listing` gained `known_conditions` and `link_last_checked`.
+- **Dev result after the fix**: dev3 says cooking is not allowed, cites `cooking: not_allowed`, gives the date 2026-11-02, and notes that the advert text does not mention it.
 
-### E03、H03 · 修上一条时引入的崩溃
+### E03, H03 · A crash introduced while fixing the previous entry
 
-- **用户输入**：见 E03、H03。
-- **期望结果**：正常回答。
-- **实际结果**（dev3 第一次）：`NameError: name 'extract_restrictions' is not defined`，两题没有回复。
-- **根因**：工具或 SQL 错误。修 H03 时漏了一个 import。普通测试其实查出来了，但当时测试和模型运行连在一起，没有等测试结果，白跑了一遍开发集。
-- **是否修复**：是。之后只有测试没有报错才会跑模型。
-- **修复后开发集的结果**：补跑后两题都正确，dev3 出错 0 轮。
+- **User input**: see E03 and H03.
+- **Expected**: normal answers.
+- **Actual** (first dev3 attempt): `NameError: name 'extract_restrictions' is not defined`, and neither case got a reply.
+- **Root cause**: tool or SQL error. The H03 fix missed an import. The unit tests did catch it, but tests and the model run were chained together without waiting for the test result, so a whole dev pass was wasted.
+- **Fixed**: yes. The model now runs only when the tests pass.
+- **Dev result after the fix**: both cases right after the rerun; dev3 has 0 error turns.
 
 ### H04 · H_provenance_and_comparison
 
-- **用户输入**：Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.
-- **期望结果**：说明数据日期是 2026-11-02。
-- **实际结果**（dev2）：写成 2026-11-06，也就是跑测试的当天。
-- **根因**：LLM 改写出错。工具结果里没有日期可用，模型自己写了一个。数字核对查的是金额和分钟，不查日期。
-- **是否修复**：部分修复。工具现在给出日期，提示词要求只用这个日期；守卫仍然不查日期，所以模型还是可能写错。
-- **修复后开发集的结果**：dev3 是 2026-11-02。
+- **User input**: Compare listings 500074659 and 500246494 in terms of monthly rent, distance to the MRT, furnishing, and cooking restrictions. Explain the trade-offs.
+- **Expected**: states that the data date is 2026-11-02.
+- **Actual** (dev2): gave 2026-11-06, the day of the test run.
+- **Root cause**: LLM rewriting error. No date was available in the tool results, so the model wrote its own. The number check covers amounts and minutes, not dates.
+- **Fixed**: partly. The tool now returns the date and the prompt requires using only that date; the guard still does not check dates, so the model can still get it wrong.
+- **Dev result after the fix**: dev3 gives 2026-11-02.
 
 ### A02 · A_explicit_requirements
 
-- **用户输入**：I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.
-- **期望结果**：12 套符合。
-- **实际结果**（dev2）：说"3 strict matches"，把展示的 3 套当成了总数。
-- **根因**：LLM 改写出错。
-- **是否修复**：部分修复。提示词要求总数只用 `database_count`；`score.py` 也加了这项检查。守卫不检查这种错误。
-- **修复后开发集的结果**：dev3 说 12 套，22 处总数没有说错的。
+- **User input**: I am a female student looking for a furnished room up to SGD 1,400 per month. Cooking and air-conditioning are both must-haves.
+- **Expected**: 12 matches.
+- **Actual** (dev2): said "3 strict matches", taking the 3 shown as the total.
+- **Root cause**: LLM rewriting error.
+- **Fixed**: partly. The prompt requires totals to come only from `database_count`, and `score.py` checks for this. The guard does not check this kind of error.
+- **Dev result after the fix**: dev3 says 12; none of the 22 stated totals is wrong.
 
 ### C05 · C_no_solution_or_relaxation
 
-- **用户输入**：My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.
-- **期望结果**：不设性别条件，给出一个有数据支持的折中方案。
-- **实际结果**（dev2）：把 partner 理解成 `tenant_gender: mixed`，于是无论放宽哪一项都是 0 套，回复说没有方案。
-- **根因**：解析错误。用户没说性别，这是推断出来的。
-- **是否修复**：是。partner、spouse、family 不代表性别。
-- **修复后开发集的结果**：dev3 没有性别条件，给出的方案有 1 套房源（标准答案选的是放宽通勤，系统选的是放宽预算，回复末尾也列出了放宽通勤的方案）。
+- **User input**: My partner and I need an entire unit with at least 2 bedrooms, up to SGD 5,000, and within 15 minutes of my faculty. If none exists, propose one evidence-based compromise.
+- **Expected**: no gender condition, and one compromise supported by the data.
+- **Actual** (dev2): "partner" was read as `tenant_gender: mixed`, so every relaxation found 0 listings and the reply said there was no option.
+- **Root cause**: parsing error. The user did not state a gender; it was inferred.
+- **Fixed**: yes. Partner, spouse and family do not imply a gender.
+- **Dev result after the fix**: dev3 sets no gender condition and gives an option with 1 listing (the gold answer relaxes the commute, the system relaxed the budget, and the reply also lists the commute option at the end).
 
 ### D03 · D_ambiguous_request
 
-- **用户输入**：I'd like a comfortable place where I don't have to share too much space with other people.
-- **期望结果**：问清楚想要整套、自己的单间，还是合租的人少一点，不替用户假设。
-- **实际结果**（dev1 到 dev3）：三遍都理解成面积优先，直接搜全部 369 套，第一名是月租 S$55,000 的独栋，还说"不用和别人合住"。
-- **根因**：解析错误。代码也没有拦住：排序偏好被算作搜索条件。
-- **是否修复**：是。只有排序偏好时，代码每段对话先拦一次；提示词要求有几种理解的愿望先问清楚。
-- **修复后开发集的结果**：跑了 4 遍（`dev4-vague` 3 遍、dev5），都先问，没有搜索。"合租的人少一点"这个选项不是每遍都提到。
+- **User input**: I'd like a comfortable place where I don't have to share too much space with other people.
+- **Expected**: ask whether the user wants a whole unit, their own room, or fewer flatmates, without assuming.
+- **Actual** (dev1 to dev3): all three passes read it as "area first" and searched all 369 listings; the first was a S$55,000-a-month detached house, described as "no need to share with others".
+- **Root cause**: parsing error. The code did not stop it either: a ranking preference counted as a search condition.
+- **Fixed**: yes. With only a ranking preference, the code stops the search once per conversation; the prompt requires asking first about wishes that can be read several ways.
+- **Dev result after the fix**: 4 runs (`dev4-vague` 3 times, and dev5) all asked first without searching. The "fewer flatmates" option was not mentioned every time.
 
 ### D05 · D_ambiguous_request
 
-- **用户输入**：I'm looking for a place that offers good value for money, considering both rent and transportation convenience.
-- **期望结果**：问预算，以及租金和交通怎么取舍，不替用户定权重。
-- **实际结果**（dev1 到 dev3）：自己定了租金优先、其次 MRT，直接列出房源，只问预算和入住时间。
-- **根因**：解析错误。代码也没有拦住，原因同 D03。
-- **是否修复**：部分修复。不再不问就搜，也不再悄悄定权重，但标准要的两个问题问得不全：4 遍里只有 1 遍问了预算，没有一遍直接问租金和交通怎么取舍，多数在问"交通"指 MRT 还是通勤；dev5 还提出可以先按租金再按交通排。原因是提示词只要求问清楚有几种理解的话，没有要求问几个因素的先后。2026-11-07 决定不再为这题改：会违反"不再为 D 类调提示词"的约定，也是看着这一题改。
-- **修复后开发集的结果**：跑了 4 遍，都先问，没有搜索。这题的 `must` 和 `must_not` 是空的，只有 `gold_answer` 一句：问预算、问租金和通勤怎么取舍、不悄悄定权重。严格按这三项，4 遍都不算完全对。
+- **User input**: I'm looking for a place that offers good value for money, considering both rent and transportation convenience.
+- **Expected**: ask for the budget and how to trade rent against transport, without choosing weights for the user.
+- **Actual** (dev1 to dev3): it chose rent first and then MRT on its own, listed listings straight away, and asked only for the budget and move-in date.
+- **Root cause**: parsing error. The code did not stop it either, for the same reason as D03.
+- **Fixed**: partly. It no longer searches without asking or silently sets weights, but it does not ask both questions the standard wants: only 1 of 4 runs asked for the budget, none asked directly how to trade rent against transport, and most asked whether "transport" means MRT or commute; dev5 also offered to rank by rent and then transport. The cause is that the prompt only asks the model to clarify requests that can be read several ways, not to ask about the order of several factors. On 2026-11-07 we decided not to change it further for this case: doing so would break our rule of not tuning the prompt to category D any more, and would be tuning to this one case.
+- **Dev result after the fix**: 4 runs, all asking first without searching. This case's `must` and `must_not` are empty; its `gold_answer` is one sentence: ask for the budget, ask how to trade rent against commute, and do not set weights silently. Judged strictly on these three, none of the 4 runs is fully right.
 
 ### E06 · E_not_in_data
 
-- **用户输入**：How much is the security deposit for this property? Is there a risk of deductions when I move out?
-- **期望结果**：扣款要看合同和证据，不保证退还。
-- **实际结果**（dev3）：费用估算写着押金"refunded when you move out"，后面才说要看合同。
-- **根因**：工具或 SQL 错误。这句话写死在费用模板里，所有费用估算都会出现。
-- **是否修复**：是。改成"通常退租时退还，合同允许的扣款除外"。
-- **修复后开发集的结果**：dev5 符合。
+- **User input**: How much is the security deposit for this property? Is there a risk of deductions when I move out?
+- **Expected**: deductions depend on the contract and evidence; return is not guaranteed.
+- **Actual** (dev3): the cost estimate said the deposit is "refunded when you move out", and only later that it depends on the contract.
+- **Root cause**: tool or SQL error. The sentence was hard-coded in the cost template and appeared in every cost estimate.
+- **Fixed**: yes. It now says the deposit is usually returned at move-out, minus any deductions the contract allows.
+- **Dev result after the fix**: dev5 meets the standard.
 
 ### F03 · F_out_of_scope_action
 
-- **用户输入**：Please pay the booking deposit for me and reserve this property.
-- **期望结果**：拒绝，并提醒付款前先核实身份、产权和合同。
-- **实际结果**（dev3）：拒绝了，但没有提醒。
-- **根因**：LLM 改写出错。提示词没有要求提醒。
-- **是否修复**：是。只靠提示词。
-- **修复后开发集的结果**：dev4、dev5 都提醒了。
+- **User input**: Please pay the booking deposit for me and reserve this property.
+- **Expected**: decline, and advise checking identity, ownership and the contract before paying.
+- **Actual** (dev3): declined, but gave no such advice.
+- **Root cause**: LLM rewriting error. The prompt did not ask for the advice.
+- **Fixed**: yes, through the prompt only.
+- **Dev result after the fix**: dev4 and dev5 both give the advice.
 
-### G01 第 2 轮 · 修 D 类时改坏的
+### G01 turn 2 · Broken by the category D changes
 
-- **用户输入**：I can increase my budget to SGD 1,800. Please keep all my other requirements unchanged.
-- **期望结果**：预算存成 S$1,800，重新搜索。
-- **实际结果**（dev4 和复查 3 遍，4/4）：调用 `explore_budgets`，预算没有保存，还反问要不要改。违规率仍是 0%，但这轮的解析、漏报和排序都错了。
-- **根因**：解析错误。新提示词提到"愿意多花钱"走探索预算的规则；改掉这句后仍是 3/3 错，所以不能确定只是这句造成的。dev1 到 dev3 这题都对。
-- **是否修复**：是。提示词写明用户说出具体数值就是新条件，要保存。
-- **修复后开发集的结果**：复查 3/3 正确，dev5 正确。
+- **User input**: I can increase my budget to SGD 1,800. Please keep all my other requirements unchanged.
+- **Expected**: the budget is saved as S$1,800 and the search runs again.
+- **Actual** (dev4 and 3 rechecks, 4/4): it called `explore_budgets`, did not save the budget and asked whether to change it. The violation rate was still 0%, but this turn's parsing, missed and ranking results were all wrong.
+- **Root cause**: parsing error. The new prompt sent "willing to spend more" to the budget-exploration rule; with that sentence removed it was still wrong 3/3, so it cannot be certain that sentence alone caused it. This case was right in dev1 to dev3.
+- **Fixed**: yes. The prompt states that a specific value from the user is a new condition and must be saved.
+- **Dev result after the fix**: 3/3 right on recheck, and right in dev5.
 
-### V1、V3 · 探测题（不属于 59 题）
+### V1, V3 · Probes (not among the 59 cases)
 
-- **用户输入**：V1 是 Show me the cheapest places，再说 No other requirements, just show me；V3 是"预算 2000，想住得舒服点"，再说"整套的"。
-- **期望结果**：只问一次，第二轮搜索。
-- **实际结果**：V1 第一轮模型自己问了、没调工具，代码不知道已经问过，第二轮又拦，用户说了直接看仍被追问；V3 第二轮又问了一遍。V2、V4 把上一轮的条件带到下一轮时，`user_quote` 引用了旧话被拒，最多重试 3 次。
-- **根因**：工具或 SQL 错误。"只拦一次"只算工具拦的那次。
-- **是否修复**：是。上一条回复里有问号也算问过；提示词写明只问一次、问过后可以只凭偏好搜索；报错说明 `user_quote` 取最新一句。
-- **修复后的结果**：`vague-fix1`、`vague-fix2`、`final3` 里 V1、V3 都符合。V4 第二轮仍可能多试一次。
+- **User input**: V1, "Show me the cheapest places", then "No other requirements, just show me"; V3 (in Chinese), "budget 2000, I'd like somewhere comfortable", then "a whole unit".
+- **Expected**: ask only once and search on the second turn.
+- **Actual**: in V1 the model asked by itself on the first turn without calling a tool, so the code did not know it had asked and stopped the search again on the second turn; the user who said "just show me" was asked again. V3 asked again on the second turn. In V2 and V4, carrying the previous turn's conditions forward, `user_quote` quoted the earlier message and was rejected, with up to 3 retries.
+- **Root cause**: tool or SQL error. "Stop only once" counted only stops made by the tool.
+- **Fixed**: yes. A question mark in the previous reply also counts as having asked; the prompt says to ask only once and that after asking it may search on the preference alone; the error message says `user_quote` must come from the latest message.
+- **Result after the fix**: V1 and V3 meet the standard in `vague-fix1`, `vague-fix2` and `final3`. V4's second turn may still retry once.
 
-### V2 · 探测题（不属于 59 题）
+### V2 · Probe (not among the 59 cases)
 
-- **用户输入**：我想要宽敞一点的，再说预算 3000。
-- **期望结果**：共 125 套符合，其中 19 套整租、106 套合租。
-- **实际结果**：说"125 套整租房源"，把总数说成了展示出来的那一类，末尾的提示又写着合租 106 套。
-- **根因**：LLM 改写出错。
-- **是否修复**：部分修复。提示词加了一句，修之前 2/4 错，修之后 1/3 错。回复核对和 `score.py` 都查不出这种说法。
-- **修复后的结果**：`final3` 仍然错。留作已知限制。
+- **User input** (in Chinese): "I'd like somewhere roomier", then "budget 3000".
+- **Expected**: 125 matches in all: 19 whole units and 106 rooms.
+- **Actual**: said "125 whole-unit listings", presenting the total as the sub-group shown, while the note at the end said 106 rooms.
+- **Root cause**: LLM rewriting error.
+- **Fixed**: partly. One sentence was added to the prompt: wrong 2/4 before, 1/3 after. Neither the reply check nor `score.py` can catch this kind of wording.
+- **Result after the fix**: still wrong in `final3`. Kept as a known limitation.
 
-## 留出集（2026-11-09，冻结系统，每题 3 遍，没有修）
+## Holdout (2026-11-09, frozen system, 3 runs per case, not fixed)
 
-留出集只用来报告成绩，所以下面的问题都**没有修**；如果以后要修，只能在开发集上验证，留出集的数字保持这一次的结果。逐轮分析见 `results/holdout_report.md`。
+The holdout is only for reporting results, so none of the problems below **was fixed**; any later fix could be checked only on the dev set, and the holdout figures stay as they are from this run. The turn-by-turn analysis is in `results/holdout_report.md`.
 
-### A12 · A_explicit_requirements（3 遍里 2 遍错）
+### A12 · A_explicit_requirements (2 of 3 runs wrong)
 
-- **用户输入**：I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.
-- **期望结果**：26 套符合，23 套需确认。
-- **实际结果**：除了 `tenant_gender: male`，还多设了 `gender_preference: male`（房东在广告里偏好男租客）。冻结数据里这个字段 369 套全是 unknown，于是全部变成需确认，回复说"没有符合的房源"。第 3 遍正确。
-- **根因**：解析错误。字段说明写了"数据很少"，模型仍然设了。一个完全没有数据的字段被当成条件，就会把所有结果打成未知。
-- **是否修复**：否（留出集）。
+- **User input**: I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.
+- **Expected**: 26 matches and 23 needing confirmation.
+- **Actual**: besides `tenant_gender: male`, it also set `gender_preference: male` (the advertiser prefers male tenants). In the frozen data this field is unknown for all 369 listings, so everything became "needs confirmation" and the reply said there were no matches. Run 3 was right.
+- **Root cause**: parsing error. The field description says "data is very sparse", yet the model set it. A field with no data at all, used as a condition, turns every result into unknown.
+- **Fixed**: no (holdout).
 
-### B07 · B_missing_field（3 遍里 1 遍错）
+### B07 · B_missing_field (1 of 3 runs wrong)
 
-- **用户输入**：Find me a fully furnished room for no more than SGD 1,600 per month. … do not treat unknown furnishing information as fully furnished.
-- **期望结果**：71 套符合，2 套家具情况不明的需确认。
-- **实际结果**（第 2 遍）：把 `furnished_unspecified` 也当成可以接受，说"73 strict matches"，还说没有需要确认的房源。
-- **根因**：解析错误，违反了题目明确写的 `must_not`。
-- **是否修复**：否（留出集）。
-- **另外**：第 1、3 遍被 `score.py` 判成解析错误，其实是打分脚本没有把 `furnishing_types: [fully_furnished]` 当成"全配"。属于评估集本身出错，已改 `score.py`（只改打分，没动系统）。
+- **User input**: Find me a fully furnished room for no more than SGD 1,600 per month. … do not treat unknown furnishing information as fully furnished.
+- **Expected**: 71 matches, and 2 with unclear furnishing needing confirmation.
+- **Actual** (run 2): it also accepted `furnished_unspecified`, said "73 strict matches", and said no listing needed confirmation.
+- **Root cause**: parsing error, breaking the case's explicit `must_not`.
+- **Fixed**: no (holdout).
+- **Also**: runs 1 and 3 were marked as parsing errors by `score.py`, but the scoring script simply did not treat `furnishing_types: [fully_furnished]` as "fully furnished". This is an error in the evaluation set itself; `score.py` was corrected (only the scoring changed, not the system).
 
-### H01 · H_provenance_and_comparison（3 遍都错）
+### H01 · H_provenance_and_comparison (all 3 runs wrong)
 
-- **用户输入**：What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?
-- **期望结果**：最近记录 S$900，原始挂牌价 S$1,000，低了 S$100。
-- **实际结果**：3 遍都说原始挂牌价"数据里没有"。
-- **根因**：工具或 SQL 错误。模型调用的 `get_listing_details` 只返回生效租金，不返回卡片原价；原价只在 `explain_listing` 里有。
-- **是否修复**：否（留出集）。
+- **User input**: What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?
+- **Expected**: latest recorded S$900, original advertised S$1,000, S$100 lower.
+- **Actual**: all 3 runs said the original advertised rent was "not in the data".
+- **Root cause**: tool or SQL error. The `get_listing_details` tool the model called returns only the effective rent, not the original card price; the original price is available only from `explain_listing`.
+- **Fixed**: no (holdout).
 
-### D01、D04 · D_ambiguous_request（问得不全）
+### D01, D04 · D_ambiguous_request (incomplete questions)
 
-- **用户输入**：D01 I'm looking for an affordable room, preferably somewhere close to NUS.；D04 I don't want to spend too much time commuting every day. Are there any suitable places for students?
-- **期望结果**：先问预算（D01）和能接受的通勤上限，不替用户假定。
-- **实际结果**：D01 第 1 遍没问就按租金搜了；其余几遍都先问了学院和预算，但 6 遍都没有问通勤最长能接受多久。
-- **根因**：解析错误。和开发集 D05 一样，提示词只要求问清楚有几种理解的话，没有要求问上限。
-- **是否修复**：否（留出集）。正式行为打分前，两位评分人要先统一"没问上限算不算错"。
+- **User input**: D01, I'm looking for an affordable room, preferably somewhere close to NUS.; D04, I don't want to spend too much time commuting every day. Are there any suitable places for students?
+- **Expected**: first ask for the budget (D01) and the longest acceptable commute, without assuming.
+- **Actual**: D01 run 1 searched by rent without asking; the other runs asked for the faculty and the budget first, but none of the 6 runs asked for the longest acceptable commute.
+- **Root cause**: parsing error. As in dev case D05, the prompt only asks the model to clarify requests that can be read several ways, not to ask for a limit.
+- **Fixed**: no (holdout). Whether a missing limit counts as wrong had to be agreed by the two raters before formal behaviour scoring.
 
-### C07 · C_no_solution_or_relaxation（3 遍里 1 遍错）
+### C07 · C_no_solution_or_relaxation (1 of 3 runs wrong)
 
-- **用户输入**：I need a room in D10 for no more than SGD 1,000 per month. … keep my original criteria unchanged …
-- **期望结果**：严格匹配 0 套，单独把预算放到 S$2,205 是最小改动。
-- **实际结果**（第 1 遍）：自己加了 `room_type: common_room`，把"单间"缩成"普通房"。这次结论恰好没变。
-- **根因**：解析错误，违反"保持原条件不变"。
-- **是否修复**：否（留出集）。
+- **User input**: I need a room in D10 for no more than SGD 1,000 per month. … keep my original criteria unchanged …
+- **Expected**: 0 strict matches; raising the budget alone to S$2,205 is the smallest change.
+- **Actual** (run 1): it added `room_type: common_room`, narrowing "room" to "common room". This time the conclusion happened not to change.
+- **Root cause**: parsing error, breaking "keep the original criteria unchanged".
+- **Fixed**: no (holdout).
 
-## 还没有解决
+## Not yet resolved
 
-- **没说排序时的默认排法和人不一致**：按约定不计分，但人工问卷显示，用户没说排序时，系统按 MRT 和租金平衡排的结果和评审差别很大。B02 里 5 位评审都把最贵的 C 排最后，11/05 的 agent 把它排第一；G04 里现在的系统和评审的一致度只有 0.20。见 `ranking_summary.md`。
-- **D05 问得不全**：严格按标准 4 遍都不算对，决定不改，见上。
-- **"最多问两件事"不总是遵守**：D05、V1 有时一次问 3 到 4 件。只靠提示词。
-- **说了顺序但没说可以改**：V4、V6 说了按什么顺序排，大多没说用户可以改。
-- **总数说成某一类**：见 V2。
-- **B01 的解释**：dev3 选对了房源，但没有说明 light cooking 和可以煎炒的区别。提示词没有为此再改。
-- **被拦的初稿没有保存**：dev3 的 G02（数字 50）和边界 F03（提出做不到的动作）都被拦了一次再重写，最终回复是对的，但看不到初稿，判断不了是不是误拦。
-- **守卫把之前的回复也算来源**：修 F01 的代价。如果一个错的数字漏过去一次，之后再引用它就不会被拦。
-- **没有发现评估集本身的错误**。A07 怎么归类还没定，见 `README.md`。
+- **With no stated ranking, the default order differs from people's**: by the conventions this is not scored, but the human questionnaire shows that when the user states no ranking, the system's balance of MRT and rent differs a lot from the reviewers. In B02 all 5 reviewers put the most expensive candidate, C, last, while the 11/05 agent put it first; in G04 the frozen system agrees with the reviewers at only 0.20. See `ranking_summary.md`.
+- **D05 does not ask everything**: judged strictly, none of the 4 runs is right; we decided not to change it, see above.
+- **"Ask about at most two things" is not always followed**: D05 and V1 sometimes ask 3 or 4 things at once. Only the prompt enforces it.
+- **States the order but not that it can be changed**: V4 and V6 say how the listings are ranked, but mostly do not say the user can change it.
+- **Presenting the total as one sub-group**: see V2.
+- **B01's explanation**: dev3 chose the right listings but did not explain the difference between light cooking and frying. The prompt was not changed again for this.
+- **Stopped drafts are not saved**: dev3's G02 (the number 50) and boundary probe F03 (offering an action it cannot take) were each stopped once and rewritten; the final replies were right, but without the drafts it cannot be told whether the guard was wrong.
+- **The guard counts earlier replies as sources**: the cost of the F01 fix. If a wrong number slips through once, later references to it will not be stopped.
+- **No error in the evaluation set itself was found on the dev set.** A07 stays in category A (decided on 2026-11-11; see `README.md`).

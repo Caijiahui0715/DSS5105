@@ -204,10 +204,10 @@ Besides the endpoints the chat page uses, the following are for the Streamlit fr
 - Worked-out amounts: when several people share a rent (the saved number of people, for a whole unit or a room two share, or `people` in `estimate_costs` for a what-if), listings carry `per_person_monthly` and the cost breakdown splits the monthly rent, the payment at signing and the total evenly, in whole dollars. `rent_vs_budget_sgd` is the rent minus the budget limit, and after a yearly or whole-lease budget `rent_vs_budget_over_budget_period` gives it over the same months. `compare_listings` adds `rent_above_cheapest_over_lease`, the rent difference over the saved lease or 12 months. The model only quotes these; it does not calculate.
 - When a tool fails, its error says what was wrong and what to do next (for example, call again with an ISO 4217 currency code, or ask the user); the prompt tells the model to correct the arguments and retry when it can, before answering the user. The currency alias RMB is turned into CNY before conversion.
 - When a reply fails the checks, the reasons are sent back to the model for one retry; only if it fails again does the reply fall back to the template, or, when there is no template, to the saved criteria and the listings shown. `--trace` shows why a reply was rejected.
-- Links are not checked live: PropertyGuru refuses automated requests. The data refresh (the group's scripts that open each listing page and keep only the listings still up) stamps `enriched_at`, which the `agent_listings` view gives as `live_checked_at`. Replies never say a link is valid: listing cards say "2026-11-02 检查时仍在挂牌（3 天前），之后可能已下架，请点原链接确认", the comparison table gives the date, and the processing steps count the listings shown by check date. A check more than 14 days old (`LINK_CHECK_STALE_DAYS` in `tools.py`), or none, is pointed out with the listing, and at the end of the reply the system lists those links for the user to open. The model gets `link_last_checked` and `link_note` but mentions links only when asked; `availability_note` is a separate fact.
+- Links are not checked live: PropertyGuru refuses automated requests. The data refresh (the group's scripts that open each listing page and keep only the listings still up) stamps `enriched_at`, which the `agent_listings` view gives as `live_checked_at`. Replies never say a link is valid: listing cards say "still listed when checked on 2026-11-02 (3 days ago); it may have been taken down since, so open the original link to check", the comparison table gives the date, and the processing steps count the listings shown by check date. A check more than 14 days old (`LINK_CHECK_STALE_DAYS` in `tools.py`), or none, is pointed out with the listing, and at the end of the reply the system lists those links for the user to open. The model gets `link_last_checked` and `link_note` but mentions links only when asked; `availability_note` is a separate fact.
 
 
-## License & data / 许可与数据
+## License & data
 
 Code: MIT License (see [LICENSE](LICENSE)). The listing data under
 `output-final-delivery/` was collected from PropertyGuru (Singapore) for
@@ -215,7 +215,3 @@ academic coursework only — do not redistribute or use it commercially.
 Points of interest: OneMap (Singapore Land Authority) and OpenStreetMap
 contributors (ODbL). Listing photos remain the property of their uploaders
 and PropertyGuru.
-
-代码采用 MIT 许可；`output-final-delivery/` 里的房源数据来自 PropertyGuru
-公开页面，仅用于课程学术分析，请勿再分发或商用；兴趣点数据来自 OneMap
-（新加坡土地管理局）与 OpenStreetMap 贡献者。

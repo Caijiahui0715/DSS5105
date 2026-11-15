@@ -1,38 +1,40 @@
-# 留出集测试报告（2026-11-09）
+# Holdout test report (2026-11-09)
 
-## 1. 测试设置
+## 1. Set-up
 
-| 项目 | 内容 |
+| Item | Details |
 |---|---|
-| 系统 | B5 agent，提交 `38c529e`，加上未提交改动（`uncommitted_py_sha256` = `34c83c86…e736e4`）。这些改动之后提交为 `1b6ba07`（系统代码和测试），`evaluation/boundary/run_probes.py` 和评估结果在下一个提交里 |
-| 模型 | `gpt-5.6-luna` |
-| 题目 | 留出集 20 题（A11–A14、B07、B08、C07、C08、D01、D04、E01、E02、F02、F05、G06–G09、H01、H02），封存 hash `9b8340f7…b61b422a` |
-| 次数 | 每题 3 遍，共 60 次对话、75 个计分轮，出错 0 轮 |
-| 数据 | 冻结数据 `rental_data_v2.csv`（369 套），hash `f8fc7295…7241b` |
-| 原始记录 | `holdout.jsonl`；逐轮记录 `holdout_review.md`；行为打分表 `holdout_behaviour.csv` |
+| System | B5, the agent: commit `38c529e` plus uncommitted changes (`uncommitted_py_sha256` = `34c83c86…e736e4`). Those changes were then committed as `1b6ba07` (system code and tests); `evaluation/boundary/run_probes.py` and the evaluation results are in the next commit |
+| Model | `gpt-5.6-luna` |
+| Cases | The 20 holdout cases (A11–A14, B07, B08, C07, C08, D01, D04, E01, E02, F02, F05, G06–G09, H01, H02), sealed hash `9b8340f7…b61b422a` |
+| Runs | 3 runs per case: 60 conversations, 75 scored turns, 0 errors |
+| Data | The frozen data `rental_data_v2.csv` (369 listings), hash `f8fc7295…7241b` |
+| Records | Raw run `holdout.jsonl`; turn-by-turn record `holdout_review.md`; behaviour sheet `holdout_behaviour.csv` |
 
-**数据核对**：运行时记录的数据、通勤和题目 hash，和标准答案生成时的一致。Agent 数据库里可搜索的（active）正好是这 369 套，租金逐套一致。3 遍里展示和比较过的 32 套房源都在冻结数据里。用 `gold.py` 重算标准答案，结果和打分用的那份完全相同。
+**Data check**: the data, commute and case hashes recorded at run time are the same as when the gold answers were generated. The listings the agent's database can search (active) are exactly these 369, with the same rent for every one. All 32 listings shown or compared in the 3 runs are in the frozen data. Regenerating the gold answers with `gold.py` gives exactly the copy used for scoring.
 
-**单元测试**：280 个里 6 个没过，都是测试里的期望值还是旧数据（430 条）。不影响这次结果，但冻结前应该更新。
+**Unit tests**: 6 of 280 fail, all because their expected values still come from the old data (430 listings). This does not affect these results, but those tests should have been updated before the freeze.
 
-## 2. 自动指标
+## 2. Automatic metrics
 
-| 指标 | 结果 | 目标 | 达标 |
+| Metric | Result | Target | Met |
 |---|---|---|---|
-| 展示房源违规率 | 0%（展示的全部符合） | 0% | ✅ |
-| 未知标注率（需确认的标成需确认） | 21/21 = 100% | ≥ 90% | ✅ |
-| 编造率 | 0/470（人工核对后，见 4.1） | < 2% | ✅ |
-| 解析字段正确 | 99% | | |
-| 解析整轮正确 | 47/51 | | |
-| 漏报（有符合的房源却一套没展示） | 2/45 | | |
-| 前 3 名顺序（说了优先项的题） | 21/21 | | |
-| 回复说错符合总数 | 1/22 | | |
-| 3 遍结果不一致的题 | 4/25 轮（A12、B07、C07、D01） | | |
-| 平均每轮用时 | 8.6 秒 | | |
+| Violation rate of listings shown | 0% (every listing shown is a match) | 0% | ✅ |
+| Unknown-labelling rate (listings needing confirmation marked as such) | Not estimable (0/0): no listing with unknown fields was shown | ≥ 90% | – |
+| Fabrication rate | 0/470 (after checking by hand, see 4.1) | < 2% | ✅ |
+| Fields parsed right | 99% | | |
+| Turns parsed fully right | 47/51 | | |
+| Missed (matches exist but none was shown) | 2/45 | | |
+| Top-3 order (cases with stated priorities) | 21/21 | | |
+| Replies stating a wrong total of matches | 1/22 | | |
+| Turns whose outcome differed across the 3 runs | 4/25 (A12, B07, C07, D01) | | |
+| Mean time per turn | 8.6 seconds | | |
 
-分类别：
+An earlier version of this report gave the unknown-labelling rate as 21/21 by mistake; no listing needing confirmation was shown in this run, so the rate cannot be estimated.
 
-| 类 | 轮 | 解析整轮 | 漏报 | 顺序 | 查不到出处 | 守卫 |
+By category:
+
+| Category | Turns | Parsed fully | Missed | Order | Untraced | Guard |
 |---|---|---|---|---|---|---|
 | A | 12 | 10/12 | 2/12 | 9/9 | 0/117 | 0 |
 | B | 6 | 5/6 | 0/6 | – | 2/57 | 0 |
@@ -43,125 +45,125 @@
 | G | 27 | 27/27 | 0/27 | 12/12 | 0/221 | 1 |
 | H | 6 | – | – | – | 0/25 | 0 |
 
-**打分脚本的更正**：第一次打分时，"解析整轮正确"是 45/51。其中 B07 第 1、3 遍被判错，原因是脚本的问题，系统其实理解对了（见 4.2）。看到留出集结果后，我改了 `score.py` 里的一处字段对照，重新打分，得到 47/51。只改了打分脚本，系统代码没动。
+**Correction to the scoring script**: in the first scoring, "turns parsed fully right" was 45/51. B07 runs 1 and 3 were marked wrong because of the script; the system had understood them correctly (see 4.2). After seeing the holdout results, I changed one field mapping in `score.py` and scored again, giving 47/51. Only the scoring script changed; the system code did not.
 
-## 3. 行为（作者草稿，不是正式分）
+## 3. Behaviour
 
-D、E、F、H 类主要看行为。下面是作者对照每题 `gold_answer` 的初判。正式分仍按方案由两人各自打。G 类只看了自动指标，没有逐轮读行为。
+**Formal scores.** The 25 turns of run 1 were scored by two raters, one team member and an AI-assisted rater (Codex), who agreed on 24/25 decisions and 23/25 explanations before the three disagreements were settled. Final scores: decision 21/25 = 84%, explanation 20/25 = 80%, both right 19/25 = 76% (target ≥ 85%). Details are in `Holdout_Behavioural_Evaluation_Final.md`, `holdout_behaviour_final.csv` and `holdout_behaviour_adjudication.csv`.
 
-| 题 | 3 遍结果 | 说明 |
+**Author's first reading (draft, not the formal score).** Categories D, E, F and H are mainly about behaviour. Below is the author's first judgement of all three runs against each case's `gold_answer`. Category G was judged by the automatic metrics only, without reading each turn's behaviour.
+
+| Case | 3 runs | Notes |
 |---|---|---|
-| A11、A13、A14、B08、C08、G06–G09 | 3/3 | 自动指标全部正确 |
-| A12 | 1/3 | 失败 1 |
-| B07 | 2/3 | 失败 2 |
-| C07 | 2/3 | 失败 6：第 1 遍把"单间"缩成了"普通房" |
-| D01 | 0/3 严格；2/3 宽松 | 失败 4 |
-| D04 | 0/3 严格；3/3 宽松 | 失败 5 |
-| E01、E02 | 3/3 | 说数据里没有这项信息，没有保证，给了看房时可以问的问题 |
-| F02、F05 | 3/3 | 说明不能约看房、不能替用户决定；F05 还提醒付款前核实身份、产权和合同 |
-| H01 | 0/3 | 失败 3 |
-| H02 | 3/3 | 引用了两个 ID，租金按最新记录打平（900 对 900），MRT 距离正确，说明了数据日期 |
+| A11, A13, A14, B08, C08, G06–G09 | 3/3 | All automatic metrics right |
+| A12 | 1/3 | Failure 1 |
+| B07 | 2/3 | Failure 2 |
+| C07 | 2/3 | Failure 6: run 1 narrowed "room" to "common room" |
+| D01 | 0/3 strict; 2/3 lenient | Failure 4 |
+| D04 | 0/3 strict; 3/3 lenient | Failure 5 |
+| E01, E02 | 3/3 | Says the data does not hold this information, makes no promise, and gives questions to ask at a viewing |
+| F02, F05 | 3/3 | Says it cannot book a viewing or decide for the user; F05 also advises checking identity, ownership and the contract before paying |
+| H01 | 0/3 | Failure 3 |
+| H02 | 3/3 | Cites both IDs; by the latest records the rents tie (900 vs 900); MRT distances right; states the data date |
 
-合计（60 次对话）：严格算 47/60 = 78%，宽松算 52/60 = 87%。目标是 ≥ 85%。
+Total (60 conversations): 47/60 = 78% strict, 52/60 = 87% lenient.
 
-## 4. 失败案例分析
+## 4. Failure analysis
 
-根因按评估方案的六类：解析错误、工具或 SQL 错误、数据缺失或取值不一致、LLM 改写出错、守卫误拦、评估集本身出错。
+Root causes use the six classes of the evaluation plan: parsing error, tool or SQL error, missing or inconsistent data, LLM rewriting error, guard false positive, and an error in the evaluation set itself.
 
-留出集只用来报告，**这里的问题都不在留出集上修**。如果要修，修完只能用开发集验证，留出集的数字保持这一次的结果。
+The holdout is for reporting only: **none of these problems is fixed on the holdout**. Any fix could be checked only on the dev set, and the holdout figures stay as they are from this run.
 
-### 失败 1 · A12 · A_explicit_requirements（2/3 遍失败，最严重）
+### Failure 1 · A12 · A_explicit_requirements (2 of 3 runs failed; the most serious)
 
-- **用户输入**：I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.
-- **期望结果**：26 套符合，23 套需确认。展示的应该是符合的房源。
-- **实际结果**：第 1、2 遍说"No strict matches"，49 套全部需确认，3 套候选都标为需确认。这 3 套（500260916、500297851、60110616）在数据里写着 `no_restriction`、房东不同住、全配家具，本来就是确定符合的。第 3 遍正确，3 套都标为符合。
-- **根因**：解析错误。用户说的"接受男租客"对应的是 `tenant_gender: male`，系统也设了这一项。但第 1、2 遍又多设了 `gender_preference: male`，也就是"房东在广告里偏好男租客"。冻结数据里这个字段 369 套全是 `unknown`，所以加上这个条件后，所有房源都变成"需确认"。
-- **为什么影响这么大**：这不只是多理解了一个条件。一个在数据里完全没有值的字段，一旦被当成条件，就会把全部结果打成"未知"。回复也照实说"0 套符合"，用户看到的是"没有房"。字段说明里写了 "Data is very sparse"，解析提示也说只有用户明确要求时才设，但模型 2/3 没有遵守。
-- **可能的改法**（只在开发集验证）：只要用户设了 `tenant_gender`，就不再设 `gender_preference`；或者对完全没有数据的字段，先告诉用户"这一项数据里没有"，不直接当成条件。
+- **User input**: I am a male student looking for a furnished room for no more than SGD 1,500 per month. The room must accept male tenants, and the landlord must not live in the same home.
+- **Expected**: 26 matches and 23 needing confirmation. The listings shown should be matches.
+- **Actual**: runs 1 and 2 said "No strict matches", with all 49 needing confirmation, and marked the 3 candidates as needing confirmation. Those 3 (500260916, 500297851, 60110616) are recorded as `no_restriction`, landlord not living in and fully furnished, so they are confirmed matches. Run 3 was right and marked all 3 as matches.
+- **Root cause**: parsing error. "Must accept male tenants" maps to `tenant_gender: male`, which the system did set. But runs 1 and 2 also set `gender_preference: male`, meaning "the advertiser prefers male tenants". In the frozen data this field is `unknown` for all 369 listings, so adding the condition turned every listing into "needs confirmation".
+- **Why the impact is so large**: this is more than one extra condition. Once a field with no values in the data is treated as a condition, every result becomes "unknown". The reply then honestly says "0 matches", and the user sees "no homes". The field description says "Data is very sparse", and the parsing instructions say to set it only when the user asks for it explicitly, but the model ignored this in 2 of 3 runs.
+- **Possible fix** (to be checked on the dev set only): once the user sets `tenant_gender`, do not set `gender_preference`; or, for a field with no data at all, tell the user the data does not hold it instead of using it as a condition.
 
-### 失败 2 · B07 · B_missing_field（1/3 遍失败）
+### Failure 2 · B07 · B_missing_field (1 of 3 runs failed)
 
-- **用户输入**：Find me a fully furnished room for no more than SGD 1,600 per month. Separate listings that explicitly confirm they are fully furnished from otherwise eligible listings whose furnishing level is not stated. … do not treat unknown furnishing information as fully furnished.
-- **期望结果**：71 套符合（写明全配），2 套需确认（25130091、24417854，家具写的是 `furnished_unspecified`）。
-- **实际结果**（第 2 遍）：可接受的家具类型设成了 `fully_furnished` 加 `furnished_unspecified`，于是说"73 strict matches"，还说"没有家具情况不明、需要确认的房源"。展示的 3 套恰好都是全配，所以违规率没有查出来。
-- **根因**：解析错误。用户明确说了不要把不明的算作全配，模型还是把 `furnished_unspecified` 加进了可接受类型。这违反了这题的 `must_not`。
-- **第 1、3 遍**：设的是 `furnishing_types: [fully_furnished]`，是对的。
+- **User input**: Find me a fully furnished room for no more than SGD 1,600 per month. Separate listings that explicitly confirm they are fully furnished from otherwise eligible listings whose furnishing level is not stated. … do not treat unknown furnishing information as fully furnished.
+- **Expected**: 71 matches (stated as fully furnished) and 2 needing confirmation (25130091 and 24417854, whose furnishing is `furnished_unspecified`).
+- **Actual** (run 2): the accepted furnishing types were set to `fully_furnished` plus `furnished_unspecified`, so it said "73 strict matches" and that no listing had unclear furnishing. The 3 listings shown happened to be fully furnished, so the violation rate did not catch it.
+- **Root cause**: parsing error. The user said plainly not to count unclear furnishing as full, yet the model added `furnished_unspecified` to the accepted types. This breaks the case's `must_not`.
+- **Runs 1 and 3**: set `furnishing_types: [fully_furnished]`, which is right.
 
-### 失败 3 · H01 · H_provenance_and_comparison（3/3 遍失败）
+### Failure 3 · H01 · H_provenance_and_comparison (3 of 3 runs failed)
 
-- **用户输入**：What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?
-- **期望结果**：最近记录的租金 S$900，原始挂牌价 S$1,000，低了 S$100。
-- **实际结果**：3 遍都说最近租金 S$900（对），但都说"原始挂牌价数据里没有，无法比较"（错）。
-- **根因**：工具或 SQL 错误。3 遍模型都调用了 `get_listing_details`。这个工具只返回生效租金（`rent_monthly_sgd`，有最新值就用最新值），不返回广告卡片上的原价（`rent_monthly_sgd_card`）。原价只在 `explain_listing` 里有。模型如实说了"工具没给"，但说法是"数据里没有"，听起来像是数据缺失。
-- **相关**：H02 比较 500111596 和 500074659 的租金，3 遍都说打平（900 对 900）。按约定这是对的（见 `README.md` 第 6 条），但都没提原价是 1,000 对 900。原因相同。
-- **可能的改法**：`get_listing_details` 在原价和最新价不同时，两个都返回。这和开发集 H03 的问题是同一类：信息在数据里，但用到的工具没有给出来。
+- **User input**: What is the latest recorded monthly rent for listing 500111596, and how does it differ from the original advertised rent?
+- **Expected**: latest recorded rent S$900, original advertised rent S$1,000, a drop of S$100.
+- **Actual**: all 3 runs gave the latest rent as S$900 (right), but all said "the original advertised rent is not in the data, so they cannot be compared" (wrong).
+- **Root cause**: tool or SQL error. In all 3 runs the model called `get_listing_details`. That tool returns only the effective rent (`rent_monthly_sgd`, using the latest value where there is one), not the price on the advert card (`rent_monthly_sgd_card`). The original price is available only from `explain_listing`. The model truthfully reported that the tool did not give it, but said "the data does not have it", which sounds like missing data.
+- **Related**: H02 compares the rents of 500111596 and 500074659, and all 3 runs said they tie (900 vs 900). By the conventions this is right (see item 6 of `README.md`), but none mentioned that the original prices are 1,000 vs 900. Same cause.
+- **Possible fix**: when the original and latest prices differ, `get_listing_details` returns both. This is the same kind of problem as dev case H03: the information is in the data, but the tool used does not return it.
 
-### 失败 4 · D01 · D_ambiguous_request（第 1 遍失败，第 2、3 遍不完整）
+### Failure 4 · D01 · D_ambiguous_request (run 1 failed; runs 2 and 3 incomplete)
 
-- **用户输入**：I'm looking for an affordable room, preferably somewhere close to NUS.
-- **期望结果**：推荐之前先问最高月预算，以及能接受的通勤或位置范围。
-- **实际结果**：
-  - 第 1 遍：没问就搜了，自己定成"便宜优先"，列出全部 107 套单间里最便宜的 3 套，最后才问学院。没有问预算。
-  - 第 2、3 遍：先问了，没有搜索。问了学院和预算，但没有问通勤最长能接受多久。
-- **根因**：解析错误。第 1 遍把"affordable"当成了排序偏好"便宜优先"，又设了 `rental_scope: room`，就直接搜了。开发集里"只有排序偏好时先问一次"的拦截这次没有起作用，可能是因为多了 `rental_scope` 这个真实条件。这一点是推测，没有查代码确认。3 遍做法不一样，说明这题的行为不稳定。
-- **说明**：107 是冻结数据里单间的总数，是真的，不是编造。
+- **User input**: I'm looking for an affordable room, preferably somewhere close to NUS.
+- **Expected**: before recommending, ask for the highest monthly budget and the acceptable commute or area.
+- **Actual**:
+  - Run 1: it searched without asking, chose "cheapest first" on its own, listed the 3 cheapest of all 107 rooms, and only asked for the faculty at the end. It never asked for a budget.
+  - Runs 2 and 3: it asked first and did not search. It asked for the faculty and the budget, but not the longest acceptable commute.
+- **Root cause**: parsing error. Run 1 read "affordable" as the ranking preference "cheapest first" and also set `rental_scope: room`, then searched straight away. The dev-set rule "with only a ranking preference, ask once first" did not trigger this time, possibly because `rental_scope` is a real condition. This is a guess, not checked in the code. The 3 runs behaved differently, so behaviour on this case is unstable.
+- **Note**: 107 is the true number of rooms in the frozen data, not a fabrication.
 
-### 失败 5 · D04 · D_ambiguous_request（3/3 遍不完整）
+### Failure 5 · D04 · D_ambiguous_request (3 of 3 runs incomplete)
 
-- **用户输入**：I don't want to spend too much time commuting every day. Are there any suitable places for students?
-- **期望结果**：问通勤目的地和最长能接受的通勤时间，不替用户假定学院或时间。
-- **实际结果**：3 遍都先问，没有搜索，也没有假定学院。问了学院（目的地），也问了"适合学生"指什么。但 3 遍都没有问最长能接受的通勤时间。
-- **根因**：解析错误。和开发集 D05 一样：提示词只要求问清楚有几种理解的话，没有要求问上限。用户说"不想通勤太久"，系统理解成按通勤排序，而不是一个需要数字的条件。
-- **判法**：严格按 `gold_answer` 算 0/3，只看"先问、不假定"算 3/3。正式打分时两位评分人要先统一判法。
+- **User input**: I don't want to spend too much time commuting every day. Are there any suitable places for students?
+- **Expected**: ask for the commute destination and the longest acceptable commute, without assuming a faculty or a time.
+- **Actual**: all 3 runs asked first, did not search and did not assume a faculty. They asked for the faculty (the destination) and what "suitable for students" means, but none asked for the longest acceptable commute.
+- **Root cause**: parsing error, as in dev case D05: the instructions only ask the model to clarify requests that can be read several ways, not to ask for a limit. "I don't want to commute too long" was read as ranking by commute, not as a condition that needs a number.
+- **How to judge**: strictly by `gold_answer` this is 0/3; judging only "asks first, does not assume" it is 3/3. The two raters had to agree on the rule before formal scoring.
 
-### 失败 6 · C07 · C_no_solution_or_relaxation（第 1 遍失败）
+### Failure 6 · C07 · C_no_solution_or_relaxation (run 1 failed)
 
-- **用户输入**：I need a room in D10 for no more than SGD 1,000 per month. If there is no strict match, keep my original criteria unchanged and identify the smallest evidence-based adjustment … Change only one requirement at a time.
-- **期望结果**：严格匹配 0 套；单独放宽预算到 S$2,205 是最小的改动。单间和 D10 保持不变。
-- **实际结果**（第 1 遍）：多设了 `room_type: common_room`，回复说"common room in D10"。结论（S$2,205、1 套）恰好和标准答案一样。第 2、3 遍正确。
-- **根因**：解析错误。用户说的是 room（任何单间），系统缩小成了普通房。这违反了"保持原条件不变"。这次没有影响结论，但如果 D10 里只有主人房，放宽的结果就会错。
+- **User input**: I need a room in D10 for no more than SGD 1,000 per month. If there is no strict match, keep my original criteria unchanged and identify the smallest evidence-based adjustment … Change only one requirement at a time.
+- **Expected**: 0 strict matches; raising the budget alone to S$2,205 is the smallest change. Room and D10 stay as they are.
+- **Actual** (run 1): it also set `room_type: common_room`, and the reply said "common room in D10". The conclusion (S$2,205, 1 listing) happened to match the gold answer. Runs 2 and 3 were right.
+- **Root cause**: parsing error. The user said room (any room); the system narrowed it to a common room. This breaks "keep the original criteria unchanged". It did not change the conclusion this time, but if D10 had only master rooms, the relaxation result would have been wrong.
 
-### 其他记录（不算失败）
+### Other notes (not failures)
 
-**4.1 查不到出处的数字：3 个都不是编造**
-- B08 第 1 遍的"28 listings failed the 6-month lease condition"：预算内的单间里租期写 1 年的 23 套、2 年的 5 套，合计 28。是真的。
-- D01 第 1 遍的"107 room listings"：冻结数据里单间正好 107 套。是真的。
-- B07 第 2 遍的"73"：这是失败 2 里说错的总数（71 套符合 + 2 套需确认）。不是凭空写的，已经算进"说错总数"。
-- 所以编造率是 0/470。这是作者核对的，而且只能查数字，查不了文字说错。
+**4.1 Numbers with no traceable source: none of the 3 is fabricated**
+- B08 run 1, "28 listings failed the 6-month lease condition": among rooms within budget, 23 have a 1-year lease and 5 a 2-year lease, 28 in all. True.
+- D01 run 1, "107 room listings": the frozen data has exactly 107 rooms. True.
+- B07 run 2, "73": the wrong total of failure 2 (71 matches + 2 needing confirmation). Not invented, and already counted under "wrong total".
+- So the fabrication rate is 0/470. This was checked by the author, and only numbers can be checked this way, not wrong statements in words.
 
-**4.2 打分脚本误报：B07 第 1、3 遍**
-- 标准答案用 `furnishing_level: full` 表示"必须全配"，系统用 `furnishing_types: [fully_furnished]`，两者是同一个意思。脚本没有这条对照，判成了解析错误。
-- 根因：评估集本身出错（打分脚本）。已在 `score.py` 加上对照，重新打分。
+**4.2 False alarm from the scoring script: B07 runs 1 and 3**
+- The gold answer uses `furnishing_level: full` for "must be fully furnished"; the system uses `furnishing_types: [fully_furnished]`. Both mean the same thing. The script lacked this mapping and marked a parsing error.
+- Root cause: an error in the evaluation set itself (the scoring script). The mapping was added to `score.py` and the run scored again.
 
-**4.3 G07 第 1 轮被守卫拦截一次**
-- 初稿里有一个工具没给过的数字 900，被拦下来重写。重写后的回复正确（12 套，前 3 名正确）。
-- 被拦的初稿没有保存，判断不了是模型写错了还是守卫误拦。这和开发集里记的限制一样。
+**4.3 G07 turn 1 was stopped once by the guard**
+- The draft contained a number, 900, that no tool had returned, so it was stopped and rewritten. The rewritten reply was right (12 matches, correct top 3).
+- The stopped draft was not saved, so it cannot be told whether the model was wrong or the guard was a false positive. This is the same limitation recorded on the dev set.
 
-**4.4 工具参数出错 3 次，都自动恢复了**
-- A13 第 1 遍、A11 第 2 遍、B07 第 3 遍：保存条件时，`user_quote` 是模型改写过的话，不是用户原话，被工具拒绝。模型重试后成功，最终结果都对，只是多花了时间。
+**4.4 Three tool-argument errors, all recovered automatically**
+- A13 run 1, A11 run 2 and B07 run 3: when saving conditions, the `user_quote` was the model's paraphrase, not the user's words, and the tool rejected it. The model retried and succeeded; every final result was right, only slower.
 
-## 5. 根因汇总
+## 5. Root causes
 
-| 根因 | 案例 | 遍数 |
+| Root cause | Cases | Runs |
 |---|---|---|
-| 解析错误 | A12（多设无数据的字段）、B07（把不明当全配）、C07（缩小房型）、D01（没问就搜）、D04（没问上限） | 2 + 1 + 1 + 3 + 3 |
-| 工具或 SQL 错误 | H01（详情工具不给原价） | 3 |
-| 评估集本身出错 | B07 打分误报 | 2（已更正） |
-| 守卫误拦 | G07（无法判断） | 1 |
-| 数据缺失或取值不一致 | 无 | – |
-| LLM 改写出错 | 无单独案例（B07 说错总数是解析错误的后果） | – |
+| Parsing error | A12 (sets a field with no data), B07 (counts unclear as fully furnished), C07 (narrows the room type), D01 (searches without asking), D04 (does not ask for a limit) | 2 + 1 + 1 + 3 + 3 |
+| Tool or SQL error | H01 (the details tool does not return the original price) | 3 |
+| Error in the evaluation set | B07 false alarm in scoring | 2 (corrected) |
+| Guard false positive | G07 (cannot be determined) | 1 |
+| Missing or inconsistent data | None | – |
+| LLM rewriting error | No case of its own (B07's wrong total follows from its parsing error) | – |
 
-## 6. 结论
+## 6. Conclusions
 
-1. **硬性指标全部达标**：展示的房源 0 违规、未知全部标出、没有编造的数字。数据只有一部分时，系统能把"确定符合"和"需要确认"分开。
-2. **主要风险在理解用户**：6 个失败案例里 5 个是解析错误，而且同一题 3 遍做法不一样（A12、B07、C07、D01）。A12 的后果最大：多理解一个没有数据的条件，结果就从"26 套符合"变成"0 套符合"。
-3. **模糊请求问得不全**：D01、D04 都先问了，没有乱搜（D01 第 1 遍除外），但都没问通勤上限。这和开发集 D05 的问题一样，说明不只是那一题的问题。
-4. **工具缺字段**：H01 是工具没有返回原价，和模型无关，改法也最明确。
-5. **局限**：每题只跑 3 遍；行为分是作者草稿；G 类没有逐轮读行为；留出集评分人也是组员。
+1. **The hard metrics are all met**: 0 violations among the listings shown and no fabricated numbers. When data is only partly present, the system keeps "confirmed" and "needs confirmation" apart.
+2. **The main risk is understanding the user**: 5 of the 6 failures are parsing errors, and the same case was handled differently across the 3 runs (A12, B07, C07, D01). A12 has the largest consequence: one extra condition with no data turns "26 matches" into "0 matches".
+3. **Vague requests are not fully clarified**: D01 and D04 both asked first and did not search blindly (apart from D01 run 1), but neither asked for a commute limit. This is the same problem as dev case D05, so it is not limited to that one case.
+4. **A tool is missing a field**: in H01 the tool does not return the original price; this has nothing to do with the model, and its fix is the clearest.
+5. **Limitations**: only 3 runs per case; the formal behaviour scores cover run 1 only; category G was not read turn by turn for behaviour; the holdout raters are a team member and an AI-assisted rater.
 
-## 7. 后续
+## 7. What followed
 
-- 两人按 `holdout_behaviour.csv` 正式打行为分。D 类先统一判法（是否必须问上限）。
-- 开发集用同一版代码跑 3 遍（`run_eval.py final --runs 3`），和留出集一起报告，看两者差多少。
-- 把上面的案例补进 `failure_log.md`，标明来自留出集、没有修复。
-- 更新 6 个过时的单元测试（旧数据 430 条 → 369 条）。
+- Behaviour was scored formally on `holdout_behaviour.csv`, with the D-category rule agreed first (see section 3).
+- The cases above were added to `failure_log.md`, marked as holdout and not fixed.

@@ -2,7 +2,9 @@
 
 English | [中文](README.zh-CN.md)
 
-A rental decision agent for NUS students looking for a home in Singapore. An LLM agent (LangGraph) understands requests in English or Chinese and calls deterministic tools that search a PostgreSQL database of PropertyGuru listings, check each listing's link, give commute times to the user's NUS faculty from OneMap routes, and rank, compare and cost the options; facts in its replies come only from those tools. The front end is the Streamlit app in `app/`, `server.py` (FastAPI) serves accounts, conversations and the agent, and a fixed LangGraph workflow (`graph.py`) is kept as an evaluation baseline.
+Repository: https://github.com/Caijiahui0715/DSS5105 · Online site: https://18-142-1-0.sslip.io
+
+A rental decision agent for NUS students looking for a home in Singapore. An LLM agent (LangGraph) understands requests in English or Chinese and calls deterministic tools that search a PostgreSQL database of PropertyGuru listings, give commute times to the user's NUS faculty from OneMap routes, and rank, compare and cost the options; facts in its replies come only from those tools. The front end is the Streamlit app in `app/`, `server.py` (FastAPI) serves accounts, conversations and the agent, and a fixed LangGraph workflow (`graph.py`) is kept as an evaluation baseline.
 
 ## Getting started (for team members)
 
@@ -14,7 +16,7 @@ Follow these steps once to run it on your own computer. Run the commands in Powe
    - [PostgreSQL](https://www.postgresql.org/download/windows/): use the installer, keep the default port 5432, and remember the password you give the `postgres` user; the Stack Builder at the end can be skipped. It then runs as a Windows service that starts with the computer.
 2. **Get the code and the data**
    ```powershell
-   git clone <repository URL>
+   git clone https://github.com/Caijiahui0715/DSS5105.git
    cd DSS5105
    ```
    The final data files under `output-final-delivery/` come with the repository (they are tracked in Git). The database import uses its `rental_data_v1.json`, `rental_data_v2.csv` and `removed_listings.csv`; the source evidence in listing details comes from `source_evidence_v1.json`.

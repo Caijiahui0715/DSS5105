@@ -14,7 +14,7 @@
    - [PostgreSQL](https://www.postgresql.org/download/windows/)：用安装程序装，端口用默认的 5432，记住安装时给 `postgres` 用户设的密码；最后的 Stack Builder 可以跳过。装好后它是 Windows 服务，开机自动运行。
 2. **拿代码和数据**
    ```powershell
-   git clone <仓库地址>
+   git clone https://github.com/Caijiahui0715/DSS5105.git
    cd DSS5105
    ```
    再向组里要 `output-final-delivery` 整个文件夹（最终数据，不在 Git 里），放进仓库根目录。导入数据库用其中的 `rental_data_v1.json`、`rental_data_v2.csv` 和 `removed_listings.csv`，房源详情里的原文依据来自 `source_evidence_v1.json`。

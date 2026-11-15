@@ -63,7 +63,7 @@ From the repository root:
 
 `build_cases.py` only needs to run again when the cases change; after changing `CONVENTIONS.md`, run the other two again. All three scripts are deterministic: running them again gives the same output (apart from the generation time in `gold_answers.json`).
 
-The system runs and scoring:
+The system runs and scoring. The holdout run below was a one-off and is already complete in `results/holdout.jsonl`; running the command again finds nothing left to run and stops without writing anything. To rescore the existing run, use `score.py` only.
 
 ```bash
 .venv/Scripts/python.exe evaluation/run_eval.py holdout --holdout --runs 3

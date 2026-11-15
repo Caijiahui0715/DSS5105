@@ -8,7 +8,8 @@
 
 Writes results/<label>.jsonl: a header with the version, model and data hashes, then one row per
 turn. A label already there runs only the cases not yet finished without an error, under a header of
-its own; score.py keeps the latest rows of a case. Each case gets its own user and conversation, so
+its own; score.py keeps the latest rows of a case. When every case is finished it writes nothing and
+stops. Each case gets its own user and conversation, so
 nothing carries over. Uses the test database (<DB_NAME>_test) with the frozen data and OPENAI_API_KEY
 and OPENAI_MODEL from .env.
 """
@@ -120,9 +121,7 @@ def main() -> None:
                         help="agent (B5, default) or the fixed workflow baseline in graph.py (B4)")
     args = parser.parse_args()
     workflow = args.system == "workflow"
-    if not env("OPENAI_API_KEY") or not env("OPENAI_MODEL"):
-        raise SystemExit("Set OPENAI_API_KEY and OPENAI_MODEL in .env first")
-    split = "holdout" if args.holdout else "dev"
+    split ="holdout" if args.holdout else "dev"
     data = json.loads((ROOT / "evaluation" / "cases" / "cases.json").read_text(encoding="utf-8"))
     cases = [case for case in (data["cases"] if "cases" in data else data.values()) if case["split"] == split]
     if args.only:
@@ -146,6 +145,13 @@ def main() -> None:
             if row["last_turn"]:
                 (done.discard if attempt in failed else done.add)(attempt)
                 failed.discard(attempt)
+    # Nothing left to run: write nothing, so the file is not stamped with a code version that ran no case.
+    pending = [(case["id"], run) for run in range(1, args.runs + 1) for case in cases if (case["id"], run) not in done]
+    if not pending:
+        raise SystemExit(f"Nothing to run: all {len(cases) * args.runs} case runs in {output.name} are finished. "
+                         "Use a new label for a fresh run.")
+    if not env("OPENAI_API_KEY") or not env("OPENAI_MODEL"):
+        raise SystemExit("Set OPENAI_API_KEY and OPENAI_MODEL in .env first")
     model_name = env("OPENAI_MODEL")
     # The workflow calls the model without tools, as demo.py --workflow does.
     model = ChatOpenAI(model=model_name, api_key=env("OPENAI_API_KEY"), use_responses_api=not workflow)
